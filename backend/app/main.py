@@ -18,7 +18,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="ClarityDocs API",
+    title="DocuWaves API",
     description="Self-hosted documentation CMS: multiple projects, each with categories and Markdown pages, "
     "edited through a browser UI and backed by a real database (SQLite by default, optional PostgreSQL). "
     "Interactive docs at /docs.",

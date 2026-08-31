@@ -1,11 +1,11 @@
-# ClarityDocs
+# DocuWaves
 
 A self-hosted documentation CMS. Unlike a static-site generator (VitePress,
 Docusaurus, MkDocs, ...), content lives in a real database and is written
 and organized entirely in the browser — no Markdown files to commit, no
 build step to run when you just want to fix a typo.
 
-- **Multiple projects in one instance** — one ClarityDocs deployment can
+- **Multiple projects in one instance** — one DocuWaves deployment can
   host the docs for every app/tool you maintain, each with its own set of
   categories and pages, so visitors land on one shared homepage and click
   through to exactly the project they're looking for.
@@ -43,7 +43,7 @@ which is the one directory you should back up).
 If you'd rather run a real database (e.g. you already run Postgres for
 other services and want everything backed up the same way):
 
-1. In `.env`, set `DATABASE_URL=postgresql://claritydocs:changeme@postgres:5432/claritydocs`
+1. In `.env`, set `DATABASE_URL=postgresql://docuwaves:changeme@postgres:5432/docuwaves`
    (change the password to match `POSTGRES_PASSWORD` below).
 2. `docker compose --profile postgres up -d --build`
 
@@ -52,28 +52,28 @@ needs the same `--profile postgres` flag.
 
 ## Optional: single sign-on (OIDC)
 
-ClarityDocs speaks standard OpenID Connect, so it works with Authentik,
+DocuWaves speaks standard OpenID Connect, so it works with Authentik,
 Keycloak, Authelia, Zitadel, or anything else that implements the spec.
 
 In your identity provider, create an OAuth2/OpenID application with:
 
-- **Redirect URI:** `https://<your-claritydocs-domain>/api/auth/oidc/callback`
+- **Redirect URI:** `https://<your-docuwaves-domain>/api/auth/oidc/callback`
   (exact path, only the domain changes)
 - A real **signing key** configured for the provider — without one, most
-  providers' JWKS endpoint returns no signing keys at all, and ClarityDocs
+  providers' JWKS endpoint returns no signing keys at all, and DocuWaves
   will refuse to trust tokens it can't verify (fails with a clear error
   rather than silently accepting an unsigned token).
 
-Then, in ClarityDocs' `.env`:
+Then, in DocuWaves' `.env`:
 
 ```
-OIDC_ISSUER_URL=https://your-idp.example.com/application/o/claritydocs/
+OIDC_ISSUER_URL=https://your-idp.example.com/application/o/docuwaves/
 OIDC_CLIENT_ID=<client id from your provider>
 OIDC_CLIENT_SECRET=<client secret from your provider>
 OIDC_PROVIDER_NAME=authentik
 ```
 
-`OIDC_ISSUER_URL` is the base URL ClarityDocs fetches
+`OIDC_ISSUER_URL` is the base URL DocuWaves fetches
 `{OIDC_ISSUER_URL}/.well-known/openid-configuration` from to find the
 authorization/token/JWKS endpoints itself — you don't need to look those
 up individually. `OIDC_PROVIDER_NAME` only controls the login button's
@@ -95,7 +95,7 @@ never grants access on its own.
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | *(empty — SQLite)* | Postgres connection string; switches storage backend |
-| `SQLITE_PATH` | `/data/claritydocs.db` | Where the SQLite file lives (only used without `DATABASE_URL`) |
+| `SQLITE_PATH` | `/data/docuwaves.db` | Where the SQLite file lives (only used without `DATABASE_URL`) |
 | `OIDC_ISSUER_URL` | *(empty — SSO off)* | Your identity provider's base issuer URL |
 | `OIDC_CLIENT_ID` | *(empty)* | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | *(empty)* | OIDC client secret |

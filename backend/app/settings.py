@@ -9,7 +9,7 @@ class Settings:
     # Same "blank = default, filled in = opt in" contract CachePanel uses
     # for the same setting.
     database_url: str = os.environ.get("DATABASE_URL", "")
-    sqlite_path: str = os.environ.get("SQLITE_PATH", "/data/claritydocs.db")
+    sqlite_path: str = os.environ.get("SQLITE_PATH", "/data/docuwaves.db")
 
     # Panel SSO login via a generic OIDC provider -- same env var names as
     # CachePanel's own OIDC feature, deliberately, so the two SyntaxLab

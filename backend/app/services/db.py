@@ -1,7 +1,7 @@
 """Storage backend: SQLite by default (a single file under /data, zero
 config -- matches the "easy to install" goal), or PostgreSQL when
 DATABASE_URL is set. Unlike CachePanel (where the non-Postgres path is
-flat JSON files), ClarityDocs' content is inherently relational
+flat JSON files), DocuWaves' content is inherently relational
 (projects -> categories -> pages, plus full-text search), so BOTH backends
 here are real SQL databases -- every store branches on is_postgres() and
 writes each query twice (SQLite's `?` placeholders vs Postgres' `%s`,
@@ -205,7 +205,7 @@ _POSTGRES_SCHEMA = [
 
 def init_schema() -> None:
     """Called once at startup (see main.py's lifespan) for BOTH backends --
-    unlike CachePanel, where this was a Postgres-only no-op, ClarityDocs
+    unlike CachePanel, where this was a Postgres-only no-op, DocuWaves
     always has a real schema to create (SQLite included)."""
     with get_connection() as conn:
         for statement in (_POSTGRES_SCHEMA if is_postgres() else _SQLITE_SCHEMA):

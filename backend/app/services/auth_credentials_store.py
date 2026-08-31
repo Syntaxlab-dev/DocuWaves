@@ -1,4 +1,4 @@
-"""The single admin account that guards ClarityDocs' editing UI. v1
+"""The single admin account that guards DocuWaves' editing UI. v1
 deliberately supports exactly one account (no roles, no multi-user --
 CachePanel took several feature rounds to grow into that, not worth
 pre-building here before anyone has asked for it) and exactly one

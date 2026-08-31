@@ -1,5 +1,5 @@
 """Top-level content grouping -- one row per SyntaxLab project/app whose
-docs live in this ClarityDocs instance. sort_order is a plain integer the
+docs live in this DocuWaves instance. sort_order is a plain integer the
 admin UI shifts with up/down arrows (same "no drag-and-drop library"
 choice CachePanel already made deliberately) rather than a fractional
 position scheme."""

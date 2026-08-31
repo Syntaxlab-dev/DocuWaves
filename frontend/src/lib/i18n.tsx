@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, type ReactNode } from "react";
 
 const de = {
-  "app.title": "ClarityDocs",
+  "app.title": "DocuWaves",
   "app.tagline": "Selbst-gehostete Dokumentation für all eure Projekte",
   "setup.title": "Ersteinrichtung",
   "setup.subtitle": "Lege den ersten Admin-Zugang an.",
@@ -71,7 +71,7 @@ const de = {
 type Dict = typeof de;
 
 const en: Dict = {
-  "app.title": "ClarityDocs",
+  "app.title": "DocuWaves",
   "app.tagline": "Self-hosted documentation for all your projects",
   "setup.title": "First-run setup",
   "setup.subtitle": "Create the first admin account.",
@@ -149,7 +149,7 @@ const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (
 });
 
 function detectDefaultLang(): Lang {
-  const stored = localStorage.getItem("claritydocs-lang");
+  const stored = localStorage.getItem("docuwaves-lang");
   if (stored === "de" || stored === "en") return stored;
   return navigator.language.startsWith("de") ? "de" : "en";
 }
@@ -159,7 +159,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   function setLang(l: Lang) {
     setLangState(l);
-    localStorage.setItem("claritydocs-lang", l);
+    localStorage.setItem("docuwaves-lang", l);
   }
 
   function t(key: keyof Dict): string {
