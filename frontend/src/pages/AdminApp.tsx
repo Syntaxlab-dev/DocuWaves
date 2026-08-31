@@ -6,8 +6,10 @@ import {
   ArrowUp,
   Eye,
   EyeOff,
+  GitBranch,
   Moon,
   Plus,
+  RefreshCw,
   Sun,
   Trash2,
 } from "lucide-react";
@@ -16,7 +18,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownView } from "@/components/MarkdownView";
-import { api, ApiError, type Category, type Page, type PageSummary, type Project } from "@/lib/api";
+import {
+  api,
+  ApiError,
+  type Category,
+  type ContentRepoStatus,
+  type Page,
+  type PageSummary,
+  type Project,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
@@ -33,6 +43,27 @@ export function AdminApp() {
   const [pages, setPages] = useState<PageSummary[]>([]);
   const [editingPageId, setEditingPageId] = useState<number | "new" | null>(null);
   const [showAccount, setShowAccount] = useState(false);
+  const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
+  const [syncing, setSyncing] = useState(false);
+
+  function loadRepoStatus() {
+    api.contentRepoStatus().then(setRepoStatus);
+  }
+  useEffect(loadRepoStatus, []);
+
+  async function onSyncNow() {
+    setSyncing(true);
+    try {
+      await api.contentRepoSync();
+      toast.success(t("admin.repoSyncDone"));
+      loadRepoStatus();
+      loadProjects();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.message : t("admin.repoSyncFailed"));
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   function loadProjects() {
     api.adminListProjects().then((r) => setProjects(r.projects));
@@ -96,6 +127,18 @@ export function AdminApp() {
       <div className="mx-auto max-w-6xl px-4 py-6">
         {showAccount && <AccountCard onClose={() => setShowAccount(false)} />}
 
+        <RepoStatusBar status={repoStatus} syncing={syncing} onSync={onSyncNow} />
+
+        {repoStatus && !repoStatus.configured ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>{t("admin.repoNotConfiguredTitle")}</CardTitle>
+            </CardHeader>
+            <CardContent className="whitespace-pre-line text-sm text-[var(--muted)]">
+              {t("admin.repoNotConfiguredBody")}
+            </CardContent>
+          </Card>
+        ) : (
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
           <ProjectsPanel
             projects={projects}
@@ -151,7 +194,44 @@ export function AdminApp() {
             )}
           </div>
         </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+function RepoStatusBar({
+  status,
+  syncing,
+  onSync,
+}: {
+  status: ContentRepoStatus | null;
+  syncing: boolean;
+  onSync: () => void;
+}) {
+  const { t } = useI18n();
+  if (!status || !status.configured) return null;
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
+      <GitBranch className="h-4 w-4 text-[var(--muted)]" />
+      {status.connected ? (
+        <>
+          <span className={status.connected ? "text-[var(--accent)]" : ""}>{t("admin.repoConnected")}</span>
+          <span className="text-[var(--muted)]">
+            {status.branch} · {status.last_commit?.sha} · {status.last_commit?.message}
+          </span>
+        </>
+      ) : (
+        <span className="text-red-500">
+          {t("admin.repoDisconnected")}
+          {status.error ? `: ${status.error}` : ""}
+        </span>
+      )}
+      <Button variant="outline" size="sm" className="ml-auto" onClick={onSync} disabled={syncing}>
+        <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+        {t("admin.repoSyncNow")}
+      </Button>
     </div>
   );
 }

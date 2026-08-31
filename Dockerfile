@@ -8,6 +8,11 @@ RUN npm run build
 FROM python:3.12-slim
 WORKDIR /app
 
+# git: the content repo (Markdown+YAML files, the actual source of truth for
+# everything under /admin) is a real clone managed by GitPython, which shells
+# out to the system `git` binary -- it isn't vendored, so it has to be here.
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 

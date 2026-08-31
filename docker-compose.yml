@@ -8,6 +8,10 @@ services:
     env_file:
       - .env
     volumes:
+      # The content repo's working clone lives under here too
+      # (CONTENT_REPO_PATH defaults to /data/content-repo) -- same volume as
+      # the SQLite DB and the OIDC session secret, so it survives container
+      # recreates and is only ever cloned once, not on every restart.
       - ./data:/data
 
   # Optional, only started with `docker compose --profile postgres up -d`.

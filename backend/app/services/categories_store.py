@@ -1,9 +1,14 @@
-"""Categories group pages within one project -- the "tile" navigation
-level between a project's landing page and its individual pages. Slugs
-are unique per project (not globally), enforced by the DB's own
-UNIQUE(project_id, slug) constraint."""
+"""Categories group pages within one project -- the "tile" navigation level
+between a project's landing page and its individual pages. Slugs are unique
+per project (not globally), enforced by the DB's own UNIQUE(project_id,
+slug) constraint -- matching the filesystem's own directory-naming
+uniqueness inside one project's folder.
 
-from app.services import db
+Reads unchanged (DB index, kept current by content_sync.py); writes go
+through content_files.py + git_content_repo.py, see projects_store.py's own
+docstring for the full reasoning, identical here."""
+
+from app.services import content_files, content_sync, db, git_content_repo, projects_store
 
 _COLUMNS = "id, project_id, name, slug, icon, sort_order"
 
@@ -62,39 +67,42 @@ def slug_taken(project_id: int, slug: str, exclude_id: int | None = None) -> boo
     return row is not None
 
 
-def create_category(project_id: int, name: str, slug: str, icon: str) -> int:
+def _next_order(project_id: int) -> int:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(
             f"SELECT COALESCE(MAX(sort_order), -1) + 1 FROM categories WHERE project_id = {placeholder}",
             (project_id,),
         ).fetchone()
-        next_order = row[0]
-        if db.is_postgres():
-            result = conn.execute(
-                f"INSERT INTO categories (project_id, name, slug, icon, sort_order) "
-                f"VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}) RETURNING id",
-                (project_id, name, slug, icon, next_order),
-            )
-            return result.fetchone()[0]
-        cursor = conn.execute(
-            f"INSERT INTO categories (project_id, name, slug, icon, sort_order) "
-            f"VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})",
-            (project_id, name, slug, icon, next_order),
-        )
-        return cursor.lastrowid
+    return row[0]
 
 
-def update_category(category_id: int, name: str, slug: str, icon: str) -> None:
-    placeholder = "%s" if db.is_postgres() else "?"
-    with db.get_connection() as conn:
-        conn.execute(
-            f"UPDATE categories SET name = {placeholder}, slug = {placeholder}, icon = {placeholder} WHERE id = {placeholder}",
-            (name, slug, icon, category_id),
-        )
+def create_category(project_id: int, name: str, slug: str, icon: str, author: str) -> dict | None:
+    project = projects_store.get_project(project_id)
+    if project is None:
+        return None
+    order = _next_order(project_id)
+    paths = content_files.write_category(project["slug"], slug, name, icon, order)
+    git_content_repo.commit_and_push(paths, f"Add category: {name} ({project['name']})", author)
+    content_sync.full_sync()
+    return get_category_by_slug(project_id, slug)
 
 
-def reorder_category(project_id: int, category_id: int, direction: int) -> None:
+def update_category(category_id: int, name: str, slug: str, icon: str, author: str) -> dict | None:
+    current = get_category(category_id)
+    if current is None:
+        return None
+    project = projects_store.get_project(current["project_id"])
+    paths: list[str] = []
+    if slug != current["slug"]:
+        paths += content_files.rename_category(project["slug"], current["slug"], slug)
+    paths += content_files.write_category(project["slug"], slug, name, icon, current["sort_order"])
+    git_content_repo.commit_and_push(paths, f"Update category: {name} ({project['name']})", author)
+    content_sync.full_sync()
+    return get_category_by_slug(current["project_id"], slug)
+
+
+def reorder_category(project_id: int, category_id: int, direction: int, author: str) -> None:
     categories = list_categories(project_id)
     index = next((i for i, c in enumerate(categories) if c["id"] == category_id), None)
     if index is None:
@@ -103,13 +111,19 @@ def reorder_category(project_id: int, category_id: int, direction: int) -> None:
     if not (0 <= swap_index < len(categories)):
         return
     a, b = categories[index], categories[swap_index]
-    placeholder = "%s" if db.is_postgres() else "?"
-    with db.get_connection() as conn:
-        conn.execute(f"UPDATE categories SET sort_order = {placeholder} WHERE id = {placeholder}", (b["sort_order"], a["id"]))
-        conn.execute(f"UPDATE categories SET sort_order = {placeholder} WHERE id = {placeholder}", (a["sort_order"], b["id"]))
+    project = projects_store.get_project(project_id)
+    paths = content_files.write_category(project["slug"], a["slug"], a["name"], a["icon"], b["sort_order"])
+    paths += content_files.write_category(project["slug"], b["slug"], b["name"], b["icon"], a["sort_order"])
+    git_content_repo.commit_and_push(paths, f"Reorder categories: {a['name']} / {b['name']}", author)
+    content_sync.full_sync()
 
 
-def delete_category(category_id: int) -> None:
-    placeholder = "%s" if db.is_postgres() else "?"
-    with db.get_connection() as conn:
-        conn.execute(f"DELETE FROM categories WHERE id = {placeholder}", (category_id,))
+def delete_category(category_id: int, author: str) -> None:
+    current = get_category(category_id)
+    if current is None:
+        return
+    project = projects_store.get_project(current["project_id"])
+    paths = content_files.delete_category(project["slug"], current["slug"])
+    if paths:
+        git_content_repo.commit_and_push(paths, f"Remove category: {current['name']} ({project['name']})", author)
+        content_sync.full_sync()

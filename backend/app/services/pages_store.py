@@ -1,6 +1,14 @@
-"""Individual doc pages. Content is stored as raw Markdown text (rendered
-client-side by the frontend, see frontend/src/lib/markdown.tsx) -- the
-backend never parses or transforms it, just stores and searches it.
+"""Individual doc pages. Content is stored as raw Markdown text in a `.md`
+file with YAML frontmatter (see content_files.py for the exact on-disk
+shape) -- the backend never transforms it beyond that, rendering is a
+frontend concern (see frontend/src/components/MarkdownView.tsx).
+
+Reads (list_pages, get_page, get_page_by_slug, search) are unchanged from
+the database-only version: they query the `pages` table exactly as before,
+which content_sync.py keeps as a live index over the actual files. Writes
+go through content_files.py + git_content_repo.py; see projects_store.py's
+own docstring for the full "files are truth, DB is a rebuildable index"
+reasoning, identical here.
 
 Search is genuinely two different implementations per backend rather than
 one shared query, because SQLite and Postgres have unrelated full-text
@@ -21,9 +29,7 @@ English-specific stemming, matching FTS5's own non-stemming default --
 keeps search behavior close to identical between the two backends.
 """
 
-from datetime import datetime, timezone
-
-from app.services import db
+from app.services import categories_store, content_files, content_sync, db, git_content_repo, projects_store
 
 _COLUMNS = "id, project_id, category_id, title, slug, markdown_content, sort_order, published, created_at, updated_at"
 
@@ -88,70 +94,89 @@ def slug_taken(project_id: int, slug: str, exclude_id: int | None = None) -> boo
     return row is not None
 
 
-def create_page(project_id: int, category_id: int, title: str, slug: str, markdown_content: str) -> int:
+def _next_order(category_id: int) -> int:
     placeholder = "%s" if db.is_postgres() else "?"
-    now = datetime.now(timezone.utc).isoformat()
     with db.get_connection() as conn:
         row = conn.execute(
             f"SELECT COALESCE(MAX(sort_order), -1) + 1 FROM pages WHERE category_id = {placeholder}",
             (category_id,),
         ).fetchone()
-        next_order = row[0]
-        args = (project_id, category_id, title, slug, markdown_content, next_order, now, now)
-        if db.is_postgres():
-            result = conn.execute(
-                f"INSERT INTO pages (project_id, category_id, title, slug, markdown_content, sort_order, "
-                f"published, created_at, updated_at) VALUES ({placeholder}, {placeholder}, {placeholder}, "
-                f"{placeholder}, {placeholder}, {placeholder}, FALSE, {placeholder}, {placeholder}) RETURNING id",
-                args,
-            )
-            return result.fetchone()[0]
-        cursor = conn.execute(
-            f"INSERT INTO pages (project_id, category_id, title, slug, markdown_content, sort_order, "
-            f"published, created_at, updated_at) VALUES ({placeholder}, {placeholder}, {placeholder}, "
-            f"{placeholder}, {placeholder}, {placeholder}, 0, {placeholder}, {placeholder})",
-            args,
-        )
-        return cursor.lastrowid
+    return row[0]
 
 
-def update_page(page_id: int, title: str, slug: str, markdown_content: str, category_id: int) -> None:
-    placeholder = "%s" if db.is_postgres() else "?"
-    now = datetime.now(timezone.utc).isoformat()
-    with db.get_connection() as conn:
-        conn.execute(
-            f"UPDATE pages SET title = {placeholder}, slug = {placeholder}, markdown_content = {placeholder}, "
-            f"category_id = {placeholder}, updated_at = {placeholder} WHERE id = {placeholder}",
-            (title, slug, markdown_content, category_id, now, page_id),
-        )
+def create_page(project_id: int, category_id: int, title: str, slug: str, markdown_content: str, author: str) -> dict | None:
+    project = projects_store.get_project(project_id)
+    category = categories_store.get_category(category_id)
+    if project is None or category is None:
+        return None
+    order = _next_order(category_id)
+    paths = content_files.write_page(project["slug"], category["slug"], slug, title, markdown_content, order, False)
+    git_content_repo.commit_and_push(paths, f"Add page: {title}", author)
+    content_sync.full_sync()
+    return get_page_by_slug(project_id, slug)
 
 
-def set_published(page_id: int, published: bool) -> None:
-    placeholder = "%s" if db.is_postgres() else "?"
-    value = published if db.is_postgres() else (1 if published else 0)
-    with db.get_connection() as conn:
-        conn.execute(f"UPDATE pages SET published = {placeholder} WHERE id = {placeholder}", (value, page_id))
+def update_page(page_id: int, title: str, slug: str, markdown_content: str, category_id: int, author: str) -> dict | None:
+    current = get_page(page_id)
+    if current is None:
+        return None
+    project = projects_store.get_project(current["project_id"])
+    old_category = categories_store.get_category(current["category_id"])
+    new_category = categories_store.get_category(category_id)
+    if project is None or old_category is None or new_category is None:
+        return None
+
+    paths = content_files.relocate_page(project["slug"], old_category["slug"], current["slug"], new_category["slug"], slug)
+    order = current["sort_order"] if new_category["id"] == old_category["id"] else _next_order(category_id)
+    paths += content_files.write_page(project["slug"], new_category["slug"], slug, title, markdown_content, order, current["published"])
+    git_content_repo.commit_and_push(paths, f"Update page: {title}", author)
+    content_sync.full_sync()
+    return get_page_by_slug(current["project_id"], slug)
 
 
-def reorder_page(category_id: int, page_id: int, direction: int) -> None:
+def set_published(page_id: int, published: bool, author: str) -> dict | None:
+    current = get_page(page_id)
+    if current is None:
+        return None
+    project = projects_store.get_project(current["project_id"])
+    category = categories_store.get_category(current["category_id"])
+    paths = content_files.write_page(
+        project["slug"], category["slug"], current["slug"], current["title"], current["markdown_content"],
+        current["sort_order"], published,
+    )
+    verb = "Publish" if published else "Unpublish"
+    git_content_repo.commit_and_push(paths, f"{verb} page: {current['title']}", author)
+    content_sync.full_sync()
+    return get_page(page_id)
+
+
+def reorder_page(category_id: int, page_id: int, direction: int, author: str) -> None:
     pages = list_pages(category_id)
-    index = next((i for i, p in enumerate(pages) if p["id"] == page_id), None)
+    index = next((i for i, pg in enumerate(pages) if pg["id"] == page_id), None)
     if index is None:
         return
     swap_index = index + direction
     if not (0 <= swap_index < len(pages)):
         return
     a, b = pages[index], pages[swap_index]
-    placeholder = "%s" if db.is_postgres() else "?"
-    with db.get_connection() as conn:
-        conn.execute(f"UPDATE pages SET sort_order = {placeholder} WHERE id = {placeholder}", (b["sort_order"], a["id"]))
-        conn.execute(f"UPDATE pages SET sort_order = {placeholder} WHERE id = {placeholder}", (a["sort_order"], b["id"]))
+    project = projects_store.get_project(a["project_id"])
+    category = categories_store.get_category(category_id)
+    paths = content_files.write_page(project["slug"], category["slug"], a["slug"], a["title"], a["markdown_content"], b["sort_order"], a["published"])
+    paths += content_files.write_page(project["slug"], category["slug"], b["slug"], b["title"], b["markdown_content"], a["sort_order"], b["published"])
+    git_content_repo.commit_and_push(paths, f"Reorder pages: {a['title']} / {b['title']}", author)
+    content_sync.full_sync()
 
 
-def delete_page(page_id: int) -> None:
-    placeholder = "%s" if db.is_postgres() else "?"
-    with db.get_connection() as conn:
-        conn.execute(f"DELETE FROM pages WHERE id = {placeholder}", (page_id,))
+def delete_page(page_id: int, author: str) -> None:
+    current = get_page(page_id)
+    if current is None:
+        return
+    project = projects_store.get_project(current["project_id"])
+    category = categories_store.get_category(current["category_id"])
+    paths = content_files.delete_page(project["slug"], category["slug"], current["slug"])
+    if paths:
+        git_content_repo.commit_and_push(paths, f"Remove page: {current['title']}", author)
+        content_sync.full_sync()
 
 
 def _fts5_query(raw: str) -> str | None:

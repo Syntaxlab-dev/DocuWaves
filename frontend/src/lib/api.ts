@@ -56,6 +56,14 @@ export interface OidcStatus {
   provider_name: string;
 }
 
+export interface ContentRepoStatus {
+  configured: boolean;
+  connected: boolean;
+  branch: string | null;
+  last_commit: { sha: string; message: string; date: string } | null;
+  error: string | null;
+}
+
 class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -97,6 +105,10 @@ export const api = {
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     }),
   oidcStatus: () => request<OidcStatus>("/api/auth/oidc/status"),
+
+  // Admin: content repo
+  contentRepoStatus: () => request<ContentRepoStatus>("/api/admin/content-repo/status"),
+  contentRepoSync: () => request("/api/admin/content-repo/sync", { method: "POST" }),
 
   // Admin: projects
   adminListProjects: () => request<{ projects: Project[] }>("/api/admin/projects"),
