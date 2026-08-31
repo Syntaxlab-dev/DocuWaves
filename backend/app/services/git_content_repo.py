@@ -24,6 +24,7 @@ raised instead of silently picking a side or losing content.
 """
 
 import os
+import shutil
 import stat
 import threading
 from pathlib import Path
@@ -95,20 +96,67 @@ def ensure_clone() -> git.Repo:
         env = _env()
         if _repo is not None:
             return _repo
+
         if path.exists() and (path / ".git").exists():
-            repo = git.Repo(path)
-            _configure_repo(repo)
-            _repo = repo
-            return repo
+            try:
+                repo = git.Repo(path)
+                _ = repo.head.commit  # touch it -- raises if this is a half-finished/corrupt clone
+                _configure_repo(repo)
+                _repo = repo
+                return repo
+            except Exception:
+                # A previous clone attempt left a partial/broken directory
+                # behind (git creates the destination before it can fail,
+                # e.g. on the "branch doesn't exist yet" case below) --
+                # discard it and start over rather than getting stuck
+                # forever on the leftover.
+                shutil.rmtree(path, ignore_errors=True)
 
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             repo = git.Repo.clone_from(_authenticated_url(), path, branch=settings.content_repo_branch, env=env)
         except git.GitCommandError as exc:
+            if "not found in upstream" in str(exc):
+                # The remote repo exists but has no commits yet (a brand
+                # new, genuinely empty content repo) -- clone_from can't
+                # check out a branch that doesn't exist, so bootstrap it
+                # instead: init locally on the configured branch, make an
+                # empty first commit, push that as the branch's first ever
+                # commit.
+                shutil.rmtree(path, ignore_errors=True)
+                _repo = _bootstrap_empty_remote(path, env)
+                return _repo
             raise GitContentError(f"Could not clone the content repo: {exc}") from exc
         _configure_repo(repo)
         _repo = repo
         return repo
+
+
+def _bootstrap_empty_remote(path: Path, env: dict) -> git.Repo:
+    path.mkdir(parents=True, exist_ok=True)
+    repo = git.Repo.init(path, initial_branch=settings.content_repo_branch)
+    repo.create_remote("origin", _authenticated_url())
+    _configure_repo(repo)
+    keep_file = path / ".gitkeep"
+    keep_file.write_text("")
+    repo.index.add([".gitkeep"])
+    repo.index.commit(
+        "Initial commit (DocuWaves content repo bootstrap)",
+        author=git.Actor("DocuWaves", "docuwaves@local"),
+    )
+    try:
+        with repo.git.custom_environment(**env):
+            # set_upstream=True: without it, this first push has nothing to
+            # establish the branch's tracking relationship, and every LATER
+            # plain `origin.push()` elsewhere in this module (no explicit
+            # refspec) fails with "has no upstream branch" -- found by this
+            # module's own end-to-end test against a genuinely empty repo.
+            push_info = repo.remote("origin").push(settings.content_repo_branch, set_upstream=True)
+            if any(r.flags & r.ERROR for r in push_info):
+                raise git.GitCommandError("push", 1, str([r.summary for r in push_info]))
+    except git.GitCommandError as exc:
+        raise GitContentError(f"Could not initialize the empty content repo: {exc}") from exc
+    return repo
 
 
 def sync_pull() -> None:
