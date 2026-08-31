@@ -1,0 +1,9 @@
+data/
+pgdata/
+.env
+__pycache__/
+*.pyc
+node_modules/
+dist/
+node_modules/.tmp/
+*.tsbuildinfo

@@ -1,0 +1,28 @@
+services:
+  claritydocs:
+    build: .
+    container_name: claritydocs
+    restart: unless-stopped
+    ports:
+      - "8091:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/data
+
+  # Optional, only started with `docker compose --profile postgres up -d`.
+  # Only useful together with a matching DATABASE_URL in .env (pointing at
+  # this service's hostname, "postgres"). Without --profile postgres,
+  # `docker compose up -d` behaves exactly as before: just the claritydocs
+  # container, a single SQLite file under ./data.
+  postgres:
+    image: postgres:16-alpine
+    container_name: claritydocs-postgres
+    profiles: ["postgres"]
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: claritydocs
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: claritydocs
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
