@@ -58,5 +58,7 @@ body {
 .markdown-body table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }
 .markdown-body th { background: var(--surface-2); }
-.markdown-body img { max-width: 100%; border-radius: 0.5rem; }
+/* height: auto keeps an image with a width/height attribute from being
+   stretched once max-width kicks in on a narrow screen. */
+.markdown-body img { max-width: 100%; height: auto; border-radius: 0.5rem; }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }

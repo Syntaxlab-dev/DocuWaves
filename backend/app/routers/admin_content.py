@@ -13,7 +13,14 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from slugify import slugify
 
-from app.services import categories_store, content_sync, git_content_repo, pages_store, projects_store
+from app.services import (
+    categories_store,
+    content_assets,
+    content_sync,
+    git_content_repo,
+    pages_store,
+    projects_store,
+)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -318,6 +325,115 @@ def admin_delete_page(page_id: int, request: Request):
         raise HTTPException(status_code=404, detail="Page not found.")
     try:
         pages_store.delete_page(page_id, _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
+# ---- Image assets ----
+#
+# Keyed by project SLUG, not by the numeric id every route above uses: an
+# asset has no database row of its own (it's a plain file, not something the
+# search index has any use for), so the slug -- which IS its directory name
+# on disk and the path segment in its public URL -- is the only identifier
+# these three endpoints need to look anything up.
+
+
+def _asset_project(project_slug: str) -> dict:
+    project = projects_store.get_project_by_slug(project_slug)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+def _asset_info(project_slug: str, filename: str, size: int) -> dict:
+    return {
+        "filename": filename,
+        "size": size,
+        "markdown_path": content_assets.markdown_path(filename),
+        "url": content_assets.public_url(project_slug, filename),
+    }
+
+
+async def _read_capped_body(request: Request) -> bytes | None:
+    """None = the upload went past the size limit. Read chunk by chunk and
+    bail at the limit rather than `await request.body()`, which would buffer
+    a deliberately huge upload in full before anything got the chance to
+    reject it."""
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > content_assets.MAX_ASSET_BYTES:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.get(
+    "/projects/{project_slug}/assets",
+    summary="List a project's images",
+    description="Everything under content/<project-slug>/assets/, with the relative path to paste into a page.",
+)
+def admin_list_assets(project_slug: str):
+    _asset_project(project_slug)
+    return {
+        "assets": [_asset_info(project_slug, a["filename"], a["size"]) for a in content_assets.list_assets(project_slug)]
+    }
+
+
+@router.post(
+    "/projects/{project_slug}/assets",
+    summary="Upload an image into a project",
+    description="The request BODY is the raw image bytes (not a multipart form -- parsing multipart would mean "
+    "adding python-multipart to requirements.txt, and a single-file upload doesn't need it); `filename` is a "
+    "query parameter. The stem is slugified and the real extension kept; an existing name gets -2, -3, ... "
+    "rather than being overwritten. Max 10 MB, and the bytes themselves are checked against the extension.",
+)
+async def admin_upload_asset(project_slug: str, filename: str, request: Request):
+    _require_content_repo()
+    project = _asset_project(project_slug)
+
+    data = await _read_capped_body(request)
+    if data is None:
+        raise HTTPException(
+            status_code=413,
+            detail=f"That image is larger than the {content_assets.MAX_ASSET_BYTES // (1024 * 1024)} MB limit.",
+        )
+    reason = content_assets.rejection_reason(filename, data)
+    if reason is not None:
+        raise HTTPException(status_code=400, detail=reason)
+
+    stored_name = content_assets.unique_filename(project_slug, filename)
+    path = content_assets.write_asset(project_slug, stored_name, data)
+    try:
+        git_content_repo.commit_and_push([path], f"Add image: {stored_name} ({project['name']})", _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return _asset_info(project_slug, stored_name, len(data))
+
+
+@router.delete(
+    "/projects/{project_slug}/assets/{filename}",
+    summary="Delete a project's image",
+    description="Removes the file and commits the deletion. Pages still referencing it are left alone -- the "
+    "image just stops rendering, which is visible in the editor preview, rather than the delete silently "
+    "rewriting someone's Markdown.",
+)
+def admin_delete_asset(project_slug: str, filename: str, request: Request):
+    _require_content_repo()
+    project = _asset_project(project_slug)
+    if "/" in filename or "\\" in filename or filename in (".", ".."):
+        # A bare filename inside the project's own assets/ folder is the only
+        # thing this endpoint ever addresses; anything path-shaped is a
+        # traversal attempt, not a typo worth guessing at.
+        raise HTTPException(status_code=400, detail="A filename can't contain a path separator.")
+
+    paths = content_assets.delete_asset(project_slug, filename)
+    if not paths:
+        raise HTTPException(status_code=404, detail="Asset not found.")
+    try:
+        git_content_repo.commit_and_push(paths, f"Remove image: {filename} ({project['name']})", _author(request))
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"ok": True}

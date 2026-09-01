@@ -56,6 +56,15 @@ export interface OidcStatus {
   provider_name: string;
 }
 
+export interface Asset {
+  filename: string;
+  size: number;
+  /** The relative path to paste into a page, e.g. `../assets/shot.png`. */
+  markdown_path: string;
+  /** The same file as the public endpoint serves it -- for previewing. */
+  url: string;
+}
+
 export interface ContentRepoStatus {
   configured: boolean;
   connected: boolean;
@@ -88,6 +97,26 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
   }
   if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+/** Same error handling as request(), but sends the File's raw bytes as the
+ *  body -- the upload endpoint takes the image that way (and the filename as
+ *  a query parameter) rather than as a multipart form, so no Content-Type
+ *  header of our own here: whatever the browser puts on it is ignored
+ *  server-side and the bytes are validated instead. */
+async function upload<T>(path: string, file: File): Promise<T> {
+  const res = await fetch(path, { method: "POST", body: file });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail || detail;
+    } catch {
+      // no JSON body
+    }
+    throw new ApiError(res.status, typeof detail === "string" ? detail : JSON.stringify(detail));
+  }
   return res.json();
 }
 
@@ -146,6 +175,20 @@ export const api = {
   adminMovePage: (id: number, direction: -1 | 1) =>
     request(`/api/admin/pages/${id}/move?direction=${direction}`, { method: "POST" }),
   adminDeletePage: (id: number) => request(`/api/admin/pages/${id}`, { method: "DELETE" }),
+
+  // Admin: image assets -- keyed by project slug, not id (an asset is a
+  // plain file in the project's directory, it has no database row)
+  adminListAssets: (projectSlug: string) =>
+    request<{ assets: Asset[] }>(`/api/admin/projects/${encodeURIComponent(projectSlug)}/assets`),
+  adminUploadAsset: (projectSlug: string, file: File) =>
+    upload<Asset>(
+      `/api/admin/projects/${encodeURIComponent(projectSlug)}/assets?filename=${encodeURIComponent(file.name)}`,
+      file,
+    ),
+  adminDeleteAsset: (projectSlug: string, filename: string) =>
+    request(`/api/admin/projects/${encodeURIComponent(projectSlug)}/assets/${encodeURIComponent(filename)}`, {
+      method: "DELETE",
+    }),
 
   // Public
   publicListProjects: () => request<{ projects: Project[] }>("/api/public/projects"),

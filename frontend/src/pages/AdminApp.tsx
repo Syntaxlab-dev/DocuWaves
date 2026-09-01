@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -7,6 +7,7 @@ import {
   Eye,
   EyeOff,
   GitBranch,
+  ImagePlus,
   Moon,
   Plus,
   RefreshCw,
@@ -21,6 +22,7 @@ import { MarkdownView } from "@/components/MarkdownView";
 import {
   api,
   ApiError,
+  type Asset,
   type Category,
   type ContentRepoStatus,
   type Page,
@@ -181,6 +183,7 @@ export function AdminApp() {
                   {selectedCategory && editingPageId !== null && (
                     <PageEditor
                       pageId={editingPageId}
+                      projectSlug={selectedProject.slug}
                       categoryId={selectedCategory.id}
                       categories={categories}
                       onDone={() => {
@@ -511,11 +514,13 @@ function PagesPanel({
 
 function PageEditor({
   pageId,
+  projectSlug,
   categoryId,
   categories,
   onDone,
 }: {
   pageId: number | "new";
+  projectSlug: string;
   categoryId: number;
   categories: Category[];
   onDone: () => void;
@@ -528,6 +533,12 @@ function PageEditor({
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+
+  // The page's own category, not the one it was opened from: the dropdown
+  // above can move it, and a `../assets/x.png` in the body has to resolve
+  // against wherever the page will actually be saved.
+  const targetCategorySlug = categories.find((c) => c.id === targetCategoryId)?.slug;
 
   useEffect(() => {
     if (pageId === "new") {
@@ -567,6 +578,27 @@ function PageEditor({
     }
   }
 
+  function insertSnippet(snippet: string) {
+    // Always land back on the Markdown tab first -- the textarea isn't
+    // mounted while the preview is showing, so there'd be no cursor to
+    // insert at and the snippet would silently go to the very end.
+    setTab("edit");
+    const el = editorRef.current;
+    if (!el) {
+      setContent((current) => current + snippet);
+      return;
+    }
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    setContent(content.slice(0, start) + snippet + content.slice(end));
+    // After React has re-rendered with the new value, or setting the
+    // caret would immediately be overwritten by the controlled update.
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + snippet.length, start + snippet.length);
+    });
+  }
+
   return (
     <div>
       <div className="flex items-center gap-2">
@@ -604,12 +636,22 @@ function PageEditor({
         </button>
       </div>
 
+      <ImagesPanel
+        projectSlug={projectSlug}
+        onInsert={(asset) => insertSnippet(`![](${asset.markdown_path})`)}
+      />
+
       <div className="mt-3">
         {tab === "edit" ? (
-          <Textarea value={content} onChange={(e) => setContent(e.target.value)} className="min-h-[420px] font-mono" />
+          <Textarea
+            ref={editorRef}
+            value={content}
+            onChange={(e) => setContent(e.target.value)}
+            className="min-h-[420px] font-mono"
+          />
         ) : (
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
-            <MarkdownView content={content} />
+            <MarkdownView content={content} projectSlug={projectSlug} categorySlug={targetCategorySlug} />
           </div>
         )}
       </div>
@@ -622,6 +664,103 @@ function PageEditor({
           {t("admin.cancel")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Upload button + the project's existing images, so re-using one on a
+ *  second page is a click rather than another upload of the same file. An
+ *  image belongs to the PROJECT, not to the page being edited -- that's the
+ *  on-disk convention (content/<project>/assets/), and it's what makes the
+ *  `../assets/x.png` a page pastes work from any of its categories. */
+function ImagesPanel({ projectSlug, onInsert }: { projectSlug: string; onInsert: (asset: Asset) => void }) {
+  const { t } = useI18n();
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function loadAssets() {
+    api
+      .adminListAssets(projectSlug)
+      .then((r) => setAssets(r.assets))
+      .catch(() => setAssets([]));
+  }
+  useEffect(loadAssets, [projectSlug]);
+
+  async function onPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Cleared right away so picking the SAME file again still fires change.
+    e.target.value = "";
+    if (!file) return;
+    setUploading(true);
+    try {
+      const asset = await api.adminUploadAsset(projectSlug, file);
+      onInsert(asset);
+      toast.success(t("admin.imageUploaded"));
+      loadAssets();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function onDelete(filename: string) {
+    if (!confirm(t("admin.imageDeleteConfirm"))) return;
+    try {
+      await api.adminDeleteAsset(projectSlug, filename);
+      loadAssets();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--border)] p-3">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.images")}</h3>
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <ImagePlus className="h-3.5 w-3.5" />
+          {uploading ? t("admin.uploadingImage") : t("admin.insertImage")}
+        </Button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".png,.jpg,.jpeg,.gif,.webp,.avif,.svg"
+          className="hidden"
+          onChange={onPick}
+        />
+      </div>
+
+      {assets.length === 0 ? (
+        <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.imagesEmpty")}</p>
+      ) : (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {assets.map((a) => (
+            <div
+              key={a.filename}
+              className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5 text-xs"
+            >
+              <img src={a.url} alt="" className="h-8 w-8 rounded object-cover" loading="lazy" decoding="async" />
+              <span className="max-w-[10rem] truncate" title={a.filename}>
+                {a.filename}
+              </span>
+              <button type="button" className="text-[var(--accent)]" onClick={() => onInsert(a)}>
+                {t("admin.imageInsert")}
+              </button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(a.filename)}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

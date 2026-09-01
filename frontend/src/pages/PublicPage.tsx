@@ -36,7 +36,11 @@ export function PublicPage() {
       </div>
       <h1 className="mt-2 text-2xl font-semibold">{data.page.title}</h1>
       <div className="mt-4">
-        <MarkdownView content={data.page.markdown_content} />
+        <MarkdownView
+          content={data.page.markdown_content}
+          projectSlug={data.project.slug}
+          categorySlug={data.category.slug}
+        />
       </div>
     </div>
   );

@@ -64,6 +64,8 @@ community contributor's pull request should follow):
 content/
   <project-slug>/
     _project.yml
+    assets/
+      <image-file>
     <category-slug>/
       _category.yml
       <page-slug>.md
@@ -116,6 +118,50 @@ changes that.
 Slugs (the folder/file names themselves) become part of each page's URL, so
 keep them stable once published — renaming a project/category/page's name
 in the admin editor changes its slug (and therefore moves the file) too.
+
+### Images
+
+Images live in the content repo alongside the Markdown that uses them, in
+the project's own `assets/` folder, and are referenced with a **normal
+relative Markdown path**:
+
+```markdown
+![Dashboard](../assets/dashboard.png)
+```
+
+One `..` because a page sits one directory deeper (`<category-slug>/`) than
+`assets/`. Relative rather than a rewritten absolute URL on purpose: the
+exact same `.md` file then renders its images correctly in GitHub's (or
+Gitea's/Forgejo's) own file preview, and in anyone's local Markdown editor,
+not just inside DocuWaves.
+
+The admin editor's **Insert image** button uploads a file into that folder,
+commits and pushes it like any other content change, and pastes the snippet
+at the cursor; the same panel lists the project's existing images so one can
+be re-used on another page without uploading it twice. Adding an image by
+pull request works just as well — drop the file in `assets/` and reference
+it the same way.
+
+Rules DocuWaves enforces, on upload *and* when serving:
+
+- **Allowed types:** `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.avif`,
+  `.svg`. Anything else is refused on upload and 404s when requested.
+- **Max 10 MB** per image.
+- **The bytes are checked, not the filename** — an upload's real magic
+  number has to match its extension, and an `.svg` has to parse as XML with
+  no `<script>` element, no `on…=` event attribute and no `javascript:` URL
+  in it. The content-type the browser declares is ignored entirely. SVGs are
+  additionally served with a restrictive `Content-Security-Policy`, so even
+  one committed straight into the repo by hand can't run script.
+- **A relative path is resolved against the page's own directory and may
+  never leave the page's project directory.** `../assets/x.png` and
+  `./screenshots/x.png` are fine; `../../other-project/x.png`, an absolute
+  path, or a symlink pointing out of the repo resolve to nothing (404).
+
+Images aren't subject to the draft/published distinction — only pages are.
+An image sitting in `assets/` is publicly readable as soon as it's in the
+repo, whether or not any published page references it. Don't put anything in
+there that isn't meant to be seen; the content repo itself is the boundary.
 
 ## Optional: PostgreSQL
 
