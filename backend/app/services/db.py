@@ -78,6 +78,32 @@ _SQLITE_SCHEMA = [
         user_agent TEXT NOT NULL
     )
     """,
+    # API tokens for the MCP endpoint (see services/api_tokens_store.py for
+    # the full reasoning). Here rather than in the content repo on purpose:
+    # everything else this app owns is a file in that repo because the repo
+    # is the source of truth -- but the repo exists to be cloned, forked and
+    # read in pull requests, and a credential must not be published by the
+    # very thing that makes the repo useful. So it sits beside `auth` and
+    # `sessions`, the other two tables holding state that exists nowhere
+    # else, and like them it is NOT in _CONTENT_TABLES: a schema rebuild
+    # never drops it.
+    #
+    # `token_hash` is SHA-256 of the whole `dwt_...` value, never the value.
+    # `expires_at` is '' for "never" and an ISO date otherwise; `scope` is
+    # 'read' or 'write'. Both are plain TEXT with no CHECK constraint, since
+    # the store validates them and two backends' constraint syntax would be
+    # one more thing to keep line-for-line identical.
+    """
+    CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL,
+        scope TEXT NOT NULL,
+        expires_at TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
     # name_i18n / description_i18n hold the per-language MAPPING a
     # `_project.yml` may spell its name with (see site_languages.py), as a
     # JSON object, or '' for the plain-string form every single-language
@@ -191,6 +217,19 @@ _POSTGRES_SCHEMA = [
         user_agent TEXT NOT NULL
     )
     """,
+    # See the SQLite block above for what this table is and why it lives in
+    # the database rather than in the content repo.
+    """
+    CREATE TABLE IF NOT EXISTS api_tokens (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        token_hash TEXT UNIQUE NOT NULL,
+        scope TEXT NOT NULL,
+        expires_at TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
     # See the SQLite block above for what name_i18n / language / version are
     # and why they are shaped this way -- the two schemas stay line-for-line
     # comparable on purpose.
@@ -254,9 +293,13 @@ _REQUIRED_COLUMNS = {
     "pages": {"language", "version"},
 }
 
-# Only the content index is ever rebuilt. `auth` and `sessions` are real
-# state that exists nowhere else (the admin's password hash, live logins) --
-# they are NOT in this list and are never dropped.
+# Only the content index is ever rebuilt. `auth`, `sessions` and
+# `api_tokens` are real state that exists nowhere else (the admin's password
+# hash, live logins, the credentials handed to an AI assistant) -- they are
+# NOT in this list and are never dropped. That is the whole difference
+# between them and the three below: dropping a content table costs one
+# reindex from files that are still on disk, while dropping one of those
+# three would destroy something no reindex could bring back.
 _CONTENT_TABLES = ["pages", "categories", "projects"]
 
 _SQLITE_FTS_OBJECTS = [

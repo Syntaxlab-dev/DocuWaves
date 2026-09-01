@@ -106,6 +106,37 @@ def make_slug(name: str) -> str:
     return slugify(name) or "item"
 
 
+def unique_slug(base: str, taken_fn, *args, exclude_id: int | None = None) -> str:
+    """A slug derived from `base` that nothing else is using: `base`, then
+    `base-2`, `base-3`, ... until taken_fn says it's free.
+
+    Lives here, next to make_slug(), rather than in the admin router,
+    because it is not the admin router's rule: the MCP endpoint creates
+    pages and categories too (routers/mcp.py), and a page created by an
+    assistant has to get the same slug -- and therefore the same URL -- a
+    page created through the editor would. Two implementations of "what is
+    this page's address" is exactly the kind of thing that agrees right up
+    until the first collision.
+
+    `args` are whatever comes BEFORE the slug in taken_fn's signature (a
+    project id, or nothing); the row to ignore goes after it.
+
+    The rename paths used to pass the excluded id as a positional arg, which
+    put it where the slug belongs and pushed the slug into exclude_id --
+    every rename then asked "is any row's slug equal to this numeric id?",
+    which is never true, so uniqueness was silently not enforced. Renaming a
+    project onto an existing one got a slug that was already in use, and the
+    write that followed overwrote the other project's _project.yml.
+    Keyword-only, so the two positions can't be confused again."""
+    slug = make_slug(base)
+    candidate = slug
+    n = 2
+    while taken_fn(*args, candidate, exclude_id):
+        candidate = f"{slug}-{n}"
+        n += 1
+    return candidate
+
+
 # ---- Projects ----
 
 

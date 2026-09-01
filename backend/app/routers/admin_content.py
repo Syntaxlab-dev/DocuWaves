@@ -18,11 +18,11 @@ version through any route, including one the UI never offers."""
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from slugify import slugify
 
 from app.services import (
     categories_store,
     content_assets,
+    content_files,
     content_sync,
     content_versions,
     git_content_repo,
@@ -102,24 +102,11 @@ def _require_content_repo() -> None:
         )
 
 
-def _unique_slug(base: str, taken_fn, *args, exclude_id: int | None = None) -> str:
-    """`args` are whatever comes BEFORE the slug in taken_fn's signature (a
-    project id, or nothing); the row to ignore goes after it.
-
-    The rename paths used to pass the excluded id as a positional arg, which
-    put it where the slug belongs and pushed the slug into exclude_id --
-    every rename then asked "is any row's slug equal to this numeric id?",
-    which is never true, so uniqueness was silently not enforced. Renaming a
-    project onto an existing one got a slug that was already in use, and the
-    write that followed overwrote the other project's _project.yml.
-    Keyword-only, so the two positions can't be confused again."""
-    slug = slugify(base) or "item"
-    candidate = slug
-    n = 2
-    while taken_fn(*args, candidate, exclude_id):
-        candidate = f"{slug}-{n}"
-        n += 1
-    return candidate
+# The slug rule itself lives in content_files.unique_slug(), because the MCP
+# endpoint creates pages and categories too and a page an assistant writes
+# has to land on the same URL a page written here would. Aliased rather than
+# spelled out at each call site so this router reads exactly as it did.
+_unique_slug = content_files.unique_slug
 
 
 def _git_error_response(exc: git_content_repo.GitContentError) -> HTTPException:
@@ -464,7 +451,13 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
         updated = pages_store.update_page(page_id, title, slug, body.markdown_content, body.category_id, _author(request))
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
-    return {"ok": True, "slug": updated["slug"] if updated else slug}
+    # `id` as well as `slug`: renaming a page moves its file, and the reindex
+    # that follows matches rows by (version, slug, language) -- so the row
+    # this call started from is gone and the page now has a NEW id. A caller
+    # that kept using the old one (the editor did, for the publish call it
+    # makes right after saving) got a 404 on a save that had in fact
+    # succeeded, and lost whatever it was trying to set.
+    return {"ok": True, "id": updated["id"] if updated else page_id, "slug": updated["slug"] if updated else slug}
 
 
 @router.post("/pages/{page_id}/publish")

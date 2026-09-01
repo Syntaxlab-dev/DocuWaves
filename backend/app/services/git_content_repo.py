@@ -24,6 +24,7 @@ raised instead of silently picking a side or losing content.
 """
 
 import os
+import re
 import shutil
 import stat
 import threading
@@ -196,6 +197,26 @@ def sync_pull() -> None:
             raise GitContentError(f"Could not sync with the content repo: {exc}") from exc
 
 
+def _actor(author_name: str) -> git.Actor:
+    """The git author for a write. `author_name` is whatever the write path
+    passes: the logged-in admin's username for an admin write, and
+    "Claude (API token: <name>)" for one made through the MCP endpoint (see
+    api_tokens_store.author_name), so `git log` names exactly who -- or
+    what -- changed a page.
+
+    The email is DERIVED from the name rather than interpolated into it. It
+    used to be f"{author_name}@local", which was fine while every author was
+    a one-word username and produces "Claude (API token: notes-bot)@local"
+    -- spaces, parentheses and a colon inside an address -- the moment one
+    isn't. Git stores that verbatim and every tool downstream then has to
+    cope with an address that is not one. Lowercased with runs of anything
+    non-alphanumeric collapsed to a dash, so a plain username like `admin`
+    still gets exactly the `admin@local` it always got."""
+    name = author_name or "DocuWaves"
+    local = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "docuwaves"
+    return git.Actor(name, f"{local}@local")
+
+
 def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
     """Stages exactly `paths` (relative to the repo root). A path that still
     exists on disk is staged normally via `index.add`; a path that's gone
@@ -213,8 +234,7 @@ def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
         if not repo.is_dirty(index=True, working_tree=False) and not repo.untracked_files:
             return  # nothing actually changed (e.g. re-saving identical content)
 
-        actor = git.Actor(author_name or "DocuWaves", f"{author_name or 'docuwaves'}@local")
-        repo.index.commit(message, author=actor, committer=git.Actor("DocuWaves", "docuwaves@local"))
+        repo.index.commit(message, author=_actor(author_name), committer=git.Actor("DocuWaves", "docuwaves@local"))
 
         _push_with_retry(repo)
 

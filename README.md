@@ -42,6 +42,11 @@ save, so nobody has to touch `git` directly if they don't want to.
   language and the version the reader is currently in.
 - **Single admin account** — password login, or single sign-on via any
   standard OIDC provider (Authentik, Keycloak, Authelia, Zitadel, ...).
+- **An AI assistant can read and write the docs** — generate an API token
+  in the admin UI, hand it to Claude (or anything else that speaks MCP),
+  and it can browse, search and — if the token says so — write the
+  documentation, with every change arriving as a normal git commit named
+  after the token (see "AI assistants: API tokens and the MCP endpoint").
 - **SQLite by default** (a single file, zero configuration), with
   PostgreSQL as an optional upgrade for larger installs — either way, this
   is only ever a rebuildable search/browse *index* over the content repo's
@@ -512,6 +517,158 @@ username, and skips the setup screen entirely. On an already-configured
 instance, the SSO username must exactly match the existing admin account's
 username, or the login is rejected — SSO authenticates *who* you are, it
 never grants access on its own.
+
+## AI assistants: API tokens and the MCP endpoint
+
+DocuWaves speaks **MCP** (Model Context Protocol), so an AI assistant can be
+pointed at your documentation and actually work on it: "what does the
+installation page say about Postgres?", "document the two new environment
+variables", "fix every broken link in the CachePanel docs". It reads the
+same pages the site serves, and — with a token that allows it — writes them
+back as real commits in your content repo, reviewable and revertable like
+any other contribution.
+
+This is not a replacement for the admin UI and not a second login. It is one
+endpoint, reachable with one kind of credential, doing exactly the subset of
+things a documentation assistant needs.
+
+### 1. Create a token
+
+Admin area → **API tokens** → name it, pick a scope, optionally give it an
+expiry date, **Create token**.
+
+The token value (`dwt_…`) is shown **exactly once**, right there, and is
+never recoverable: only a SHA-256 hash of it is stored. Lose it and you make
+a new one. The list afterwards shows the name, scope, expiry, when it was
+created and when it was last used — never the value.
+
+Tokens live in DocuWaves' **database**, not in the content repo. That is the
+one place this project puts state anywhere other than the repo, and
+deliberately: the content repo exists to be cloned, forked and read in pull
+requests, so a credential committed there would be published by the very
+thing that makes the repo useful. A schema rebuild never drops them (they
+sit next to the admin account, not next to the rebuildable content index).
+
+### 2. Give the assistant the URL and the header
+
+```
+https://<your-docuwaves-domain>/api/mcp
+Authorization: Bearer dwt_your_token_here
+```
+
+It is a plain JSON-RPC 2.0 endpoint over `POST`, implementing `initialize`,
+`ping`, `tools/list` and `tools/call`. A quick check from a shell:
+
+```bash
+curl -s https://<your-docuwaves-domain>/api/mcp \
+  -H 'Authorization: Bearer dwt_your_token_here' \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+An admin session is deliberately **not** accepted on `/api/mcp`, and an API
+token is deliberately **not** accepted anywhere else — every answer the
+endpoint gives depends on the caller's scope, and a browser session doesn't
+have one. There is no anonymous access to it, ever.
+
+Token requests are rate limited to **120 per minute per token**: far above
+any pace a real assistant sets, and low enough that an agent stuck in a
+retry loop stops within a second instead of hammering `git push`.
+
+### 3. Read scope vs. write scope
+
+| | `read` | `write` |
+|---|---|---|
+| `list_projects`, `list_pages`, `read_page`, `search` | yes | yes |
+| `create_page`, `update_page`, `create_category` | **no** | yes |
+
+`write` implies `read` — there is no write-only token, because every write
+tool has to look the existing content up first.
+
+A `read` token calling a write tool gets an explicit refusal naming the
+scope it has, the scope it needs and the tools it can use — not a generic
+failure it will retry forever.
+
+Both scopes can see **unpublished drafts** (that is the point: an assistant
+finishing a draft has to be able to read it). Only `search` is
+published-only, because it is the same index the public search box uses.
+
+### What the assistant can do
+
+| Tool | Scope | What it does |
+|---|---|---|
+| `list_projects` | read | Every project, with its slug, languages and documentation versions |
+| `list_pages` | read | One project's categories and pages — one entry per language, drafts included |
+| `read_page` | read | One page's full Markdown, by project + page slug, optionally in a language and a version |
+| `search` | read | Full-text search across published pages, optionally scoped to one project |
+| `create_page` | write | A new page in a category, slug derived from the title exactly as the editor derives it |
+| `update_page` | write | Replaces a page's Markdown; optionally its title and published state |
+| `create_category` | write | A new category in a project |
+
+Writes obey every rule the admin UI obeys, because they go through the same
+code: only configured languages, slugs generated the same way, and **the
+writable version only** — a frozen documentation version refuses a write
+with the same message the admin API gives, rather than quietly redirecting
+the change into `current` and letting the assistant believe it corrected a
+released version.
+
+### There is deliberately no delete tool
+
+An assistant can create pages and rewrite them. It cannot delete a page, a
+category or a project, and that is a decision rather than an omission.
+
+Creating and editing are recoverable: each one is a commit, so `git revert`
+puts a page back exactly as it was, and a wrong edit is visible — the page
+reads wrong. Deleting is the one operation whose damage is invisible
+afterwards: nothing looks broken, something is simply gone, and nobody
+notices for weeks. Set against that, the benefit of handing deletion to an
+autonomous agent is close to zero. Deleting stays in the admin UI, where a
+human confirms it.
+
+### Every write is a commit, attributed to the token
+
+A change made through a token is committed with the **author**
+
+```
+Claude (API token: notes-bot) <claude-api-token-notes-bot@local>
+```
+
+...and the committer stays `DocuWaves`, which is the honest description:
+this instance committed on the assistant's behalf. So:
+
+```bash
+git log --author='API token'            # everything any assistant ever wrote
+git log --author='notes-bot'            # everything this one token wrote
+git blame content/cachepanel/…/x.md     # which lines came from where
+git revert <sha>                        # undo one of them
+```
+
+Attribution is in the author rather than in the commit message on purpose:
+the message then stays the same sentence a human edit produces (so the
+history reads uniformly and a diff isn't cluttered), while `--author`,
+`git blame` and every git UI's author column answer "which of my tokens
+wrote this?" without anyone opening a diff.
+
+### The security warning, plainly
+
+**A `write` token lets whoever holds it change your documentation.** Not
+"has elevated permissions" — it means the holder can rewrite a published
+page, publish a draft, and add pages, on every project in this instance. It
+is scoped to documentation (it cannot delete anything, cannot touch
+branding, cannot create another token, cannot reach the rest of the admin
+API), but within that it is real write access to what your readers see.
+
+- Hand a write token to an assistant you are actually supervising, and read
+  the commits it produces.
+- Give it an **expiry date** — a token for one documentation sprint should
+  stop working when the sprint ends.
+- Use a **read** token whenever reading is all that is needed. It is the
+  default in the form for that reason.
+- **Revoke** rather than leave it lying around: revoking takes effect on the
+  very next request, and the list shows `last used` so a token nothing has
+  touched in months is easy to spot.
+- Remember that both scopes can read unpublished drafts. If a draft would be
+  a problem to share, it is a problem to hand out any token for.
 
 ## Environment variables
 

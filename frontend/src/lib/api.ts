@@ -212,6 +212,27 @@ export interface SiteAsset {
   url: string;
 }
 
+/** An API token as the admin list shows it -- the value itself is NEVER in
+ *  here, because it is never stored (only a SHA-256 hash is). `expires_at`
+ *  is "" for a token that never expires, `last_used_at` "" for one nothing
+ *  has authenticated with yet. */
+export interface ApiToken {
+  id: number;
+  name: string;
+  /** "read" or "write"; write implies read. */
+  scope: string;
+  expires_at: string;
+  created_at: string;
+  last_used_at: string;
+}
+
+/** The create response, and the ONE moment the token value exists outside
+ *  the server. It cannot be fetched again -- a lost token is replaced, not
+ *  looked up -- which is why the UI shows it as a one-time reveal. */
+export interface CreatedApiToken extends ApiToken {
+  token: string;
+}
+
 export interface ContentRepoStatus {
   configured: boolean;
   connected: boolean;
@@ -368,8 +389,14 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  // Answers with the page's id, which a rename CHANGES -- the file moves and
+  // the reindex keys rows by (version, slug, language). Anything following up
+  // on the same page must use the id this returns, not the one it sent.
   adminUpdatePage: (id: number, data: PageInput) =>
-    request(`/api/admin/pages/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    request<{ ok: boolean; id: number; slug: string }>(`/api/admin/pages/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   adminPublishPage: (id: number, published: boolean) =>
     request(`/api/admin/pages/${id}/publish?published=${published}`, { method: "POST" }),
   adminMovePage: (id: number, direction: -1 | 1) =>
@@ -407,6 +434,17 @@ export const api = {
   }) => request<SiteBranding>("/api/admin/site", { method: "PUT", body: JSON.stringify(data) }),
   adminUploadSiteAsset: (file: File) =>
     upload<SiteAsset>(`/api/admin/site/assets?filename=${encodeURIComponent(file.name)}`, file),
+
+  // Admin: API tokens -- the credentials handed to an AI assistant for the
+  // MCP endpoint. Session-only, like every other /api/admin route: a token
+  // can never be used to create another token.
+  adminListTokens: () => request<{ tokens: ApiToken[]; max_tokens: number }>("/api/admin/tokens"),
+  adminCreateToken: (name: string, scope: string, expiresAt: string) =>
+    request<CreatedApiToken>("/api/admin/tokens", {
+      method: "POST",
+      body: JSON.stringify({ name, scope, expires_at: expiresAt }),
+    }),
+  adminRevokeToken: (id: number) => request(`/api/admin/tokens/${id}`, { method: "DELETE" }),
 
   // Admin: documentation versions -- keyed by project slug, like assets: a
   // version is a directory in the content repo, it has no database row.

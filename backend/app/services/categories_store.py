@@ -119,17 +119,29 @@ def _next_order(project_id: int, version: str) -> int:
 
 
 def create_category(
-    project_id: int, name: str, slug: str, icon: str, author: str, name_i18n: dict[str, str] | None = None
+    project_id: int,
+    name: str,
+    slug: str,
+    icon: str,
+    author: str,
+    name_i18n: dict[str, str] | None = None,
+    order: int | None = None,
 ) -> dict | None:
     """Always creates in the project's WRITABLE version -- '' while the
     project is unversioned, `current` once it is. There is deliberately no
     way to create a category inside a frozen version: adding a section to a
-    released version's docs is not a thing this UI should make easy."""
+    released version's docs is not a thing this UI should make easy.
+
+    `order` None means "at the end", which is what the admin UI always wants
+    (it has arrow buttons to move it afterwards). The MCP endpoint passes an
+    explicit one when the caller asked for a position, because an assistant
+    creating three categories in one go has no arrows to press."""
     project = projects_store.get_project(project_id)
     if project is None:
         return None
     version = content_versions.writable_version(project["slug"])
-    order = _next_order(project_id, version)
+    if order is None:
+        order = _next_order(project_id, version)
     paths = content_files.write_category(project["slug"], slug, name, icon, order, name_i18n, version)
     git_content_repo.commit_and_push(paths, f"Add category: {name} ({project['name']})", author)
     content_sync.full_sync()
