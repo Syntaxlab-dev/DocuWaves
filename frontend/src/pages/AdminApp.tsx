@@ -1715,6 +1715,7 @@ function PageEditor({
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
             <MarkdownView
               content={content}
+              title={title}
               projectSlug={projectSlug}
               categorySlug={targetCategorySlug}
               versionDir={version}

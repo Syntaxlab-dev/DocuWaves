@@ -133,6 +133,7 @@ export function PublicPage() {
           project) makes that exactly the path it always was. */}
       <MarkdownView
         content={data.page.markdown_content}
+        title={data.page.title}
         projectSlug={data.project.slug}
         categorySlug={data.category.slug}
         versionDir={data.page.version}

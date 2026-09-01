@@ -49,7 +49,7 @@ export function slugifyHeading(text: string): string {
 /** Inline Markdown flattened to the text a reader actually sees, so the
  *  contents entry for `## Using \`--force\`` reads "Using --force" and its
  *  id is derived from the same string. */
-function inlineText(markdown: string): string {
+export function inlineText(markdown: string): string {
   return markdown
     .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/[`*~]/g, "")
@@ -101,4 +101,38 @@ export function collectHeadings(markdown: string): Heading[] {
   });
 
   return headings;
+}
+
+/** ATX h1 -- only ever matched against the FIRST content line, so a `#`
+ *  inside a fenced block can't reach it. */
+const LEADING_H1 = /^ {0,3}#[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/;
+
+function normalize(text: string): string {
+  return inlineText(text).toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Drops the body's opening `# Title` when it just repeats the page title
+ * that is already rendered above it.
+ *
+ * Only that exact case: an opening h1 saying something *different* is the
+ * author making a point and is left alone, and an h1 further down the page
+ * is a section, not a title. Comparing flattened inline text rather than
+ * the raw source means `# Using \`--force\`` still matches a title of
+ * "Using --force".
+ */
+export function stripRedundantTitle(markdown: string, title?: string): string {
+  if (!title) return markdown;
+  const lines = markdown.split("\n");
+  const first = lines.findIndex((line) => line.trim() !== "");
+  if (first === -1) return markdown;
+
+  const match = LEADING_H1.exec(lines[first]);
+  if (!match || normalize(match[1]) !== normalize(title)) return markdown;
+
+  // Drop the heading and the blank line that followed it, so the body
+  // doesn't start with a gap where the heading used to be.
+  let next = first + 1;
+  if (lines[next]?.trim() === "") next += 1;
+  return [...lines.slice(0, first), ...lines.slice(next)].join("\n");
 }

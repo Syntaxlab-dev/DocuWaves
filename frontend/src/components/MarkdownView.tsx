@@ -3,7 +3,7 @@ import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
 import { Check, Copy } from "lucide-react";
-import { collectHeadings } from "@/lib/headings";
+import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
 
 /**
@@ -33,21 +33,34 @@ export function MarkdownView({
   projectSlug,
   categorySlug,
   versionDir,
+  title,
 }: {
   content: string;
   projectSlug?: string;
   categorySlug?: string;
   versionDir?: string;
+  /** The page's own title, already shown above the body. When the Markdown
+   *  opens by repeating it as an `# H1`, that copy is dropped -- see
+   *  stripRedundantTitle(). */
+  title?: string;
 }) {
   const { t } = useI18n();
+
+  // Writing `# Installation` at the top of a page whose title is already
+  // "Installation" is the normal thing to do -- it is what every Markdown
+  // file outside this CMS looks like, it is what a pasted README looks
+  // like, and it is how the file reads on GitHub, where nothing prints the
+  // frontmatter title. So the duplicate is dropped here rather than being
+  // something authors have to know about and remove by hand.
+  const body = useMemo(() => stripRedundantTitle(content, title), [content, title]);
 
   // Keyed by source line, see lib/headings.ts for why that and not a
   // render-order counter.
   const headingIds = useMemo(() => {
     const byLine = new Map<number, string>();
-    for (const heading of collectHeadings(content)) byLine.set(heading.line, heading.id);
+    for (const heading of collectHeadings(body)) byLine.set(heading.line, heading.id);
     return byLine;
-  }, [content]);
+  }, [body]);
 
   return (
     <div className="markdown-body">
@@ -95,7 +108,7 @@ export function MarkdownView({
           },
         }}
       >
-        {content}
+        {body}
       </ReactMarkdown>
     </div>
   );
