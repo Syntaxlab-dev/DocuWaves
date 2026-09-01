@@ -119,8 +119,20 @@ def health():
 # candidate path, so a symlinked bundle directory would otherwise never match.
 FRONTEND_DIST = (Path(__file__).resolve().parent.parent / "static").resolve()
 
+class _ImmutableStatic(StaticFiles):
+    """The bundle's filenames contain a content hash (index-DEpV2D4Z.js), so a
+    changed file is a changed URL and an old one can be kept forever."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = _IMMUTABLE_CACHE
+        return response
+
+
+_IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
+
 if FRONTEND_DIST.exists():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
+    app.mount("/assets", _ImmutableStatic(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     def serve_spa(full_path: str):
@@ -147,4 +159,12 @@ if FRONTEND_DIST.exists():
             return FileResponse(candidate)
         # Anything else is a client-side route (or an escape attempt): hand back
         # the SPA shell and let the router decide, exactly as before.
-        return FileResponse(index)
+        #
+        # no-cache (revalidate, not "never store"): index.html names the
+        # content-hashed bundle, so a stale copy of THIS file pins a browser
+        # to the previous release -- an operator who deploys an update keeps
+        # seeing the old UI and reasonably concludes the deploy did nothing.
+        # FileResponse answers a revalidation with the whole file rather than
+        # a 304 (only StaticFiles handles If-None-Match) -- fine at a few KB,
+        # and the big hashed bundle it points at is cached forever anyway.
+        return FileResponse(index, headers={"Cache-Control": "no-cache"})
