@@ -102,6 +102,16 @@ def ensure_clone() -> git.Repo:
                 repo = git.Repo(path)
                 _ = repo.head.commit  # touch it -- raises if this is a half-finished/corrupt clone
                 _configure_repo(repo)
+                # The clone stores whatever remote URL it was created with --
+                # including the token that was embedded back then. Rotating
+                # CONTENT_REPO_TOKEN (or moving the repo) would otherwise never
+                # reach an existing clone, and every push would keep failing
+                # with the old, possibly revoked credentials while fetches on a
+                # public repo silently kept working. Re-point it on every start.
+                try:
+                    repo.remote("origin").set_url(_authenticated_url())
+                except (ValueError, git.GitCommandError):
+                    pass  # no origin (locally bootstrapped, never pushed) -- nothing to re-point
                 _repo = repo
                 return repo
             except Exception:
