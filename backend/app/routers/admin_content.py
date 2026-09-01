@@ -21,6 +21,7 @@ from app.services import (
     pages_store,
     projects_store,
     site_branding,
+    site_languages,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -28,6 +29,32 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 
 def _author(request: Request) -> str:
     return request.session.get("username") or "admin"
+
+
+def _clean_i18n(mapping: dict[str, str] | None) -> dict[str, str]:
+    """A per-language name field as it arrived from the admin form, filtered
+    to the languages this instance actually has configured -- the form can't
+    offer any others, so anything else is hand-crafted and would put a
+    language into the content repo that no reader here can select. Empty on
+    a single-language instance, whatever was posted, which is what keeps
+    every file it writes a plain `name: My Project` string."""
+    configured = site_languages.languages()
+    if not mapping or not configured:
+        return {}
+    return {code: value.strip() for code, value in mapping.items() if code in configured and value and value.strip()}
+
+
+def _page_language(language: str | None) -> str:
+    """The language a page write applies to. Blank means the default, which
+    is what "new page" means on any instance and the only value a
+    single-language one ever has; an unconfigured code is a mistake worth
+    saying out loud rather than silently writing into the default
+    language's file."""
+    if not language:
+        return site_languages.default_language()
+    if language not in site_languages.languages():
+        raise HTTPException(status_code=400, detail=f"'{language}' is not one of this site's configured languages.")
+    return language
 
 
 def _require_content_repo() -> None:
@@ -38,11 +65,21 @@ def _require_content_repo() -> None:
         )
 
 
-def _unique_slug(base: str, taken_fn, *args) -> str:
+def _unique_slug(base: str, taken_fn, *args, exclude_id: int | None = None) -> str:
+    """`args` are whatever comes BEFORE the slug in taken_fn's signature (a
+    project id, or nothing); the row to ignore goes after it.
+
+    The rename paths used to pass the excluded id as a positional arg, which
+    put it where the slug belongs and pushed the slug into exclude_id --
+    every rename then asked "is any row's slug equal to this numeric id?",
+    which is never true, so uniqueness was silently not enforced. Renaming a
+    project onto an existing one got a slug that was already in use, and the
+    write that followed overwrote the other project's _project.yml.
+    Keyword-only, so the two positions can't be confused again."""
     slug = slugify(base) or "item"
     candidate = slug
     n = 2
-    while taken_fn(*args, candidate):
+    while taken_fn(*args, candidate, exclude_id):
         candidate = f"{slug}-{n}"
         n += 1
     return candidate
@@ -90,6 +127,11 @@ class ProjectIn(BaseModel):
     icon: str = ""
     color: str = ""
     description: str = ""
+    # Per-language values for the two human-readable fields, sent only by a
+    # multilingual instance's form (see _clean_i18n). `name` stays the
+    # default language's value and is what the slug is derived from.
+    name_i18n: dict[str, str] = {}
+    description_i18n: dict[str, str] = {}
 
 
 @router.get("/projects")
@@ -105,7 +147,10 @@ def admin_create_project(body: ProjectIn, request: Request):
         raise HTTPException(status_code=400, detail="Name is required.")
     slug = _unique_slug(name, projects_store.slug_taken)
     try:
-        project = projects_store.create_project(name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request))
+        project = projects_store.create_project(
+            name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
+            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n),
+        )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"id": project["id"], "slug": project["slug"]}
@@ -120,9 +165,12 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required.")
-    slug = project["slug"] if name == project["name"] else _unique_slug(name, projects_store.slug_taken, project_id)
+    slug = project["slug"] if name == project["name"] else _unique_slug(name, projects_store.slug_taken, exclude_id=project_id)
     try:
-        updated = projects_store.update_project(project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request))
+        updated = projects_store.update_project(
+            project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
+            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n),
+        )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"ok": True, "slug": updated["slug"] if updated else slug}
@@ -158,6 +206,7 @@ def admin_delete_project(project_id: int, request: Request):
 class CategoryIn(BaseModel):
     name: str
     icon: str = ""
+    name_i18n: dict[str, str] = {}
 
 
 @router.get("/projects/{project_id}/categories")
@@ -175,7 +224,9 @@ def admin_create_category(project_id: int, body: CategoryIn, request: Request):
         raise HTTPException(status_code=400, detail="Name is required.")
     slug = _unique_slug(name, categories_store.slug_taken, project_id)
     try:
-        category = categories_store.create_category(project_id, name, slug, body.icon.strip(), _author(request))
+        category = categories_store.create_category(
+            project_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n)
+        )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"id": category["id"], "slug": category["slug"]}
@@ -193,10 +244,12 @@ def admin_update_category(category_id: int, body: CategoryIn, request: Request):
     slug = (
         category["slug"]
         if name == category["name"]
-        else _unique_slug(name, categories_store.slug_taken, category["project_id"], category_id)
+        else _unique_slug(name, categories_store.slug_taken, category["project_id"], exclude_id=category_id)
     )
     try:
-        updated = categories_store.update_category(category_id, name, slug, body.icon.strip(), _author(request))
+        updated = categories_store.update_category(
+            category_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n)
+        )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"ok": True, "slug": updated["slug"] if updated else slug}
@@ -236,11 +289,26 @@ class PageIn(BaseModel):
     title: str
     markdown_content: str = ""
     category_id: int
+    # Which language this page IS. Blank = the site's default, which is
+    # every page on a single-language instance.
+    language: str = ""
+    # Set only when creating a TRANSLATION of an existing page: the slug the
+    # translation has to land on, because a page's translations share one
+    # slug (that is what keeps a reader on the same page when they switch
+    # language). Blank means "a new page", and the slug is derived from the
+    # title as it always was.
+    slug: str = ""
 
 
-@router.get("/categories/{category_id}/pages")
+@router.get(
+    "/categories/{category_id}/pages",
+    summary="A category's pages, one entry per language",
+    description="Unlike the public endpoints, this lists every translation as its own entry (each with its "
+    "own id, `language` and published state) rather than collapsing them to one per page -- the admin UI's "
+    "whole job here is showing which languages a page does and does not exist in yet.",
+)
 def admin_list_pages(category_id: int):
-    return {"pages": pages_store.list_pages(category_id)}
+    return {"pages": pages_store.list_all_pages(category_id)}
 
 
 @router.get("/pages/{page_id}")
@@ -248,7 +316,29 @@ def admin_get_page(page_id: int):
     page = pages_store.get_page(page_id)
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found.")
-    return page
+    # Which languages the page exists in at all, so the editor's tab strip
+    # can show the missing ones as something to create rather than leaving
+    # the author to find out by clicking.
+    return {**page, "languages": pages_store.page_languages(page["project_id"], page["slug"])}
+
+
+@router.get(
+    "/projects/{project_slug}/pages/by-slug/{page_slug}",
+    summary="One page by slug, in one language, plus every language it exists in",
+    description="What the editor's language tabs are built from. `page` is null when this language has no "
+    "version yet -- which is not an error but the normal state of a translation nobody has written: the "
+    "editor opens empty on that tab, and saving it creates `<slug>.<lang>.md` under this same slug. Keyed by "
+    "slug rather than by a page id, because a page's translations share the slug and have different ids.",
+)
+def admin_find_page(project_slug: str, page_slug: str, language: str = ""):
+    project = projects_store.get_project_by_slug(project_slug)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    languages = pages_store.page_languages(project["id"], page_slug)
+    if not languages:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    page = pages_store.get_page_by_slug(project["id"], page_slug, _page_language(language))
+    return {"page": page, "languages": languages}
 
 
 @router.post("/pages")
@@ -260,12 +350,32 @@ def admin_create_page(body: PageIn, request: Request):
     title = body.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Title is required.")
-    slug = _unique_slug(title, pages_store.slug_taken, category["project_id"])
+    language = _page_language(body.language)
+
+    if body.slug.strip():
+        # Translating an existing page: keep ITS slug, never mint a new one
+        # from the translated title.
+        slug = body.slug.strip()
+        if pages_store.get_page_by_slug(category["project_id"], slug, language) is not None:
+            raise HTTPException(status_code=409, detail="That page already exists in this language.")
+        if not pages_store.slug_taken(category["project_id"], slug):
+            raise HTTPException(status_code=404, detail="There is no page with that slug to translate.")
+    else:
+        slug = _unique_slug(title, pages_store.slug_taken, category["project_id"])
+
     try:
-        page = pages_store.create_page(category["project_id"], body.category_id, title, slug, body.markdown_content, _author(request))
+        page = pages_store.create_page(
+            category["project_id"], body.category_id, title, slug, body.markdown_content, _author(request), language
+        )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
-    return {"id": page["id"], "slug": page["slug"]}
+    if page is None:
+        # The file was written and committed but doesn't read back as a row
+        # of its own -- something about the write disagreed with the way the
+        # index reads the directory. Say so, rather than raising a bare
+        # TypeError on page["id"] and answering an opaque 500.
+        raise HTTPException(status_code=500, detail="The page was saved but could not be read back -- check the server log.")
+    return {"id": page["id"], "slug": page["slug"], "language": page["language"]}
 
 
 @router.put("/pages/{page_id}")
@@ -280,10 +390,15 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
     title = body.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Title is required.")
+    # Only the DEFAULT language's title steers the slug. A page's slug is
+    # shared by all of its translations, so deriving it from whichever
+    # translation happens to be open would let renaming the English title
+    # move the German file too -- and the URL a reader bookmarked with it.
+    renamable = page["language"] == site_languages.default_language()
     slug = (
         page["slug"]
-        if title == page["title"]
-        else _unique_slug(title, pages_store.slug_taken, page["project_id"], page_id)
+        if title == page["title"] or not renamable
+        else _unique_slug(title, pages_store.slug_taken, page["project_id"], exclude_id=page_id)
     )
     try:
         updated = pages_store.update_page(page_id, title, slug, body.markdown_content, body.category_id, _author(request))
@@ -467,6 +582,13 @@ class FooterLinkIn(BaseModel):
 class SiteBrandingIn(BaseModel):
     name: str = ""
     tagline: str = ""
+    # Same per-language shape the project/category forms post (see
+    # _clean_i18n). `languages:` itself is NOT accepted here -- it decides
+    # how every page file in the repo is named, so it is edited in the file,
+    # and site_branding.write_branding() re-emits it from there.
+    name_i18n: dict[str, str] = {}
+    tagline_i18n: dict[str, str] = {}
+    footer_text_i18n: dict[str, str] = {}
     # Filenames inside _site/, put there by the upload endpoint below -- an
     # unknown or path-shaped name simply resolves to no URL when read back
     # (site_branding._asset_field), it can never point outside the folder.
