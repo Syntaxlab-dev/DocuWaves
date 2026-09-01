@@ -45,6 +45,14 @@ body {
 .markdown-body h1 { font-size: 1.75rem; font-weight: 700; margin: 1.5rem 0 0.75rem; }
 .markdown-body h2 { font-size: 1.4rem; font-weight: 700; margin: 1.5rem 0 0.5rem; }
 .markdown-body h3 { font-size: 1.15rem; font-weight: 600; margin: 1.25rem 0 0.5rem; }
+/* Room above a heading jumped to from the contents or a deep link, so it
+   doesn't end up flush against the top edge of the viewport. */
+.markdown-body h2, .markdown-body h3 { scroll-margin-top: 1.5rem; }
+.markdown-body .heading-anchor { margin-left: 0.4rem; color: var(--muted); font-weight: 400; text-decoration: none; opacity: 0; transition: opacity 0.15s; }
+.markdown-body h2:hover > .heading-anchor, .markdown-body h3:hover > .heading-anchor, .markdown-body .heading-anchor:focus-visible { opacity: 1; }
+/* A touch screen never hovers, so the anchor would be permanently invisible
+   yet still a live tap target -- show it faintly there instead. */
+@media (hover: none) { .markdown-body .heading-anchor { opacity: 0.45; } }
 .markdown-body p { margin: 0.75rem 0; line-height: 1.7; }
 .markdown-body ul, .markdown-body ol { margin: 0.75rem 0; padding-left: 1.5rem; }
 .markdown-body ul { list-style: disc; }
@@ -54,6 +62,15 @@ body {
 .markdown-body code { background: var(--surface-2); padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-family: var(--font-mono); font-size: 0.85em; }
 .markdown-body pre { background: var(--surface-2); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 1rem 0; }
 .markdown-body pre code { background: transparent; padding: 0; }
+.code-block { position: relative; }
+.code-block .code-copy { position: absolute; top: 1.5rem; right: 0.5rem; display: inline-flex; align-items: center; gap: 0.3rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--surface); color: var(--muted); padding: 0.25rem 0.4rem; font-size: 0.75rem; opacity: 0; transition: opacity 0.15s; }
+/* data-state: the result has to stay readable even if the pointer moves off
+   the block in the two seconds it's shown. */
+.code-block:hover .code-copy, .code-block .code-copy:focus-visible, .code-block .code-copy:not([data-state="idle"]) { opacity: 1; }
+/* Same reasoning as .heading-anchor: without hover the button has to be
+   visible on its own, and it stays visible while showing its result. */
+@media (hover: none) { .code-block .code-copy { opacity: 0.7; } }
+.code-block .code-copy:hover { color: var(--ink); }
 .markdown-body blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; color: var(--muted); }
 .markdown-body table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }

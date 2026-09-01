@@ -9,6 +9,7 @@ import { PublicCategory } from "@/pages/PublicCategory";
 import { PublicPage } from "@/pages/PublicPage";
 import { SearchResults } from "@/pages/SearchResults";
 import { AdminGate } from "@/pages/AdminGate";
+import { NotFound } from "@/components/NotFound";
 
 export default function App() {
   return (
@@ -24,6 +25,9 @@ export default function App() {
               <Route path="/p/:projectSlug" element={<PublicProject />} />
               <Route path="/p/:projectSlug/c/:categorySlug" element={<PublicCategory />} />
               <Route path="/p/:projectSlug/pages/:pageSlug" element={<PublicPage />} />
+              {/* Inside the layout, so a wrong URL still has the header's
+                  search box and home link to get out with. */}
+              <Route path="*" element={<NotFound />} />
             </Route>
           </Routes>
         </BrowserRouter>

@@ -33,6 +33,8 @@ from app.services import categories_store, content_files, content_sync, db, git_
 
 _COLUMNS = "id, project_id, category_id, title, slug, markdown_content, sort_order, published, created_at, updated_at"
 
+_NAV_COLUMNS = "id, category_id, title, slug, sort_order"
+
 
 def _row_to_dict(row) -> dict:
     return {
@@ -59,6 +61,26 @@ def list_pages(category_id: int, published_only: bool = False) -> list[dict]:
     with db.get_connection() as conn:
         rows = conn.execute(query, params).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+def list_project_pages(project_id: int, published_only: bool = False) -> list[dict]:
+    """Every page of one project at once, for the caller to group by
+    category itself. The docs sidebar needs a project's whole tree on every
+    single page view, and building it by walking list_pages() per category
+    would put one round trip per category on that path.
+
+    markdown_content is deliberately not in _NAV_COLUMNS: a navigation tree
+    needs titles, and selecting every page's full body to build one would be
+    by far the most expensive part of the query."""
+    placeholder = "%s" if db.is_postgres() else "?"
+    query = f"SELECT {_NAV_COLUMNS} FROM pages WHERE project_id = {placeholder}"
+    params: tuple = (project_id,)
+    if published_only:
+        query += " AND published = " + ("TRUE" if db.is_postgres() else "1")
+    query += " ORDER BY sort_order, title"
+    with db.get_connection() as conn:
+        rows = conn.execute(query, params).fetchall()
+    return [{"id": r[0], "category_id": r[1], "title": r[2], "slug": r[3], "sort_order": r[4]} for r in rows]
 
 
 def get_page(page_id: int) -> dict | None:

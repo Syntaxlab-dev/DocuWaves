@@ -24,6 +24,23 @@ export interface PageSummary {
   slug: string;
 }
 
+export interface NavPage extends PageSummary {
+  sort_order: number;
+}
+
+/** A category as the nav endpoint returns it: `pages` holds only published
+ *  ones, and is empty for a category nothing has been published in yet --
+ *  the endpoint keeps such a category so the sidebar can decide what to do
+ *  with it (it hides it). */
+export interface NavCategory extends Category {
+  pages: NavPage[];
+}
+
+export interface ProjectNav {
+  project: Project;
+  categories: NavCategory[];
+}
+
 export interface Page extends PageSummary {
   project_id: number;
   category_id: number;
@@ -194,6 +211,8 @@ export const api = {
   publicListProjects: () => request<{ projects: Project[] }>("/api/public/projects"),
   publicGetProject: (slug: string) =>
     request<{ project: Project; categories: Category[] }>(`/api/public/projects/${slug}`),
+  publicGetProjectNav: (slug: string) =>
+    request<ProjectNav>(`/api/public/projects/${encodeURIComponent(slug)}/nav`),
   publicGetCategory: (projectSlug: string, categorySlug: string) =>
     request<{ project: Project; category: Category; pages: PageSummary[] }>(
       `/api/public/projects/${projectSlug}/categories/${categorySlug}`,

@@ -34,6 +34,40 @@ def public_get_project(project_slug: str):
     return {"project": project, "categories": visible}
 
 
+@router.get(
+    "/projects/{project_slug}/nav",
+    summary="A project's whole published structure in one response",
+    description="Ordered categories, each with its ordered published pages -- what the docs sidebar, the "
+    "previous/next links and the category listing are all built from. One query for the categories and one "
+    "for all of the project's pages, however many categories there are -- this is on the path of every "
+    "single page view.",
+)
+def public_get_project_nav(project_slug: str):
+    project = projects_store.get_project_by_slug(project_slug)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+
+    pages_by_category: dict[int, list[dict]] = {}
+    for page in pages_store.list_project_pages(project["id"], published_only=True):
+        pages_by_category.setdefault(page["category_id"], []).append(
+            {"id": page["id"], "title": page["title"], "slug": page["slug"], "sort_order": page["sort_order"]}
+        )
+
+    # A category with nothing published in it stays here with an empty page
+    # list, rather than being dropped the way public_get_project drops it
+    # from its tiles. The sidebar is the reader's map of the whole project,
+    # so "this section exists but is empty" has to be something its renderer
+    # can see and decide about -- a response that already removed the
+    # category silently takes that decision away from every consumer.
+    return {
+        "project": project,
+        "categories": [
+            {**c, "pages": pages_by_category.get(c["id"], [])}
+            for c in categories_store.list_categories(project["id"])
+        ],
+    }
+
+
 @router.get("/projects/{project_slug}/categories/{category_slug}")
 def public_get_category(project_slug: str, category_slug: str):
     project = projects_store.get_project_by_slug(project_slug)

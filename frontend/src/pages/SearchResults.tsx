@@ -19,7 +19,7 @@ export function SearchResults() {
   }, [q]);
 
   return (
-    <div>
+    <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-semibold">{t("search.title")}</h1>
       <p className="mt-1 text-[var(--muted)]">
         {t("search.resultsFor")} "{q}"

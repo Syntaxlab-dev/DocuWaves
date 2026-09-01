@@ -1,6 +1,10 @@
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { Check, Copy } from "lucide-react";
+import { collectHeadings } from "@/lib/headings";
+import { useI18n } from "@/lib/i18n";
 
 /**
  * Images are written in a page as a plain relative path
@@ -13,6 +17,9 @@ import rehypeHighlight from "rehype-highlight";
  * Both are optional: without them (nothing renders MarkdownView that way
  * today, but a future caller might) relative images are simply left alone
  * rather than rewritten into a wrong URL.
+ *
+ * Heading anchors and code-block copy buttons need no props at all, so the
+ * admin editor's preview pane gets them too without knowing about them.
  */
 export function MarkdownView({
   content,
@@ -23,6 +30,16 @@ export function MarkdownView({
   projectSlug?: string;
   categorySlug?: string;
 }) {
+  const { t } = useI18n();
+
+  // Keyed by source line, see lib/headings.ts for why that and not a
+  // render-order counter.
+  const headingIds = useMemo(() => {
+    const byLine = new Map<number, string>();
+    for (const heading of collectHeadings(content)) byLine.set(heading.line, heading.id);
+    return byLine;
+  }, [content]);
+
   return (
     <div className="markdown-body">
       <ReactMarkdown
@@ -49,12 +66,127 @@ export function MarkdownView({
               />
             );
           },
+          h2({ node, children, ...props }) {
+            return (
+              <Heading tag="h2" id={headingIds.get(node?.position?.start.line ?? -1)} label={t("page.headingAnchor")} {...props}>
+                {children}
+              </Heading>
+            );
+          },
+          h3({ node, children, ...props }) {
+            return (
+              <Heading tag="h3" id={headingIds.get(node?.position?.start.line ?? -1)} label={t("page.headingAnchor")} {...props}>
+                {children}
+              </Heading>
+            );
+          },
+          pre({ node, children, ...props }) {
+            void node;
+            return <CodeBlock {...props}>{children}</CodeBlock>;
+          },
         }}
       >
         {content}
       </ReactMarkdown>
     </div>
   );
+}
+
+/** A heading with no id is one collectHeadings() didn't pick up (a setext
+ *  heading, say) -- rendered plain rather than given an ad-hoc id, since
+ *  nothing in the contents links to it and an invented id would be the one
+ *  thing that could still drift. */
+function Heading({
+  tag: Tag,
+  id,
+  label,
+  children,
+  ...props
+}: { tag: "h2" | "h3"; id?: string; label: string; children?: ReactNode } & HTMLAttributes<HTMLHeadingElement>) {
+  if (!id) return <Tag {...props}>{children}</Tag>;
+  return (
+    <Tag {...props} id={id}>
+      {children}
+      <a href={`#${id}`} className="heading-anchor" aria-label={label}>
+        #
+      </a>
+    </Tag>
+  );
+}
+
+function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
+  const { t } = useI18n();
+  const preRef = useRef<HTMLPreElement>(null);
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+
+  useEffect(() => {
+    if (state === "idle") return;
+    const timer = window.setTimeout(() => setState("idle"), 2000);
+    return () => window.clearTimeout(timer);
+  }, [state]);
+
+  async function copy() {
+    // textContent of the rendered <pre>, not the Markdown source: by this
+    // point rehype-highlight has split the code into nested <span>s, and the
+    // DOM is where the block's plain text still exists in one piece.
+    setState((await writeToClipboard(preRef.current?.textContent ?? "")) ? "copied" : "failed");
+  }
+
+  return (
+    <div className="code-block">
+      <pre ref={preRef} {...props}>
+        {children}
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        data-state={state}
+        className="code-copy"
+        aria-label={t("page.copyCode")}
+        title={t("page.copyCode")}
+      >
+        {state === "copied" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        {state !== "idle" && <span>{state === "copied" ? t("page.copied") : t("page.copyFailed")}</span>}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * navigator.clipboard only exists in a secure context, and a self-hosted
+ * DocuWaves is very often reached over plain http:// on a LAN (which is
+ * exactly what the README's setup steps describe) -- there it is simply
+ * undefined. execCommand("copy") is deprecated but is the only thing that
+ * still copies on such an origin, so it's the fallback rather than the
+ * primary path.
+ */
+async function writeToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Blocked by permissions policy or refused -- try the legacy path.
+  }
+
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  // Off-screen but not display:none, which would make it unselectable.
+  area.style.position = "fixed";
+  area.style.top = "-1000px";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(area);
+  }
 }
 
 /**

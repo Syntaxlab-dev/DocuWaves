@@ -49,7 +49,10 @@ export function PublicLayout() {
           </Button>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-8">
+      {/* No container of its own: the docs views need a wider one than the
+          home and search views (a sidebar and a contents column live beside
+          the text there), so each view owns its width. */}
+      <main>
         <Outlet />
       </main>
     </div>
