@@ -82,6 +82,37 @@ export interface Asset {
   url: string;
 }
 
+export interface FooterLink {
+  label: string;
+  url: string;
+}
+
+/** This instance's branding, resolved from content/_site.yml in the content
+ *  repo (not from the database -- see the backend's site_branding.py). Every
+ *  field always arrives filled in: `accent` is "" when none is configured
+ *  (meaning "keep the built-in one, which differs per colour scheme"), and a
+ *  `*_url` is null whenever the configured file doesn't resolve to a real
+ *  allowed image, so the UI falls back instead of showing a broken one. */
+export interface SiteBranding {
+  name: string;
+  tagline: string;
+  logo: string;
+  logo_url: string | null;
+  logo_dark: string;
+  logo_dark_url: string | null;
+  favicon: string;
+  favicon_url: string | null;
+  accent: string;
+  footer_text: string;
+  footer_links: FooterLink[];
+}
+
+export interface SiteAsset {
+  filename: string;
+  size: number;
+  url: string;
+}
+
 export interface ContentRepoStatus {
   configured: boolean;
   connected: boolean;
@@ -207,7 +238,23 @@ export const api = {
       method: "DELETE",
     }),
 
+  // Admin: site branding -- instance-level, not keyed by anything
+  adminGetSite: () => request<SiteBranding>("/api/admin/site"),
+  adminUpdateSite: (data: {
+    name: string;
+    tagline: string;
+    logo: string;
+    logo_dark: string;
+    favicon: string;
+    accent: string;
+    footer_text: string;
+    footer_links: FooterLink[];
+  }) => request<SiteBranding>("/api/admin/site", { method: "PUT", body: JSON.stringify(data) }),
+  adminUploadSiteAsset: (file: File) =>
+    upload<SiteAsset>(`/api/admin/site/assets?filename=${encodeURIComponent(file.name)}`, file),
+
   // Public
+  publicGetSite: () => request<SiteBranding>("/api/public/site"),
   publicListProjects: () => request<{ projects: Project[] }>("/api/public/projects"),
   publicGetProject: (slug: string) =>
     request<{ project: Project; categories: Category[] }>(`/api/public/projects/${slug}`),

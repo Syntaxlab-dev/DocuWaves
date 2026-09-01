@@ -2,12 +2,15 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type SearchResult } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useDocumentTitle } from "@/lib/site";
 
 export function SearchResults() {
   const [params] = useSearchParams();
   const q = params.get("q") || "";
   const { t } = useI18n();
   const [results, setResults] = useState<SearchResult[] | null>(null);
+
+  useDocumentTitle(t("search.title"));
 
   useEffect(() => {
     if (!q) {

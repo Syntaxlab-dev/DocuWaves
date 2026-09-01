@@ -4,20 +4,24 @@ import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
+import { useDocumentTitle } from "@/lib/site";
 
 export function PublicCategory() {
   const { projectSlug, categorySlug } = useParams<{ projectSlug: string; categorySlug: string }>();
   const { t } = useI18n();
   const { nav, status } = useProjectNav(projectSlug);
 
+  // A category with nothing published in it is 404 here for the same reason
+  // it isn't a tile on the project page: it exists in the content repo, but
+  // there is nothing behind it a visitor is allowed to read. Resolved before
+  // the early returns below so the title hook can sit above them too.
+  const category = nav ? visibleCategories(nav).find((c) => c.slug === categorySlug) : undefined;
+
+  useDocumentTitle(category?.name);
+
   if (status === "notfound") return <NotFound />;
   if (status === "failed") return <p className="mx-auto max-w-5xl px-4 py-8 text-[var(--muted)]">{t("common.error")}</p>;
   if (!nav) return <p className="mx-auto max-w-5xl px-4 py-8 text-[var(--muted)]">{t("common.loading")}</p>;
-
-  // A category with nothing published in it is 404 here for the same reason
-  // it isn't a tile on the project page: it exists in the content repo, but
-  // there is nothing behind it a visitor is allowed to read.
-  const category = visibleCategories(nav).find((c) => c.slug === categorySlug);
   if (!category) return <NotFound />;
 
   return (

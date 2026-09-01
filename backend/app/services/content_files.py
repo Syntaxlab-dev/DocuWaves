@@ -9,6 +9,10 @@ understand):
     content/<project-slug>/<category-slug>/_category.yml
     content/<project-slug>/<category-slug>/<page-slug>.md
 
+(content/_site.yml and content/_site/ are the instance's own branding, owned
+by site_branding.py -- underscore-prefixed names are skipped by every
+enumeration here, see _RESERVED_PREFIX.)
+
 `_project.yml` / `_category.yml` are plain YAML: name, icon, (color/
 description for projects only), order. A page's `.md` file is YAML
 frontmatter (title, order, published) followed by its Markdown body,
@@ -32,9 +36,21 @@ from app.settings import settings
 
 _CONTENT_DIRNAME = "content"
 
+# A leading underscore marks a directory as DocuWaves' own, not a
+# project/category: content/_site/ holds the instance's branding images (see
+# site_branding.py). Enumerating skips those names, so `_site` can never turn
+# into a phantom project on the homepage -- not even if someone drops a
+# _project.yml into it -- and the namespace stays free for whatever the next
+# instance-level folder turns out to be.
+_RESERVED_PREFIX = "_"
+
 
 def content_root() -> Path:
     return Path(settings.content_repo_path) / _CONTENT_DIRNAME
+
+
+def is_reserved(name: str) -> bool:
+    return name.startswith(_RESERVED_PREFIX)
 
 
 def _rel(path: Path) -> str:
@@ -53,7 +69,7 @@ def list_project_slugs() -> list[str]:
     if not root.exists():
         return []
     return sorted(
-        p.name for p in root.iterdir() if p.is_dir() and (p / "_project.yml").exists()
+        p.name for p in root.iterdir() if p.is_dir() and not is_reserved(p.name) and (p / "_project.yml").exists()
     )
 
 
@@ -114,7 +130,7 @@ def list_category_slugs(project_slug: str) -> list[str]:
     if not root.exists():
         return []
     return sorted(
-        p.name for p in root.iterdir() if p.is_dir() and (p / "_category.yml").exists()
+        p.name for p in root.iterdir() if p.is_dir() and not is_reserved(p.name) and (p / "_category.yml").exists()
     )
 
 

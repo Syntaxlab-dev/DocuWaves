@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
+import { useDocumentTitle } from "@/lib/site";
 
 /**
  * Reached two ways: a URL matching no route at all (App.tsx's catch-all),
@@ -12,6 +13,7 @@ import { useI18n } from "@/lib/i18n";
  */
 export function NotFound() {
   const { t } = useI18n();
+  useDocumentTitle(t("notFound.title"));
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <div className="py-16 text-center">

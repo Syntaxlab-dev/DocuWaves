@@ -20,6 +20,10 @@ save, so nobody has to touch `git` directly if they don't want to.
   contribute via a normal pull request; DocuWaves picks up merged changes
   automatically (a background sync job, or a "Sync now" button in the admin
   UI). Full commit history for free, no separate backup story for content.
+- **Branded per instance** — name, tagline, logo, favicon, accent colour and
+  footer come from a `_site.yml` in the content repo (see "Site branding"),
+  so two deployments look like two different products without either of them
+  needing its own build.
 - **Draft vs. published** — a page stays invisible to the public site
   until you explicitly publish it.
 - **Full-text search** across every published page in every project.
@@ -62,6 +66,9 @@ community contributor's pull request should follow):
 
 ```
 content/
+  _site.yml               <- this instance's branding (optional)
+  _site/                  <- the images it points at
+    logo.png
   <project-slug>/
     _project.yml
     assets/
@@ -76,6 +83,10 @@ content/
   <another-project-slug>/
     ...
 ```
+
+Names starting with an underscore directly inside `content/` are reserved
+for DocuWaves itself and are never read as a project — `_site/` can't turn
+into a phantom project tile on the homepage.
 
 `_project.yml`:
 
@@ -162,6 +173,64 @@ Images aren't subject to the draft/published distinction — only pages are.
 An image sitting in `assets/` is publicly readable as soon as it's in the
 repo, whether or not any published page references it. Don't put anything in
 there that isn't meant to be seen; the content repo itself is the boundary.
+
+### Site branding
+
+Every DocuWaves instance carries its own name, logo, colour and footer, and
+that identity lives in the content repo too — `content/_site.yml`, with its
+images in `content/_site/`. It's in the repo rather than in the database on
+purpose: the database is only ever a rebuildable index (see above), so
+branding kept there would disappear the moment it's reindexed or the volume
+is lost. In the repo it's versioned, reviewable in a pull request, and comes
+back with the same `git clone` that restores every page.
+
+The practical consequence: **branding is per instance, automatically.** One
+deployment pointed at a company's docs repo and another pointed at a tool's
+own docs repo look completely different, without either needing its own
+build, image or environment variable.
+
+`_site.yml` — every field is optional, and so is the file itself:
+
+```yaml
+name: SyntaxLab Docs                  # header, and the browser tab title
+tagline: Documentation for every…     # one line under the name on the home page
+logo: logo.png                        # a file in _site/; omit for text only
+logo_dark: logo-white.png             # optional, used in dark mode
+favicon: favicon.png                  # optional
+accent: "#00d4d5"                     # accent colour, #rgb or #rrggbb
+footer_text: © 2026 SyntaxLab         # optional
+footer_links:                         # optional
+  - label: Imprint
+    url: https://example.com/imprint
+```
+
+What each field does:
+
+| Field | Default when absent |
+|---|---|
+| `name` | `DocuWaves`. Shown in the header and used for the tab title — a page reads `<page title> · <name>`, the home page just `<name>` |
+| `tagline` | The generic "choose a project" line on the home page |
+| `logo` / `logo_dark` | No image; the name renders as text. `logo_dark` falls back to `logo`, so one file works for both modes |
+| `favicon` | The shipped DocuWaves icon |
+| `accent` | The built-in accent (which is deliberately a different value in light and dark mode) |
+| `footer_text` / `footer_links` | No footer at all |
+
+Edit it in the admin area under **Branding** — name, tagline, a colour
+picker, footer text, footer link rows and upload buttons for the three
+images, with a live preview of the header. Saving writes `_site.yml`,
+commits and pushes it like any other content change. Hand-editing the file
+in the repo (or in a pull request) works just as well.
+
+The images in `_site/` follow exactly the same rules as a project's images
+(allowed types, 10 MB, content checked against the extension, SVGs screened
+and served with a restrictive CSP, no path escaping the folder) — it's the
+same code path, with `_site` in the place of a project slug.
+
+Nothing in this file can take the site down. A missing file, an empty one,
+broken YAML, a field holding the wrong type, a key DocuWaves doesn't know,
+a colour that isn't a colour, a `javascript:` footer link, a logo naming a
+file that isn't there — each one falls back to its default (and the bad
+value is logged), rather than erroring the public site over a typo.
 
 ## Optional: PostgreSQL
 

@@ -8,3 +8,92 @@ export function applyTheme(theme: "light" | "dark") {
   document.documentElement.classList.toggle("dark", theme === "dark");
   localStorage.setItem("docuwaves-theme", theme);
 }
+
+/** #rgb / #rrggbb only. The backend already rejects anything else before it
+ *  reaches _site.yml, but this value is written straight into a CSS custom
+ *  property on the live document, so it is checked again on the way in --
+ *  the one thing a stylesheet must never accept is an unvalidated string
+ *  from an API response. */
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const body = hex.slice(1);
+  // #abc is shorthand for #aabbcc.
+  const full = body.length === 3 ? body.replace(/./g, (c) => c + c) : body;
+  return {
+    r: parseInt(full.slice(0, 2), 16),
+    g: parseInt(full.slice(2, 4), 16),
+    b: parseInt(full.slice(4, 6), 16),
+  };
+}
+
+/** The three custom properties a configured accent expands into, or null if
+ *  the value isn't a usable colour. Separate from applying them so the admin
+ *  form's live preview can scope the SAME derivation to one element (custom
+ *  properties inherit) without touching the document the user is still
+ *  editing in.
+ *
+ *  --accent-ink and --accent-soft are derived rather than configured: the
+ *  first is the text colour that sits ON the accent (a light accent with the
+ *  built-in white label would be unreadable), the second the translucent
+ *  wash behind selected rows, which has to work over both the light and the
+ *  dark surface -- an alpha of the accent itself does, a fixed tint doesn't. */
+export function accentVariables(accent: string): Record<string, string> | null {
+  if (!HEX_COLOR.test(accent)) return null;
+  const { r, g, b } = hexToRgb(accent);
+  // WCAG relative luminance, the same measure the contrast ratio is built
+  // from -- a plain (r+g+b)/3 average calls yellow dark and blue light.
+  const channel = (value: number) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  return {
+    "--accent": accent,
+    "--accent-ink": luminance > 0.45 ? "#12161c" : "#ffffff",
+    "--accent-soft": `rgba(${r}, ${g}, ${b}, 0.16)`,
+  };
+}
+
+/** Applies (or clears) the configured accent colour for the whole document.
+ *
+ *  Set as inline custom properties on <html>, which beats both the `:root`
+ *  and the `.dark` rule in index.css -- one accent for both colour schemes,
+ *  chosen by whoever runs the instance, rather than the two built-in ones.
+ *  Everything themed by --accent (links, the active sidebar item, the
+ *  primary button, focus rings) follows automatically. No configured accent
+ *  removes the properties again, which hands both modes back to index.css. */
+export function applyAccent(accent: string) {
+  const root = document.documentElement;
+  const variables = accentVariables(accent);
+  if (!variables) {
+    root.style.removeProperty("--accent");
+    root.style.removeProperty("--accent-ink");
+    root.style.removeProperty("--accent-soft");
+    return;
+  }
+  for (const [name, value] of Object.entries(variables)) root.style.setProperty(name, value);
+}
+
+const DEFAULT_FAVICON_HREF = "/favicon.svg";
+const DEFAULT_FAVICON_TYPE = "image/svg+xml";
+
+/** Points the tab icon at the configured favicon, or back at the shipped
+ *  default when there isn't one. The type attribute is dropped for a custom
+ *  file: index.html declares image/svg+xml, and leaving that on a .png would
+ *  be a lie the browser has to work around. */
+export function applyFavicon(url: string | null) {
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement("link");
+    link.rel = "icon";
+    document.head.appendChild(link);
+  }
+  if (url) {
+    link.removeAttribute("type");
+    link.href = url;
+  } else {
+    link.type = DEFAULT_FAVICON_TYPE;
+    link.href = DEFAULT_FAVICON_HREF;
+  }
+}

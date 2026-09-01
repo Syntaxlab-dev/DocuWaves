@@ -4,10 +4,12 @@ and every query here filters to published=True: an unpublished page must
 never be reachable through this router by slug-guessing, only through the
 admin endpoints."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from app.services import categories_store, content_assets, pages_store, projects_store
+from app.services import categories_store, content_assets, pages_store, projects_store, site_branding
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -102,6 +104,17 @@ def public_search(q: str = Query(..., min_length=1, max_length=200)):
 
 
 @router.get(
+    "/site",
+    summary="This instance's branding",
+    description="Name, tagline, logo/favicon URLs, accent colour and footer, read from content/_site.yml in "
+    "the content repo (see the README's 'Site branding'). Every field is filled in with a default, so a "
+    "missing, empty or malformed _site.yml answers exactly like an unbranded instance rather than failing.",
+)
+def public_get_site():
+    return site_branding.read_branding()
+
+
+@router.get(
     "/assets/{project_slug}/{asset_path:path}",
     summary="Serve an image from a project's content directory",
     description="Images live in the content repo next to the Markdown that uses them (see the README's "
@@ -121,7 +134,28 @@ def public_get_asset(project_slug: str, asset_path: str):
         # One 404 for missing / wrong type / outside the project / no such
         # project -- a 403 on the traversal cases would confirm what's there.
         raise HTTPException(status_code=404, detail="Asset not found.")
+    return _asset_response(path)
 
+
+@router.get(
+    "/site/assets/{asset_path:path}",
+    summary="Serve a branding image (logo, dark logo, favicon)",
+    description="The instance's own images, from content/_site/ in the content repo. Same containment, "
+    "allowed-type and SVG rules as a project's images -- literally the same resolver and the same response "
+    "builder, with `_site` in the place of a project slug.",
+)
+def public_get_site_asset(asset_path: str):
+    path = site_branding.resolve_site_asset(asset_path)
+    if path is None:
+        raise HTTPException(status_code=404, detail="Asset not found.")
+    return _asset_response(path)
+
+
+def _asset_response(path: Path) -> FileResponse:
+    """The one place an image from the content repo becomes a response --
+    shared by the project and branding endpoints above so a `_site/` image
+    can't end up with weaker headers than a page's image (or the other way
+    round) after someone edits one of the two."""
     content_type = content_assets.content_type_for(path)
     headers = {
         "X-Content-Type-Options": "nosniff",

@@ -20,6 +20,12 @@ path, or a symlink pointing out of the clone must never resolve (see
 resolve_asset() -- it compares fully resolved paths, never string prefixes,
 so a symlink or a `..` segment can't sneak past it).
 
+The same machinery serves the instance's branding images
+(content/_site/logo.png -- see site_branding.py), which pass `_site` where a
+project slug goes: `_site/` sits directly inside content/ exactly like a
+project directory does, so every rule below applies to it verbatim rather
+than through a second resolver that could drift from this one.
+
 Uploads are validated on real file content, never on the extension or the
 client's declared content-type alone: an "image/png" upload whose bytes are
 a PHP script would otherwise sit in a public repo waiting for someone to
@@ -132,15 +138,19 @@ def list_assets(project_slug: str) -> list[dict]:
     )
 
 
-def unique_filename(project_slug: str, original_name: str) -> str:
+def unique_filename_in(directory: Path, original_name: str) -> str:
     """Slugified stem + the real extension, suffixed -2, -3, ... until it's
-    free. Never overwrites: two authors uploading their own "screenshot.png"
-    would otherwise silently replace each other's image on pages neither of
-    them is editing."""
+    free inside `directory`. Never overwrites: two authors uploading their
+    own "screenshot.png" would otherwise silently replace each other's image
+    on pages neither of them is editing.
+
+    Takes a directory rather than a project slug so the branding layer
+    (site_branding.py, which stores its logo/favicon in content/_site/ rather
+    than in a project's assets/ folder) gets this exact naming behaviour
+    instead of a second, subtly different copy of it."""
     source = Path(original_name)
     stem = slugify(source.stem) or "image"
     extension = source.suffix.lower()
-    directory = assets_dir(project_slug)
     candidate = f"{stem}{extension}"
     n = 2
     while (directory / candidate).exists():
@@ -149,13 +159,22 @@ def unique_filename(project_slug: str, original_name: str) -> str:
     return candidate
 
 
-def write_asset(project_slug: str, filename: str, data: bytes) -> str:
+def unique_filename(project_slug: str, original_name: str) -> str:
+    return unique_filename_in(assets_dir(project_slug), original_name)
+
+
+def write_asset_in(directory: Path, filename: str, data: bytes) -> str:
     """Returns the written path relative to the content repo ROOT (not to
-    content/), the form git_content_repo.commit_and_push() stages."""
-    path = assets_dir(project_slug) / filename
+    content/), the form git_content_repo.commit_and_push() stages. Directory-
+    keyed for the same reason as unique_filename_in() above."""
+    path = directory / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(data)
     return _rel(path)
+
+
+def write_asset(project_slug: str, filename: str, data: bytes) -> str:
+    return write_asset_in(assets_dir(project_slug), filename, data)
 
 
 def delete_asset(project_slug: str, filename: str) -> list[str]:

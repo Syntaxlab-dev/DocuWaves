@@ -20,6 +20,7 @@ from app.services import (
     git_content_repo,
     pages_store,
     projects_store,
+    site_branding,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -370,6 +371,23 @@ async def _read_capped_body(request: Request) -> bytes | None:
     return b"".join(chunks)
 
 
+async def _read_validated_image(request: Request, filename: str) -> bytes:
+    """Body bytes of an image upload, size-capped and content-checked, or the
+    right HTTPException. Shared by the project uploader and the branding
+    uploader further down so a logo goes through the identical extension +
+    magic-number + SVG-script screening a page's screenshot does."""
+    data = await _read_capped_body(request)
+    if data is None:
+        raise HTTPException(
+            status_code=413,
+            detail=f"That image is larger than the {content_assets.MAX_ASSET_BYTES // (1024 * 1024)} MB limit.",
+        )
+    reason = content_assets.rejection_reason(filename, data)
+    if reason is not None:
+        raise HTTPException(status_code=400, detail=reason)
+    return data
+
+
 @router.get(
     "/projects/{project_slug}/assets",
     summary="List a project's images",
@@ -394,15 +412,7 @@ async def admin_upload_asset(project_slug: str, filename: str, request: Request)
     _require_content_repo()
     project = _asset_project(project_slug)
 
-    data = await _read_capped_body(request)
-    if data is None:
-        raise HTTPException(
-            status_code=413,
-            detail=f"That image is larger than the {content_assets.MAX_ASSET_BYTES // (1024 * 1024)} MB limit.",
-        )
-    reason = content_assets.rejection_reason(filename, data)
-    if reason is not None:
-        raise HTTPException(status_code=400, detail=reason)
+    data = await _read_validated_image(request, filename)
 
     stored_name = content_assets.unique_filename(project_slug, filename)
     path = content_assets.write_asset(project_slug, stored_name, data)
@@ -437,3 +447,80 @@ def admin_delete_asset(project_slug: str, filename: str, request: Request):
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"ok": True}
+
+
+# ---- Site branding ----
+#
+# Instance-level, so nothing here is keyed by a project at all: it edits
+# content/_site.yml and content/_site/ at the top of the content repo (see
+# services/site_branding.py for why branding lives in the repo rather than in
+# a database row). Writes commit and push exactly like every other admin
+# write above; there is no content_sync.full_sync() call because branding has
+# no database index to rebuild -- the file IS the state, read on each request.
+
+
+class FooterLinkIn(BaseModel):
+    label: str = ""
+    url: str = ""
+
+
+class SiteBrandingIn(BaseModel):
+    name: str = ""
+    tagline: str = ""
+    # Filenames inside _site/, put there by the upload endpoint below -- an
+    # unknown or path-shaped name simply resolves to no URL when read back
+    # (site_branding._asset_field), it can never point outside the folder.
+    logo: str = ""
+    logo_dark: str = ""
+    favicon: str = ""
+    accent: str = ""
+    footer_text: str = ""
+    footer_links: list[FooterLinkIn] = []
+
+
+@router.get(
+    "/site",
+    summary="This instance's branding, for the admin form",
+    description="The same resolved values GET /api/public/site returns, including the raw configured "
+    "filenames so the form can show which logo/favicon is currently selected.",
+)
+def admin_get_site():
+    return site_branding.read_branding()
+
+
+@router.put(
+    "/site",
+    summary="Save this instance's branding",
+    description="Writes content/_site.yml, then commits and pushes it. Values are normalized on the way in "
+    "with the same validators reading uses: a colour that isn't #rgb/#rrggbb and a footer link that isn't "
+    "http(s)/mailto/site-relative are dropped rather than stored. Returns the branding as it now reads back.",
+)
+def admin_update_site(body: SiteBrandingIn, request: Request):
+    _require_content_repo()
+    paths = site_branding.write_branding(body.model_dump())
+    try:
+        git_content_repo.commit_and_push(paths, "Update site branding", _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return site_branding.read_branding()
+
+
+@router.post(
+    "/site/assets",
+    summary="Upload a branding image (logo, dark logo or favicon)",
+    description="Raw image bytes as the request BODY, `filename` as a query parameter -- same contract, same "
+    "size limit and same content validation as a project's image upload. Stored in content/_site/ under a "
+    "slugified, never-overwriting name and committed. Saving the branding form afterwards is what points "
+    "_site.yml at the new file.",
+)
+async def admin_upload_site_asset(filename: str, request: Request):
+    _require_content_repo()
+    data = await _read_validated_image(request, filename)
+
+    stored_name = site_branding.unique_asset_filename(filename)
+    path = site_branding.write_site_asset(stored_name, data)
+    try:
+        git_content_repo.commit_and_push([path], f"Add branding image: {stored_name}", _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"filename": stored_name, "size": len(data), "url": site_branding.asset_url(stored_name)}

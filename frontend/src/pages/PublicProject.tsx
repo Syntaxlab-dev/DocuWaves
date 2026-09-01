@@ -4,6 +4,7 @@ import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
+import { useDocumentTitle } from "@/lib/site";
 
 export function PublicProject() {
   const { projectSlug } = useParams<{ projectSlug: string }>();
@@ -13,6 +14,8 @@ export function PublicProject() {
   // sidebar costs no extra request here, and the tiles can't disagree with
   // the tree standing next to them.
   const { nav, status } = useProjectNav(projectSlug);
+
+  useDocumentTitle(nav?.project.name);
 
   if (status === "notfound") return <NotFound />;
   if (status === "failed") return <p className="mx-auto max-w-5xl px-4 py-8 text-[var(--muted)]">{t("common.error")}</p>;

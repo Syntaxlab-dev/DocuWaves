@@ -9,6 +9,7 @@ import { TableOfContents } from "@/components/TableOfContents";
 import { collectHeadings } from "@/lib/headings";
 import { useProjectNav, type NavStatus } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
+import { useDocumentTitle } from "@/lib/site";
 
 /** Below this, a contents list is just the page's own outline restated --
  *  one entry is never worth a column, and two is where it starts telling a
@@ -43,6 +44,10 @@ export function PublicPage() {
       current = false;
     };
   }, [projectSlug, pageSlug]);
+
+  // Before the early returns below -- a hook can't sit behind a condition.
+  // Undefined while loading, which just leaves the site name in the tab.
+  useDocumentTitle(data?.page.title);
 
   const headings = useMemo(() => (data ? collectHeadings(data.page.markdown_content) : []), [data]);
 
