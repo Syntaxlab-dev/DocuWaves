@@ -85,14 +85,28 @@ def health():
         conn.execute("SELECT 1")
     return {"ok": True}
 
-FRONTEND_DIST = Path(__file__).resolve().parent.parent / "static"
+# Resolved (not just absolute): serve_spa below compares it against a resolved
+# candidate path, so a symlinked bundle directory would otherwise never match.
+FRONTEND_DIST = (Path(__file__).resolve().parent.parent / "static").resolve()
 
 if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}")
     def serve_spa(full_path: str):
-        candidate = FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
+        # full_path is whatever the client asked for, so it has to be contained
+        # to the bundle directory before it is ever handed to FileResponse.
+        # Without this, `GET /../../data/content-repo/.git/config` walked
+        # straight out of the bundle and returned the content repo's push
+        # token (git_content_repo embeds it in the clone's origin URL), the
+        # SQLite index with the admin password hash, and the session secret --
+        # unauthenticated. Resolve both sides and compare the resolved paths;
+        # a prefix check on the unresolved path would still be fooled by a
+        # symlink inside the bundle pointing outward.
+        candidate = (FRONTEND_DIST / full_path).resolve()
+        index = FRONTEND_DIST / "index.html"
+        if full_path and candidate.is_relative_to(FRONTEND_DIST) and candidate.is_file():
             return FileResponse(candidate)
-        return FileResponse(FRONTEND_DIST / "index.html")
+        # Anything else is a client-side route (or an escape attempt): hand back
+        # the SPA shell and let the router decide, exactly as before.
+        return FileResponse(index)
