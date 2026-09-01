@@ -15,6 +15,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  RotateCcw,
   Sun,
   History,
   Lock,
@@ -38,6 +39,8 @@ import {
   type FooterLink,
   type LocalizedText,
   type Page,
+  type PageHistory,
+  type PageVersion,
   type Project,
   type SiteAsset,
   type SiteBranding,
@@ -2063,10 +2066,15 @@ function PageEditor({
   const [content, setContent] = useState("");
   const [targetCategoryId, setTargetCategoryId] = useState(categoryId);
   const [published, setPublished] = useState(false);
-  const [tab, setTab] = useState<"edit" | "preview">("edit");
+  const [tab, setTab] = useState<"edit" | "preview" | "history">("edit");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
   const [dirty, setDirty] = useState(false);
+  /** Bumped to re-run the load below when nothing about WHICH page is open
+   *  has changed but its content has -- restoring an older version writes a
+   *  new one straight into the content repo, so the text in this editor is
+   *  stale the moment it succeeds. */
+  const [reloadKey, setReloadKey] = useState(0);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // The page's own category, not the one it was opened from: the dropdown
@@ -2110,13 +2118,17 @@ function PageEditor({
     return () => {
       current = false;
     };
-  }, [projectSlug, slug, language, categoryId, version]);
+  }, [projectSlug, slug, language, categoryId, version, reloadKey]);
 
   function switchLanguage(code: string) {
     if (code === language) return;
     // Switching tabs reloads from the server, so unsaved text would be
     // gone without a word.
-    if (dirty && !confirm(t("admin.deleteConfirm"))) return;
+    // Its own string, not admin.deleteConfirm: that one says "Really delete
+    // this? This can't be undone." -- which describes deleting a page, not
+    // dropping an unsaved draft, and reads as if the tab click were about to
+    // destroy the translation.
+    if (dirty && !confirm(t("admin.discardDraftConfirm"))) return;
     setLanguage(code);
   }
 
@@ -2272,12 +2284,31 @@ function PageEditor({
         >
           {t("admin.previewTab")}
         </button>
+        {/* A tab rather than a panel of its own: the history is another view
+            of the very page being edited, and it is the one place an author
+            goes to answer "what did this say last week". Disabled rather than
+            hidden while this language has never been saved -- the reason it
+            is empty is worth saying, since an unwritten translation looks
+            exactly like a page whose history failed to load. */}
+        <button
+          type="button"
+          onClick={() => setTab("history")}
+          disabled={loadedId === null}
+          title={loadedId === null ? t("admin.historyNotSavedYet") : undefined}
+          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm ${
+            tab === "history" ? "border-b-2 border-[var(--accent)] font-medium" : "text-[var(--muted)]"
+          } ${loadedId === null ? "cursor-not-allowed opacity-50" : ""}`}
+        >
+          <History className="h-3.5 w-3.5" aria-hidden="true" />
+          {t("admin.historyTab")}
+        </button>
       </div>
 
       {/* The uploader writes into the version being EDITED, so it has no
           place on a frozen one -- and its "insert" would paste a snippet
-          into a textarea that can't be saved anyway. */}
-      {!readOnly && (
+          into a textarea that can't be saved anyway. Nor on the history tab,
+          where there is no textarea to insert into at all. */}
+      {!readOnly && tab !== "history" && (
         <ImagesPanel
           projectSlug={projectSlug}
           onInsert={(asset) => insertSnippet(`![](${asset.markdown_path})`)}
@@ -2285,7 +2316,7 @@ function PageEditor({
       )}
 
       <div className="mt-3">
-        {tab === "edit" ? (
+        {tab === "edit" && (
           <Textarea
             ref={editorRef}
             value={content}
@@ -2296,7 +2327,8 @@ function PageEditor({
             }}
             className="min-h-[420px] font-mono"
           />
-        ) : (
+        )}
+        {tab === "preview" && (
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
             <MarkdownView
               content={content}
@@ -2306,6 +2338,20 @@ function PageEditor({
               versionDir={version}
             />
           </div>
+        )}
+        {tab === "history" && loadedId !== null && (
+          <HistoryPanel
+            pageId={loadedId}
+            readOnly={readOnly}
+            onRestored={() => {
+              // The restore wrote a new version into the content repo, so
+              // both the text in this editor and the list behind it are now
+              // out of date. Back to the Markdown tab, on the restored text.
+              setReloadKey((key) => key + 1);
+              setTab("edit");
+              onSaved();
+            }}
+          />
         )}
       </div>
 
@@ -2322,6 +2368,236 @@ function PageEditor({
           {readOnly ? t("common.back") : t("admin.cancel")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A page's change history, straight out of the content repo.
+ *
+ * Every page is a file in a git repository and every save is a commit, so the
+ * record of who changed what, when and why already exists in full -- this
+ * panel only makes it visible from inside the app. It shows the history of
+ * ONE FILE: the language currently open in the editor. A page's translations
+ * are separate files with separate histories, so the header names the file
+ * (its `.de.md` suffix and all) rather than leaving that to be assumed.
+ *
+ * Selecting a commit shows what the page said then and what that commit
+ * changed. Restoring it writes that text back as a NEW commit on top -- the
+ * confirmation spells that out, because "restore" in most tools means
+ * something was undone, and here nothing is: the history keeps every version
+ * it had, including the one being replaced.
+ */
+function HistoryPanel({
+  pageId,
+  readOnly,
+  onRestored,
+}: {
+  pageId: number;
+  /** A frozen documentation version: the history reads normally, there is
+   *  simply nothing to restore into. The API refuses the write as well. */
+  readOnly: boolean;
+  onRestored: () => void;
+}) {
+  const { t, lang: uiLang } = useI18n();
+  const { site } = useSite();
+  const [history, setHistory] = useState<PageHistory | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [selected, setSelected] = useState<PageVersion | null>(null);
+  const [loadingSha, setLoadingSha] = useState("");
+  const [restoring, setRestoring] = useState(false);
+
+  useEffect(() => {
+    let current = true;
+    setHistory(null);
+    setSelected(null);
+    setFailed(false);
+    api
+      .adminPageHistory(pageId)
+      .then((data) => current && setHistory(data))
+      .catch(() => current && setFailed(true));
+    return () => {
+      current = false;
+    };
+  }, [pageId]);
+
+  async function onSelect(sha: string) {
+    if (selected?.sha === sha) {
+      setSelected(null); // clicking the open one closes it again
+      return;
+    }
+    setLoadingSha(sha);
+    try {
+      setSelected(await api.adminPageVersion(pageId, sha));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setLoadingSha("");
+    }
+  }
+
+  async function onRestore(version: PageVersion) {
+    if (!confirm(t("admin.historyRestoreConfirm").replace("{sha}", version.sha))) return;
+    setRestoring(true);
+    try {
+      await api.adminRestorePage(pageId, version.sha);
+      toast.success(t("admin.historyRestored"));
+      onRestored();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setRestoring(false);
+    }
+  }
+
+  if (failed) return <p className="text-sm text-[var(--muted)]">{t("common.error")}</p>;
+  if (!history) return <p className="text-sm text-[var(--muted)]">{t("common.loading")}</p>;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <History className="h-4 w-4 text-[var(--muted)]" aria-hidden="true" />
+        {/* Which language's history this is, said twice on purpose: as the
+            language's own name for a reader, and as the file's actual path
+            for anyone who will go looking for it in the repo. */}
+        {site.languages.length > 1 && history.language && (
+          <span className="rounded border border-[var(--border)] px-1.5 py-0.5 text-xs">
+            {languageName(history.language, uiLang)}
+          </span>
+        )}
+        <code className="min-w-0 truncate font-mono text-xs text-[var(--muted)]" title={history.path}>
+          {history.path}
+        </code>
+      </div>
+
+      <p className="text-sm text-[var(--muted)]">{t("admin.historyIntro")}</p>
+
+      {history.frozen && (
+        <p className="flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--muted)]">
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <span>{t("admin.historyRestoreFrozen")}</span>
+        </p>
+      )}
+
+      {history.commits.length === 0 ? (
+        <p className="text-sm text-[var(--muted)]">{t("admin.historyEmpty")}</p>
+      ) : (
+        <div className="flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+          {history.commits.map((commit) => (
+            <div key={commit.sha}>
+              <button
+                type="button"
+                onClick={() => onSelect(commit.sha)}
+                aria-expanded={selected?.sha === commit.sha}
+                className={`flex w-full flex-wrap items-baseline gap-x-2 gap-y-1 px-3 py-2 text-left text-sm ${
+                  selected?.sha === commit.sha ? "bg-[var(--surface-2)]" : ""
+                }`}
+              >
+                <code className="font-mono text-xs text-[var(--accent)]">{commit.sha}</code>
+                <span className="min-w-0 flex-1 truncate">{commit.subject}</span>
+                <span className="text-xs text-[var(--muted)]">{commit.author}</span>
+                <span className="text-xs text-[var(--muted)]">{formatCommitDate(commit.date, uiLang)}</span>
+                {/* The two commits that are not plain edits, marked -- the
+                    first one, which has nothing before it to compare with,
+                    and the one that moved the file. A rename is exactly the
+                    point at which a history without --follow would appear to
+                    stop, so naming the old file here is what shows it
+                    didn't. */}
+                {commit.status === "A" && (
+                  <span className="rounded border border-[var(--border)] px-1 text-[10px] uppercase text-[var(--muted)]">
+                    {t("admin.historyCreated")}
+                  </span>
+                )}
+                {commit.renamed_from && (
+                  <span className="w-full font-mono text-[11px] text-[var(--muted)]">
+                    {t("admin.historyRenamedFrom")} {commit.renamed_from}
+                  </span>
+                )}
+                {loadingSha === commit.sha && (
+                  <span className="text-xs text-[var(--muted)]">{t("common.loading")}</span>
+                )}
+              </button>
+
+              {selected?.sha === commit.sha && (
+                <div className="flex flex-col gap-3 border-t border-[var(--border)] px-3 py-3">
+                  {!readOnly && !history.frozen && (
+                    <div>
+                      <Button variant="outline" size="sm" disabled={restoring} onClick={() => onRestore(selected)}>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {t("admin.historyRestore")}
+                      </Button>
+                    </div>
+                  )}
+
+                  <div>
+                    <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                      {t("admin.historyDiff")}
+                    </h4>
+                    {selected.status === "A" && (
+                      <p className="mb-2 text-xs text-[var(--muted)]">{t("admin.historyFirstVersion")}</p>
+                    )}
+                    {selected.diff.trim() ? (
+                      <DiffView diff={selected.diff} />
+                    ) : (
+                      <p className="text-sm text-[var(--muted)]">{t("admin.historyDiffNone")}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="mb-1 text-xs font-medium uppercase tracking-wide text-[var(--muted)]">
+                      {t("admin.historyContent")}
+                    </h4>
+                    <p className="mb-1 text-sm font-medium">{selected.title}</p>
+                    <pre className="max-h-[20rem] overflow-auto rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 font-mono text-xs whitespace-pre-wrap">
+                      {selected.markdown_content}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** A commit's ISO timestamp in the reader's locale. Unlike the public page's
+ *  date-only line this one has a full timestamp to work with, so `new Date`
+ *  parses it correctly -- the offset is in the string. */
+function formatCommitDate(iso: string, locale: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+}
+
+/** Which of the four kinds of line this is. Order matters: `+++` and `---`
+ *  are the diff's own file headers and would otherwise be read as an added
+ *  and a removed line. Anything that is neither content nor a hunk header
+ *  (`diff --git`, `index`, `similarity`/`rename`, `new file mode`, git's
+ *  "\ No newline at end of file") is git talking about the file rather than
+ *  quoting it. */
+function diffLineClass(line: string): string {
+  if (line.startsWith("@@")) return "diff-line diff-line-hunk";
+  if (line.startsWith("+++") || line.startsWith("---")) return "diff-line diff-line-meta";
+  if (line.startsWith("+")) return "diff-line diff-line-add";
+  if (line.startsWith("-")) return "diff-line diff-line-del";
+  if (line.startsWith(" ")) return "diff-line";
+  return "diff-line diff-line-meta";
+}
+
+/** A unified diff, rendered by hand -- see the .diff-* rules in index.css for
+ *  why there is no library here. Each line keeps its own leading +/-, so
+ *  added and removed stay distinguishable without relying on the colour. */
+function DiffView({ diff }: { diff: string }) {
+  const lines = diff.replace(/\n+$/, "").split("\n");
+  return (
+    <div className="diff-view max-h-[26rem] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-2)] py-2">
+      {lines.map((line, index) => (
+        // An empty line still needs a box to draw its background in.
+        <span key={index} className={diffLineClass(line)}>
+          {line || " "}
+        </span>
+      ))}
     </div>
   );
 }

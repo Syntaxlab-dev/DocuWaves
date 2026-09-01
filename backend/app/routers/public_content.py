@@ -226,6 +226,20 @@ def public_get_page(
         "project": project,
         "category": category,
         "page": page,
+        # The date this page's file last changed in the content repo -- ""
+        # when there is no repo, no commit for it, or nothing knowable, in
+        # which case the page simply carries no such line.
+        #
+        # A DATE and nothing else, and that is the whole of what the public
+        # side says about the history. The full record -- who, when, why, and
+        # the diff -- exists and is worth having, but the content repo is
+        # private and its commit messages and author names are its own
+        # business; they stay behind the admin login (see
+        # routers/admin_content.py's page-history routes).
+        #
+        # Cut to YYYY-MM-DD here rather than downstream, so the response can
+        # never carry the exact minute of a commit either.
+        "last_updated": pages_store.last_updated(project["slug"], category["slug"] if category else "", page)[:10],
         # Only the versions this page is actually PUBLISHED in count as
         # somewhere the switcher may send a reader -- a draft of it in
         # another version is not a page they can read.

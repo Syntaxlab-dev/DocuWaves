@@ -364,6 +364,46 @@ repaired, and so is one the project already has.
 Versions and languages compose: a frozen version keeps whatever translations
 existed at the moment it was frozen.
 
+### Page history
+
+Every page is a file in a Git repository and every save is a commit, so a
+complete, attributed history of every page already exists. DocuWaves surfaces
+it rather than keeping a second one of its own: there is no revisions table,
+nothing to prune, and `git log` in the content repo is the same answer the app
+gives.
+
+In the editor, a page has a **History** tab beside Markdown and Preview. It
+lists the commits that touched this page's file — short sha, author, date and
+commit message, newest first — and selecting one shows what the page said then
+plus a coloured diff of what that commit changed. The history **follows
+renames**: renaming a page moves its file, and the entry that did it says
+which name it came from, rather than the log appearing to start over.
+
+It is the history of the **language currently open**. A page's translations
+are separate files (`installation.de.md`, `installation.en.md`), so they have
+separate histories; the panel names the file it is showing.
+
+**Restore** writes an older version's title and Markdown back as a **new
+commit on top**. Nothing is rewritten, reverted or deleted — the version being
+replaced stays in the log, and undoing a restore is the same button again on
+the commit above it. Three things deliberately stay as they are: the page's
+position, whether it is published (that's a decision about what readers should
+see now, not text from the past), and its address — the slug doesn't change,
+so links keep working. A frozen documentation version refuses a restore like
+any other write; its history stays fully readable.
+
+Who changed what, why, and the diffs are **admin-only**. The content repo is
+usually private and its commit messages and author names are its internal
+record, so the public site shows one line and nothing else:
+
+> Last updated: 4 March 2025
+
+That date comes from Git, not from the database. The database is a rebuildable
+index (see the top of this README) — its `updated_at` moves whenever the index
+is rebuilt, which would tell a reader the page changed on a day nothing about
+it did. A page with no committed file, or an instance with no content repo
+configured, simply has no such line.
+
 ### Images
 
 Images live in the content repo alongside the Markdown that uses them, in

@@ -236,9 +236,29 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
             if (version, slug, language) in existing_pages:
                 page_id = existing_pages[(version, slug, language)]
                 conn.execute(
+                    # updated_at was left out entirely, so the column recorded
+                    # when the row was first indexed and never moved again --
+                    # a page edited for a year still claimed the date it was
+                    # imported. It is exposed on the public page response and
+                    # to assistants through the MCP read_page tool, so it was
+                    # quietly wrong in both.
+                    #
+                    # Set through a CASE rather than unconditionally: this
+                    # UPDATE runs for every page on every reindex, so always
+                    # stamping it would replace "frozen at import" with the
+                    # equally untrue "everything changed just now". The
+                    # right-hand sides see the pre-update row in both SQLite
+                    # and Postgres, so the comparison is old-vs-new.
                     f"UPDATE pages SET title={p}, markdown_content={p}, sort_order={p}, published={p}, "
-                    f"category_id={p} WHERE id={p}",
-                    (data["title"], data["markdown_content"], data["order"], published_value, category_id, page_id),
+                    f"category_id={p}, updated_at = CASE WHEN title <> {p} OR markdown_content <> {p} "
+                    f"OR sort_order <> {p} OR published <> {p} OR category_id <> {p} "
+                    f"THEN {p} ELSE updated_at END WHERE id={p}",
+                    (
+                        data["title"], data["markdown_content"], data["order"], published_value, category_id,
+                        data["title"], data["markdown_content"], data["order"], published_value, category_id,
+                        datetime.now(timezone.utc).isoformat(),
+                        page_id,
+                    ),
                 )
             else:
                 columns = (

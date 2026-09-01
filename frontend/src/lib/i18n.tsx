@@ -36,6 +36,7 @@ const de = {
   "page.notTranslatedSuffix": ".",
   "page.fallbackBadge": "Nur auf ",
   "page.fallbackBadgeSuffix": " verfügbar",
+  "page.lastUpdated": "Zuletzt aktualisiert:",
   "notFound.title": "Seite nicht gefunden",
   "notFound.body":
     "Zu dieser Adresse gibt es keine veröffentlichte Seite. Möglicherweise wurde sie umbenannt, entfernt — oder sie ist noch ein Entwurf.",
@@ -62,6 +63,7 @@ const de = {
   "admin.edit": "Bearbeiten",
   "admin.delete": "Löschen",
   "admin.deleteConfirm": "Wirklich löschen? Das kann nicht rückgängig gemacht werden.",
+    "admin.discardDraftConfirm": "Ungespeicherte Änderungen an dieser Sprache gehen verloren. Wechseln?",
   "admin.cover": "Titelbild (optional)",
   "admin.coverNone": "Keins",
   "admin.coverUpload": "Titelbild hochladen",
@@ -160,6 +162,24 @@ const de = {
   "admin.versionReleased": "Eingefroren am",
   "admin.versionNone": "Noch keine Version eingefroren — dieses Projekt hat keine Versionsebene.",
   "admin.versionViewing": "Angezeigte Version",
+  "admin.historyTab": "Verlauf",
+  "admin.historyIntro":
+    "Jede Seite ist eine Datei im Content-Repo, jedes Speichern ein Commit — das hier ist die echte Git-Historie dieser Datei. Sie gilt nur für die gerade geöffnete Sprachfassung; Übersetzungen sind eigene Dateien mit eigener Historie.",
+  "admin.historyEmpty": "Für diese Datei gibt es im Content-Repo noch keine Commits.",
+  "admin.historyCreated": "Angelegt",
+  "admin.historyRenamedFrom": "Umbenannt von",
+  "admin.historyDiff": "Änderung an dieser Datei",
+  "admin.historyDiffNone": "Git meldet für diesen Commit keine Änderung an dieser Datei.",
+  "admin.historyFirstVersion":
+    "Das ist die erste Fassung dieser Datei — es gibt keinen Vorgänger zum Vergleichen, deshalb steht hier die ganze Datei als hinzugefügt.",
+  "admin.historyContent": "Markdown dieser Fassung",
+  "admin.historyRestore": "Diese Fassung wiederherstellen",
+  "admin.historyRestoreConfirm":
+    "Fassung {sha} wiederherstellen?\n\nTitel und Markdown-Text dieser Fassung werden als NEUE Version gespeichert — ein zusätzlicher Commit im Content-Repo. Es wird nichts gelöscht und nichts zurückgedreht: die jetzige Fassung und alle älteren bleiben in der Historie stehen, und du kannst genauso wieder zurück.\n\nUnverändert bleiben: die Position der Seite, ob sie veröffentlicht ist, und ihre Adresse (der Slug) — Links auf diese Seite funktionieren also weiter.",
+  "admin.historyRestored": "Wiederhergestellt — als neuer Commit im Content-Repo.",
+  "admin.historyRestoreFrozen":
+    "Diese Version ist eingefroren — hier lässt sich nichts wiederherstellen. Die Historie ist trotzdem vollständig lesbar.",
+  "admin.historyNotSavedYet": "Verlauf gibt es, sobald diese Sprachfassung einmal gespeichert wurde.",
   "admin.tokens": "API-Tokens",
   "admin.tokensIntro":
     "Ein API-Token gibt einem KI-Assistenten (z. B. Claude) Zugriff auf diese Doku über den MCP-Endpunkt. Du erstellst das Token hier und gibst es dem Assistenten — es ersetzt keine Anmeldung im Admin-Bereich und kann nichts löschen.",
@@ -237,6 +257,7 @@ const en: Dict = {
   "page.notTranslatedSuffix": " version.",
   "page.fallbackBadge": "Only in ",
   "page.fallbackBadgeSuffix": "",
+  "page.lastUpdated": "Last updated:",
   "notFound.title": "Page not found",
   "notFound.body":
     "There's no published page at this address. It may have been renamed, removed -- or it's still a draft.",
@@ -263,6 +284,7 @@ const en: Dict = {
   "admin.edit": "Edit",
   "admin.delete": "Delete",
   "admin.deleteConfirm": "Really delete this? This can't be undone.",
+    "admin.discardDraftConfirm": "Unsaved changes to this language will be lost. Switch anyway?",
   "admin.cover": "Cover image (optional)",
   "admin.coverNone": "None",
   "admin.coverUpload": "Upload a cover",
@@ -361,6 +383,24 @@ const en: Dict = {
   "admin.versionReleased": "Frozen on",
   "admin.versionNone": "No version frozen yet -- this project has no version level.",
   "admin.versionViewing": "Viewing version",
+  "admin.historyTab": "History",
+  "admin.historyIntro":
+    "Every page is a file in the content repo and every save is a commit -- this is that file's real git history. It is the history of the language currently open here; a translation is its own file with its own history.",
+  "admin.historyEmpty": "No commits for this file in the content repo yet.",
+  "admin.historyCreated": "Created",
+  "admin.historyRenamedFrom": "Renamed from",
+  "admin.historyDiff": "What this commit changed in this file",
+  "admin.historyDiffNone": "Git reports no change to this file in that commit.",
+  "admin.historyFirstVersion":
+    "This is the first version of the file -- there is no predecessor to compare it against, so the whole file shows as added.",
+  "admin.historyContent": "Markdown of this version",
+  "admin.historyRestore": "Restore this version",
+  "admin.historyRestoreConfirm":
+    "Restore version {sha}?\n\nThis version's title and Markdown are saved as a NEW version -- one more commit in the content repo. Nothing is deleted and nothing is rolled back: the current version and every older one stay in the history, and you can come back the same way.\n\nLeft unchanged: the page's position, whether it is published, and its address (the slug) -- so links to this page keep working.",
+  "admin.historyRestored": "Restored -- as a new commit in the content repo.",
+  "admin.historyRestoreFrozen":
+    "This documentation version is frozen, so there is nothing to restore into here. The history is still fully readable.",
+  "admin.historyNotSavedYet": "There is a history once this language has been saved at least once.",
   "admin.tokens": "API tokens",
   "admin.tokensIntro":
     "An API token gives an AI assistant (Claude, say) access to these docs through the MCP endpoint. You create the token here and hand it to the assistant -- it is not a replacement for an admin login, and it can't delete anything.",

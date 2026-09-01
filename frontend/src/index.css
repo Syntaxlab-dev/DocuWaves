@@ -18,6 +18,13 @@
   --danger: #c53030;
   --danger-soft: #fbe8e8;
   --shadow: 0 1px 2px rgba(15, 20, 30, 0.05), 0 8px 24px -12px rgba(15, 20, 30, 0.15);
+  /* Added/removed lines in a page's change history. Their own variables, per
+     palette, for the same reason every other colour here has them: a green
+     that reads on white is barely visible on the dark surface behind it. */
+  --diff-add-bg: #e7f6ec;
+  --diff-add-ink: #14713a;
+  --diff-del-bg: #fdeceb;
+  --diff-del-ink: #a4231a;
 }
 
 .dark {
@@ -33,6 +40,10 @@
   --danger: #ea6a6a;
   --danger-soft: #3a1616;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  --diff-add-bg: #12261b;
+  --diff-add-ink: #74d493;
+  --diff-del-bg: #2b1618;
+  --diff-del-ink: #f08d88;
 }
 
 body {
@@ -79,3 +90,18 @@ body {
    stretched once max-width kicks in on a narrow screen. */
 .markdown-body img { max-width: 100%; height: auto; border-radius: 0.5rem; }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+/* A unified diff in the admin page history. Hand-styled rather than pulled
+   from a library: the whole of it is "colour four kinds of line", and a diff
+   viewer package would be a dependency (and a bundle) for that.
+   The line's own leading +/- is deliberately kept in the text, so added and
+   removed are distinguishable without relying on colour -- which matters both
+   for colour-blind readers and wherever the background doesn't render. */
+.diff-view { overflow-x: auto; font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.45; }
+.diff-line { display: block; white-space: pre; padding: 0 0.5rem; min-width: 100%; width: max-content; }
+.diff-line-add { background: var(--diff-add-bg); color: var(--diff-add-ink); }
+.diff-line-del { background: var(--diff-del-bg); color: var(--diff-del-ink); }
+/* The @@ hunk header and the `diff --git`/`index`/`---`/`+++` preamble: not
+   content, just git telling you where you are. */
+.diff-line-hunk { color: var(--accent); }
+.diff-line-meta { color: var(--muted); }

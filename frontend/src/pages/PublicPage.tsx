@@ -19,6 +19,23 @@ import { useDocumentTitle } from "@/lib/site";
  *  reader something the text above the fold didn't already. */
 const MIN_TOC_HEADINGS = 2;
 
+/** "2026-08-31" as the reader's own locale spells a date.
+ *
+ *  Built from the parts rather than handed to `new Date(iso)`: that parses a
+ *  bare date as UTC midnight, which renders as the previous day for every
+ *  reader west of Greenwich -- a "last updated" line that is a day off is
+ *  worse than none. An unparseable value is shown as it came, which is also
+ *  what happens if the backend ever answers with something else. */
+function formatIsoDate(iso: string, locale: string): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  if (!year || !month || !day) return iso;
+  return new Date(year, month - 1, day).toLocaleDateString(locale, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 export function PublicPage() {
   const { projectSlug, pageSlug, version } = useParams<{
     projectSlug: string;
@@ -26,7 +43,7 @@ export function PublicPage() {
     version: string;
   }>();
   const { hash } = useLocation();
-  const { t } = useI18n();
+  const { t, lang: uiLang } = useI18n();
   const { lang } = useContentLang();
   const docPath = useDocPath();
   const { nav, status: navStatus } = useProjectNav(projectSlug, lang, version);
@@ -35,6 +52,7 @@ export function PublicPage() {
     category: Category;
     page: Page & { fallback: boolean };
     versions: VersionInfo | null;
+    last_updated: string;
   } | null>(null);
   const [pageStatus, setPageStatus] = useState<NavStatus>("loading");
 
@@ -138,6 +156,18 @@ export function PublicPage() {
         categorySlug={data.category.slug}
         versionDir={data.page.version}
       />
+      {/* One quiet line under the text. The date comes from the content
+          repo's own log, not from the page's `updated_at` column -- that one
+          moves whenever the index is rebuilt, which would tell a reader the
+          page changed on a day nothing about it did.
+          A date and nothing else: who changed it, why, and the diff all
+          exist, and all of it stays behind the admin login (the content repo
+          is private, and its commit messages are its own business). */}
+      {data.last_updated && (
+        <p className="mt-8 text-xs text-[var(--muted)]">
+          {t("page.lastUpdated")} <time dateTime={data.last_updated}>{formatIsoDate(data.last_updated, uiLang)}</time>
+        </p>
+      )}
       <PageFooterNav nav={nav} pageSlug={data.page.slug} />
     </DocsShell>
   );

@@ -410,6 +410,18 @@ def _page_path_for_write(project_slug: str, category_slug: str, slug: str, langu
     return suffixed
 
 
+def page_repo_path(project_slug: str, category_slug: str, slug: str, language: str = "", version: str = "") -> str:
+    """Where this page's file sits INSIDE the content repo -- the same
+    repo-relative form every write function below returns, which is also how
+    git_content_repo's history functions address a file. A page's translations
+    are separate files, so this answers for exactly one language.
+
+    Returns a path even when nothing is there yet (page_path() does), which is
+    the right answer for a caller asking git about it: git has no history for
+    a file that doesn't exist, and says so by returning nothing."""
+    return _rel(page_path(project_slug, category_slug, slug, language, version))
+
+
 def read_page(project_slug: str, category_slug: str, slug: str, language: str = "", version: str = "") -> dict | None:
     path = page_path(project_slug, category_slug, slug, language, version)
     if not path.exists():
@@ -421,6 +433,32 @@ def read_page(project_slug: str, category_slug: str, slug: str, language: str = 
         "published": bool(post.metadata.get("published", False)),
         "markdown_content": post.content,
         "language": language,
+    }
+
+
+def parse_page_document(text: str) -> dict:
+    """A page file's raw text split into the same fields read_page() returns.
+
+    Separate from read_page() because the text does not have to come from
+    disk: git_content_repo.file_at() hands back a version of a page that no
+    longer exists anywhere on the filesystem, and the history panel has to
+    show its title and body like any other.
+
+    More forgiving than read_page() about `order`, and that difference is the
+    point: this text is an ARBITRARY historical version of the file, possibly
+    hand-edited in the repo years ago, and one bad line in it must show up as
+    a rendered old version rather than as a failed history request."""
+    post = frontmatter.loads(text or "")
+    metadata = post.metadata if isinstance(post.metadata, dict) else {}
+    try:
+        order = int(metadata.get("order", 0))
+    except (TypeError, ValueError):
+        order = 0
+    return {
+        "title": str(metadata.get("title", "") or ""),
+        "order": order,
+        "published": bool(metadata.get("published", False)),
+        "markdown_content": post.content,
     }
 
 

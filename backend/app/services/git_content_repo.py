@@ -21,6 +21,15 @@ If the merge itself conflicts (same file touched on both sides -- unlikely
 given one file per project/category/page, but possible), the merge is
 aborted immediately (never left half-merged) and a clear GitContentError is
 raised instead of silently picking a side or losing content.
+
+Reading HISTORY (the bottom half of this module) is the other side of the
+same fact: every page is a file in this repo, so a complete, attributed
+history of every page already exists and only needs surfacing. Those
+functions are strictly READ-ONLY -- `git log` and `git show`, nothing that
+checks anything out, resets, reverts or rewrites. Putting an old version
+back is not done here at all: pages_store.restore_page() reads the old bytes
+through file_at() and then goes through the ordinary write path above, so a
+restore is a NEW commit on top and the history it came from stays intact.
 """
 
 import os
@@ -287,3 +296,243 @@ def status() -> dict:
         }
     except GitContentError as exc:
         return {"configured": True, "connected": False, "branch": settings.content_repo_branch, "last_commit": None, "error": str(exc)}
+
+
+# ---- History (read-only) ----
+#
+# Every function below answers a question about ONE file, addressed by its
+# path relative to the repo root -- exactly the form content_files' write
+# functions already return and commit_and_push() already stages, so nothing
+# else has to learn a second way of naming a file.
+#
+# None of them raises. A history panel with nothing in it and a page with no
+# "last updated" line are both perfectly good answers for an instance with no
+# content repo, a clone that hasn't happened yet, a repo with no commits, or a
+# file git has simply never seen -- and all four are ordinary states, not
+# failures worth a 500 on a public page view.
+
+# A page's history is a list a person reads, not a log to page through: past a
+# few dozen entries nobody is scrolling. `limit` reaches page_history() from a
+# query parameter, so it is capped here rather than trusted -- MAX_HISTORY is
+# also how far back a restore can reach (see pages_store._history_entry),
+# which is why the two are one number.
+MAX_HISTORY = 100
+DEFAULT_HISTORY = 25
+
+# A commit-ish that arrived from a URL. Checked before it is ever handed to
+# git, because everything after this point interpolates it into an argument:
+# a bare hex abbreviation cannot be read as an option (`--upload-pack=...`),
+# as a path, or as anything but a commit.
+_SHA_RE = re.compile(r"^[0-9a-f]{4,40}$")
+
+# One record per commit, one field per value. \x1e and \x1f cannot occur in a
+# sha, an author name, an ISO date or a commit subject, so the output parses
+# without having to guess where a multi-word subject ends -- unlike any
+# separator a person might reasonably type into a commit message.
+_LOG_FORMAT = "%x1e%h%x1f%an%x1f%aI%x1f%s"
+
+# `git log` walks commit objects, and both the admin history panel and the
+# public "last updated" line ask for one PER REQUEST. Neither answer can
+# change while HEAD stands still, so both are memoized against HEAD's sha and
+# the whole cache is dropped the moment a commit or a pull moves it. A page
+# view on an unchanged repo therefore costs a dict lookup; the first one after
+# a commit costs exactly one git call again.
+#
+# Not locked: these are plain dict operations, so the worst a race can do is
+# compute the same read-only answer twice. Taking _lock here would instead put
+# every public page view behind whatever write is in flight.
+_read_cache: dict[tuple, object] = {}
+_read_cache_head: str | None = None
+
+# One entry per (file, question) and a repo can hold a great many files. The
+# whole thing is dropped rather than one entry evicted, which keeps this a
+# dict instead of a cache library: the next few requests pay one git call each
+# and it fills back up.
+_READ_CACHE_MAX = 2000
+
+
+def _read_repo() -> git.Repo | None:
+    """The clone, for a read that must never fail loudly -- None when there is
+    nothing to read: no content repo configured, no clone (or a clone that
+    can't be made right now), or a repo that holds no commits at all."""
+    if not is_configured():
+        return None
+    try:
+        repo = ensure_clone()
+        _ = repo.head.commit  # an initialized but commit-less repo has no history to read
+        return repo
+    except (GitContentError, ValueError, git.GitError):
+        return None
+
+
+def _cached(repo: git.Repo, key: tuple, compute):
+    global _read_cache_head
+    head = repo.head.commit.hexsha
+    if head != _read_cache_head:
+        _read_cache.clear()
+        _read_cache_head = head
+    if key in _read_cache:
+        return _read_cache[key]
+    value = compute()
+    if len(_read_cache) >= _READ_CACHE_MAX:
+        _read_cache.clear()
+    _read_cache[key] = value
+    return value
+
+
+def _name_status(block: str) -> dict:
+    """The file line `--name-status` printed for one commit, as the path the
+    file had AT that commit plus (on the commit that did it) the name it had
+    before.
+
+    --follow restricts the diff to the one file being followed, so there is
+    exactly one line, and on a rename it reads `R100<TAB>old<TAB>new`. That
+    line is the only place the old name is recorded, which makes it the only
+    way the history can say "this commit moved the page" rather than showing
+    a mystery gap where the file appears to start over."""
+    for line in block.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2 or not parts[0]:
+            continue
+        status = parts[0][0]
+        if status == "R" and len(parts) >= 3:
+            return {"status": status, "path": parts[2], "renamed_from": parts[1]}
+        return {"status": status, "path": parts[1], "renamed_from": ""}
+    return {"status": "", "path": "", "renamed_from": ""}
+
+
+def page_history(path: str, limit: int = DEFAULT_HISTORY) -> list[dict]:
+    """The commits that touched this file, newest first: short sha, author
+    name, ISO date, subject -- plus the path the file had at that commit and
+    the name it was renamed from, if that is what the commit did.
+
+    --follow, so the history SPANS A RENAME. A page rename moves its file
+    (content_files.relocate_page), and without --follow the log would stop
+    dead at the move and claim the page began life on the day it was renamed.
+    That is also why each entry carries its own `path`: an older commit
+    doesn't have this file under today's name, so reading that version back
+    has to ask for the name it had then (see file_at)."""
+    repo = _read_repo()
+    if repo is None or not path:
+        return []
+    count = max(1, min(int(limit or DEFAULT_HISTORY), MAX_HISTORY))
+    return _cached(repo, ("history", path, count), lambda: _page_history(repo, path, count))
+
+
+def _page_history(repo: git.Repo, path: str, count: int) -> list[dict]:
+    try:
+        output = repo.git.log(
+            f"--max-count={count}",
+            "--follow",
+            "--name-status",
+            f"--format={_LOG_FORMAT}",
+            "--no-color",
+            "--",
+            path,
+        )
+    except git.GitCommandError:
+        return []
+
+    entries: list[dict] = []
+    for record in output.split("\x1e"):
+        if not record.strip():
+            continue
+        header, _, names = record.strip("\n").partition("\n")
+        fields = header.split("\x1f")
+        if len(fields) < 4:
+            continue
+        parsed = _name_status(names)
+        entries.append(
+            {
+                "sha": fields[0],
+                "author": fields[1],
+                "date": fields[2],
+                "subject": fields[3],
+                # A commit whose file line we couldn't read at all falls back
+                # to the name the file has today -- the only other name there
+                # is, and right for every commit since the last rename.
+                "path": parsed["path"] or path,
+                "renamed_from": parsed["renamed_from"],
+                "status": parsed["status"],
+            }
+        )
+    return entries
+
+
+def file_at(path: str, sha: str) -> str | None:
+    """This file's full contents at `sha` -- frontmatter and body, exactly the
+    bytes that were committed. None when the commit or the path isn't there.
+
+    `path` is the name the file had AT that commit (page_history()'s own
+    `path` field), not necessarily its name today: a page renamed since simply
+    does not exist under today's name back then, and asking for it there is a
+    git error rather than an older version of anything."""
+    repo = _read_repo()
+    if repo is None or not path or not _SHA_RE.match(sha or ""):
+        return None
+    try:
+        # strip_newline_in_stdout=False: GitPython trims a trailing newline
+        # from command output by default, and here the output IS the file --
+        # every text file this app writes ends in one.
+        return repo.git.show(f"{sha}:{path}", strip_newline_in_stdout=False)
+    except git.GitCommandError:
+        return None
+
+
+def diff(path: str, sha: str) -> str:
+    """What `sha` did to this file, as a unified diff. "" when git has nothing
+    to say about it.
+
+    `git log -1 --patch <sha>` rather than `git show <sha>`, for one reason:
+    pathspec-limiting a `git show` throws away the other half of a rename
+    before rename detection runs, so the commit that moved a page renders as
+    a brand-new file with every line added. Following the file instead makes
+    that same commit read as `rename from`/`rename to` with only the real
+    change in the hunks.
+
+    The FIRST commit for a file has no predecessor, and needs no special case
+    here: its diff is the whole file as additions, which is what git says and
+    what actually happened. Callers tell that case apart by the entry's
+    `status` being "A"."""
+    repo = _read_repo()
+    if repo is None or not path or not _SHA_RE.match(sha or ""):
+        return ""
+    try:
+        return repo.git.log(
+            "-1",
+            "--patch",
+            "--follow",
+            "--no-color",
+            "--format=",
+            sha,
+            "--",
+            path,
+            strip_newline_in_stdout=False,
+        )
+    except git.GitCommandError:
+        return ""
+
+
+def last_modified(path: str) -> str:
+    """The ISO date of the newest commit touching this file, or "" when that
+    isn't knowable. This is what the public site's "last updated" line is
+    built from -- and it is a git fact rather than a database one on purpose,
+    see pages_store.last_updated().
+
+    No --follow here, deliberately: the newest commit touching the file under
+    its CURRENT name is at or after the rename that gave it that name, so
+    following the rename cannot turn up a newer one and would only pay git for
+    rename detection on the path of every page view."""
+    repo = _read_repo()
+    if repo is None or not path:
+        return ""
+    return _cached(repo, ("last_modified", path), lambda: _last_modified(repo, path))
+
+
+def _last_modified(repo: git.Repo, path: str) -> str:
+    try:
+        # A path git has never seen is not an error: `git log` exits 0 with no
+        # output, which is exactly the "" this returns.
+        return repo.git.log("-1", "--format=%aI", "--", path).strip()
+    except git.GitCommandError:
+        return ""

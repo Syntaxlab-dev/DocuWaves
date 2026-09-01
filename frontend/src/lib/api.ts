@@ -149,6 +149,58 @@ export interface AdminVersions {
   would_move: string[];
 }
 
+/** One commit that touched a page's file, as `git log` reports it.
+ *
+ *  Admin-only, all of it. Every page is a file in the content repo and every
+ *  save is a commit, so this history already exists -- but the repo is
+ *  private, and author names and commit messages are its internal record. The
+ *  public site shows a date and nothing else (see `last_updated` on the page
+ *  response), and nothing in here reaches it. */
+export interface PageCommit {
+  /** The short sha git itself prints -- also what addresses this version in
+   *  the two endpoints below. */
+  sha: string;
+  author: string;
+  /** ISO 8601, the commit's author date. */
+  date: string;
+  subject: string;
+  /** The path the file had AT this commit, which is not necessarily its name
+   *  today: renaming a page moves its file, and the history follows it. */
+  path: string;
+  /** Set only on the commit that DID a rename: the name the file had before
+   *  it. "" on every other commit. */
+  renamed_from: string;
+  /** git's status letter for this commit's change to the file: "A" for the
+   *  commit that created it -- the one with no predecessor to diff against --
+   *  "R" for a rename, "M" for an ordinary edit. */
+  status: string;
+}
+
+/** A page's history, plus which file it is the history OF. A page's
+ *  translations are separate files with separate histories, so `path` (which
+ *  carries the language suffix) is what lets the panel say which one is being
+ *  shown rather than leaving it to be assumed. */
+export interface PageHistory {
+  path: string;
+  language: string;
+  version: string;
+  /** The documentation version is frozen: the history reads normally, and
+   *  there is nothing here to restore into. */
+  frozen: boolean;
+  commits: PageCommit[];
+}
+
+/** One version of a page: what the file said at that commit, and the change
+ *  that commit made to it. */
+export interface PageVersion extends PageCommit {
+  title: string;
+  markdown_content: string;
+  published: boolean;
+  /** A unified diff, exactly as git prints it. "" when git had nothing to
+   *  say. */
+  diff: string;
+}
+
 export interface SearchResult {
   page_id: number;
   title: string;
@@ -445,6 +497,20 @@ export const api = {
     request(`/api/admin/pages/${id}/move?direction=${direction}`, { method: "POST" }),
   adminDeletePage: (id: number) => request(`/api/admin/pages/${id}`, { method: "DELETE" }),
 
+  // Admin: page history -- the content repo's own log for this page's file.
+  // Read-only, bar the restore, which ADDS a commit and never rewrites one.
+  adminPageHistory: (id: number, limit?: number) =>
+    request<PageHistory>(`/api/admin/pages/${id}/history${limit ? `?limit=${limit}` : ""}`),
+  adminPageVersion: (id: number, sha: string) =>
+    request<PageVersion>(`/api/admin/pages/${id}/history/${encodeURIComponent(sha)}`),
+  /** Answers with the page's id and slug like every other page write, since a
+   *  restore goes through the same save-commit-reindex path. */
+  adminRestorePage: (id: number, sha: string) =>
+    request<{ ok: boolean; id: number; slug: string; sha: string }>(
+      `/api/admin/pages/${id}/restore/${encodeURIComponent(sha)}`,
+      { method: "POST" },
+    ),
+
   // Admin: image assets -- keyed by project slug, not id (an asset is a
   // plain file in the project's directory, it has no database row)
   adminListAssets: (projectSlug: string) =>
@@ -522,6 +588,14 @@ export const api = {
       category: Category;
       page: Page & { fallback: boolean };
       versions: VersionInfo | null;
+      /** YYYY-MM-DD: when this page's FILE last changed in the content repo,
+       *  or "" when that isn't knowable (no content repo, nothing committed
+       *  yet) -- in which case the page shows no such line at all. Comes from
+       *  git rather than from `page.updated_at`, which is an index column and
+       *  moves whenever the index is rebuilt. This is the ONLY thing about
+       *  the history the public side is told: no author, no message, no
+       *  commits. */
+      last_updated: string;
     }>(`/api/public/projects/${projectSlug}/pages/${pageSlug}${contentQuery(lang, version)}`),
   /** `project`+`version` scope the search to the docs the reader is standing
    *  in; without them it covers each project's default version. */

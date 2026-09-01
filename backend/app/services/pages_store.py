@@ -459,6 +459,194 @@ def delete_page(page_id: int, author: str) -> None:
         content_sync.full_sync()
 
 
+# ---- Change history ----
+#
+# Every page is a file in a git repository and every save is a commit, so a
+# complete, attributed history already exists -- these functions only make it
+# visible. They are the join between the index (which knows what a page id
+# means) and git_content_repo (which knows what happened to a file); no git
+# command is run here, and none of them changes anything, except restore_page,
+# which is an ordinary write that happens to take its text from the past.
+#
+# All of this is per LANGUAGE, because a page's translations are separate
+# files with separate histories: the German file's log says nothing about when
+# the English one was last touched, and pretending otherwise would attribute
+# somebody's edit to a text they never opened.
+
+
+def _page_file(page: dict) -> tuple[dict, dict, str] | None:
+    """(project row, category row, repo-relative path of this page's file), or
+    None when any of the three can't be resolved -- which a caller shows as
+    "nothing is known about this file", never as an error."""
+    project = projects_store.get_project(page["project_id"])
+    category = categories_store.get_category(page["category_id"])
+    if project is None or category is None:
+        return None
+    path = content_files.page_repo_path(
+        project["slug"], category["slug"], page["slug"], page["language"], page["version"]
+    )
+    return project, category, path
+
+
+def last_updated(project_slug: str, category_slug: str, page: dict) -> str:
+    """The ISO date this page's FILE last changed in the content repo, or ""
+    when that isn't knowable (no content repo, no commits yet, a file git has
+    never seen).
+
+    Deliberately not the row's `updated_at`: that column belongs to the index,
+    and the index gets rebuilt -- by a reindex, by a schema change, by a fresh
+    clone on a new machine -- none of which is a change to the page. Telling a
+    reader a page was updated on the day the container happened to restart is
+    worse than telling them nothing. Git is the only place that knows when the
+    content itself last moved.
+
+    Takes the slugs the caller already holds rather than a page id, because
+    every caller is already looking at the project and category rows it would
+    otherwise have to query again on the path of a public page view."""
+    return git_content_repo.last_modified(
+        content_files.page_repo_path(project_slug, category_slug, page["slug"], page["language"], page["version"])
+    )
+
+
+def page_history(page_id: int, limit: int = git_content_repo.DEFAULT_HISTORY) -> dict | None:
+    """This page's commits, newest first, plus enough context for the panel
+    showing them to say WHICH file it is the history of -- the path names the
+    language, and a page's translations each have their own.
+
+    None only when the page id names nothing. An empty `commits` list is a
+    perfectly ordinary answer: an instance with no content repo, a file that
+    has never been committed, a repo with no commits at all."""
+    page = get_page(page_id)
+    if page is None:
+        return None
+    resolved = _page_file(page)
+    if resolved is None:
+        return None
+    project, _, path = resolved
+    return {
+        "path": path,
+        "language": page["language"],
+        "version": page["version"],
+        # The panel reads a frozen version's history normally and only hides
+        # the restore button; the API refuses the write regardless (see
+        # restore_page).
+        "frozen": content_versions.is_frozen(project["slug"], page["version"]),
+        "commits": git_content_repo.page_history(path, limit),
+    }
+
+
+def _history_entry(path: str, sha: str) -> dict | None:
+    """The one commit `sha` names in THIS file's history, or None.
+
+    Looking the sha up in the file's own history rather than handing it
+    straight to git is what makes a sha from a URL safe to act on: only a
+    commit that actually touched this page can be read back or restored, so no
+    crafted (or simply mistaken) sha can reach another file in the repo. It
+    also resolves which name the file had at that commit, which is what makes
+    a version from before a rename readable at all.
+
+    Searched to MAX_HISTORY rather than to the panel's own limit, so anything
+    the panel could have listed is also restorable."""
+    for entry in git_content_repo.page_history(path, git_content_repo.MAX_HISTORY):
+        # Equal, or the caller passed the full sha of the abbreviation git
+        # printed -- someone reading `git log` in the repo itself has the
+        # long one.
+        if entry["sha"] == sha or sha.startswith(entry["sha"]):
+            return entry
+    return None
+
+
+def page_at_commit(page_id: int, sha: str) -> dict | None:
+    """One version of this page: the commit's own metadata, the title and
+    Markdown it held then, and the diff of what that commit changed.
+
+    None when the page, the commit, or the file at that commit isn't there.
+    The FIRST commit for a file needs no special handling -- its diff is the
+    whole file as additions, and `status` is "A", which is how a caller knows
+    there was no predecessor to compare against rather than having to guess
+    from an empty diff."""
+    page = get_page(page_id)
+    if page is None:
+        return None
+    resolved = _page_file(page)
+    if resolved is None:
+        return None
+    _, _, path = resolved
+    entry = _history_entry(path, sha)
+    if entry is None:
+        return None
+    text = git_content_repo.file_at(entry["path"], entry["sha"])
+    if text is None:
+        return None
+    document = content_files.parse_page_document(text)
+    return {
+        **entry,
+        "title": document["title"],
+        "markdown_content": document["markdown_content"],
+        "published": document["published"],
+        "diff": git_content_repo.diff(entry["path"], entry["sha"]),
+    }
+
+
+def restore_page(page_id: int, sha: str, author: str) -> dict | None:
+    """Writes the title and Markdown this page had at `sha` back as a NEW
+    commit on top of the history. Nothing is rewritten, nothing is reverted,
+    no old commit is touched: the version being replaced stays in the log
+    right where it is, and undoing a restore is the same button again on the
+    commit above it.
+
+    Three things deliberately do NOT come back with the text, and each is a
+    rule that already exists elsewhere in this module rather than a special
+    case invented here:
+
+    - The page's POSITION. sort_order belongs to the page across all of its
+      translations (see _write_order) -- restoring one language's old position
+      would give a reader who switches language a differently ordered sidebar.
+    - Whether it is PUBLISHED. That is a decision about what readers should
+      see right now, not text somebody wrote in the past; a restore must never
+      quietly take a live page off the site.
+    - Its ADDRESS. The slug is the page's URL and is shared by its
+      translations, so an old title is written into the frontmatter while the
+      file stays exactly where it is. An admin who wants the old title's URL
+      back renames the page, which is what the title field already does.
+
+    Subject to every rule any other write is subject to: a frozen version is
+    refused before anything is read or written (with its usual message), and
+    the write goes through the same content_files -> commit -> push -> reindex
+    path as a save from the editor."""
+    current = get_page(page_id)
+    if current is None:
+        return None
+    project = projects_store.get_project(current["project_id"])
+    category = categories_store.get_category(current["category_id"])
+    if project is None or category is None:
+        return None
+    # Before the history is even read: a frozen version answers with the
+    # frozen message, not with a restore that turns out to be refused later.
+    content_versions.ensure_writable(project["slug"], current["version"])
+
+    version = page_at_commit(page_id, sha)
+    if version is None:
+        return None
+
+    # A version whose frontmatter has no title at all (hand-written in the
+    # repo, say) keeps the page's current one rather than blanking it -- a
+    # title is structural, and the editor's own save would reject an empty one.
+    title = version["title"] or current["title"]
+    paths = content_files.write_page(
+        project["slug"], category["slug"], current["slug"], title, version["markdown_content"],
+        current["sort_order"], current["published"], current["language"], current["version"],
+    )
+    message = (
+        f"Restore page: {title} [{current['language'] or 'default'}] to {version['sha']}"
+        f"\n\nThe content of commit {version['sha']} (\"{version['subject']}\") written back as a new commit. "
+        f"Nothing was removed from the history: that commit, and every commit since, are still there."
+    )
+    git_content_repo.commit_and_push(paths, message, author)
+    content_sync.full_sync()
+    return get_page_by_slug(current["project_id"], current["slug"], current["language"], current["version"])
+
+
 def _fts5_query(raw: str) -> str | None:
     terms = [t.replace('"', '') for t in raw.strip().split() if t.strip()]
     terms = [t for t in terms if t]

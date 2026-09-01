@@ -517,6 +517,79 @@ def admin_delete_page(page_id: int, request: Request):
     return {"ok": True}
 
 
+# ---- Page history ----
+#
+# Every page is a file in a git repository and every save is a commit, so the
+# full history -- who changed what, when, and why -- already exists; these
+# three routes are what make it reachable from inside the app.
+#
+# ADMIN-ONLY, and that is a decision rather than an accident of where the file
+# sits: the content repo is private, and commit messages and author names are
+# its internal record. The public site shows a date and nothing else (see
+# routers/public_content.py's `last_updated`), so nothing here leaks through
+# it.
+#
+# Two reads and one write. The write is an ordinary write -- same frozen-version
+# refusal, same commit-and-push path, same reindex as saving a page in the
+# editor -- and it only ever ADDS a commit.
+
+
+@router.get(
+    "/pages/{page_id}/history",
+    summary="A page's commits in the content repo, newest first",
+    description="The history of THIS page in THIS language: a page's translations are separate files with "
+    "separate histories, and `path` names the file so the panel showing them can say which. Follows renames "
+    "-- a page rename moves its file, and the history spans the move (the commit that did it carries "
+    "`renamed_from`). An empty `commits` list is a normal answer for an instance with no content repo, a "
+    "repo with no commits, or a page whose file has never been committed.",
+)
+def admin_page_history(page_id: int, limit: int = 25):
+    history = pages_store.page_history(page_id, limit)
+    if history is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    return history
+
+
+@router.get(
+    "/pages/{page_id}/history/{sha}",
+    summary="One version of a page, with the diff that produced it",
+    description="The title and Markdown this page held at that commit, plus a unified diff of what the commit "
+    "changed in this file. `sha` has to be one from this page's own history -- anything else is a 404, which "
+    "is also what keeps a hand-crafted sha from reading some other file in the repo. On the commit that "
+    "CREATED the file (`status` is \"A\") there is no predecessor to compare against and the diff is the whole "
+    "file as additions.",
+)
+def admin_page_version(page_id: int, sha: str):
+    version = pages_store.page_at_commit(page_id, sha)
+    if version is None:
+        raise HTTPException(status_code=404, detail="No such version of this page.")
+    return version
+
+
+@router.post(
+    "/pages/{page_id}/restore/{sha}",
+    summary="Restore an older version of a page",
+    description="Writes the title and Markdown of that commit back as a NEW commit on top of the history. "
+    "Nothing is rewritten, reverted or deleted -- the version being replaced stays in the log, and undoing a "
+    "restore is the same call again on the commit above it. The page's position, its published state and its "
+    "address (slug) are left exactly as they are; see services/pages_store.restore_page for why each. A frozen "
+    "documentation version refuses this like any other write, with the frozen message.",
+)
+def admin_restore_page(page_id: int, sha: str, request: Request):
+    _require_content_repo()
+    page = pages_store.get_page(page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    try:
+        restored = pages_store.restore_page(page_id, sha, _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    if restored is None:
+        raise HTTPException(status_code=404, detail="No such version of this page.")
+    # `id` and `slug` like every other page write answers with, so the editor
+    # can reload the page it just changed without assuming anything survived.
+    return {"ok": True, "id": restored["id"], "slug": restored["slug"], "sha": sha}
+
 
 # ---- Documentation versions ----
 #
