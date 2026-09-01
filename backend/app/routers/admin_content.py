@@ -7,7 +7,14 @@ _require_content_repo()) -- checked BEFORE any file is written, so an
 unconfigured instance never leaves an orphan file on disk that never made
 it into a commit. GitContentError from a write's git_content_repo call
 (push rejected/conflicted after the file was already written+committed
-locally) surfaces as 409, everything else content-repo-related as 400."""
+locally) surfaces as 409, everything else content-repo-related as 400.
+
+Writes always target the project's WRITABLE documentation version -- the
+project directory itself while it has no versions, `current/` once it has
+(see services/content_versions.py). A frozen version is read-only here: the
+stores raise FrozenVersionError before touching a file, and main.py turns
+that into a 403 with the reason spelled out, so a write can't reach a frozen
+version through any route, including one the UI never offers."""
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -17,6 +24,7 @@ from app.services import (
     categories_store,
     content_assets,
     content_sync,
+    content_versions,
     git_content_repo,
     pages_store,
     projects_store,
@@ -55,6 +63,35 @@ def _page_language(language: str | None) -> str:
     if language not in site_languages.languages():
         raise HTTPException(status_code=400, detail=f"'{language}' is not one of this site's configured languages.")
     return language
+
+
+def _project_by_slug(project_slug: str) -> dict:
+    """A project by its slug, or 404. Used by every route keyed by slug
+    rather than by id -- versions and image assets, both of which are
+    directories in the content repo with no database row of their own."""
+    project = projects_store.get_project_by_slug(project_slug)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+def _admin_version(project_slug: str, version: str | None) -> str:
+    """The version an admin READ applies to. Blank means "the one being
+    edited", which is the project directory itself while it is unversioned;
+    an unknown one is a 404 rather than a quiet fall back, exactly as on the
+    public side."""
+    if not version:
+        return content_versions.writable_version(project_slug)
+    if version not in content_versions.version_ids(project_slug):
+        raise HTTPException(status_code=404, detail="Version not found.")
+    return version
+
+
+def _writable_version(project_slug: str) -> str:
+    """Where admin writes for this project go: '' while it is unversioned,
+    `current` once it has versions. Everything the admin UI creates lands
+    there; frozen versions are refused by the stores themselves."""
+    return content_versions.writable_version(project_slug)
 
 
 def _require_content_repo() -> None:
@@ -209,9 +246,18 @@ class CategoryIn(BaseModel):
     name_i18n: dict[str, str] = {}
 
 
-@router.get("/projects/{project_id}/categories")
-def admin_list_categories(project_id: int):
-    return {"categories": categories_store.list_categories(project_id)}
+@router.get(
+    "/projects/{project_id}/categories",
+    summary="A project's categories, in one documentation version",
+    description="Defaults to the version the editor writes to (`current`, or the project itself while it has "
+    "no versions). Pass `version` to browse a frozen one -- read-only, see POST /versions.",
+)
+def admin_list_categories(project_id: int, version: str | None = None):
+    project = projects_store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    resolved = _admin_version(project["slug"], version)
+    return {"categories": categories_store.list_categories(project_id, "", resolved)}
 
 
 @router.post("/projects/{project_id}/categories")
@@ -222,7 +268,8 @@ def admin_create_category(project_id: int, body: CategoryIn, request: Request):
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required.")
-    slug = _unique_slug(name, categories_store.slug_taken, project_id)
+    project = projects_store.get_project(project_id)
+    slug = _unique_slug(name, categories_store.slug_taken, project_id, _writable_version(project["slug"]))
     try:
         category = categories_store.create_category(
             project_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n)
@@ -244,7 +291,9 @@ def admin_update_category(category_id: int, body: CategoryIn, request: Request):
     slug = (
         category["slug"]
         if name == category["name"]
-        else _unique_slug(name, categories_store.slug_taken, category["project_id"], exclude_id=category_id)
+        else _unique_slug(
+            name, categories_store.slug_taken, category["project_id"], category["version"], exclude_id=category_id
+        )
     )
     try:
         updated = categories_store.update_category(
@@ -318,8 +367,13 @@ def admin_get_page(page_id: int):
         raise HTTPException(status_code=404, detail="Page not found.")
     # Which languages the page exists in at all, so the editor's tab strip
     # can show the missing ones as something to create rather than leaving
-    # the author to find out by clicking.
-    return {**page, "languages": pages_store.page_languages(page["project_id"], page["slug"])}
+    # the author to find out by clicking. Within this page's own VERSION:
+    # the same slug in another version is another file, whose translations
+    # say nothing about this one's.
+    return {
+        **page,
+        "languages": pages_store.page_languages(page["project_id"], page["slug"], page["version"]),
+    }
 
 
 @router.get(
@@ -330,15 +384,18 @@ def admin_get_page(page_id: int):
     "editor opens empty on that tab, and saving it creates `<slug>.<lang>.md` under this same slug. Keyed by "
     "slug rather than by a page id, because a page's translations share the slug and have different ids.",
 )
-def admin_find_page(project_slug: str, page_slug: str, language: str = ""):
+def admin_find_page(project_slug: str, page_slug: str, language: str = "", version: str | None = None):
     project = projects_store.get_project_by_slug(project_slug)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
-    languages = pages_store.page_languages(project["id"], page_slug)
+    resolved = _admin_version(project_slug, version)
+    languages = pages_store.page_languages(project["id"], page_slug, resolved)
     if not languages:
         raise HTTPException(status_code=404, detail="Page not found.")
-    page = pages_store.get_page_by_slug(project["id"], page_slug, _page_language(language))
-    return {"page": page, "languages": languages}
+    page = pages_store.get_page_by_slug(project["id"], page_slug, _page_language(language), resolved)
+    # `frozen` so the editor can open a frozen version's page read-only and
+    # say why, instead of offering a Save button that the API then refuses.
+    return {"page": page, "languages": languages, "frozen": content_versions.is_frozen(project_slug, resolved)}
 
 
 @router.post("/pages")
@@ -352,16 +409,19 @@ def admin_create_page(body: PageIn, request: Request):
         raise HTTPException(status_code=400, detail="Title is required.")
     language = _page_language(body.language)
 
+    # The page is created in the CATEGORY's version, which is the only place
+    # its file can go; the store refuses a frozen one before writing.
+    version = category["version"]
     if body.slug.strip():
         # Translating an existing page: keep ITS slug, never mint a new one
         # from the translated title.
         slug = body.slug.strip()
-        if pages_store.get_page_by_slug(category["project_id"], slug, language) is not None:
+        if pages_store.get_page_by_slug(category["project_id"], slug, language, version) is not None:
             raise HTTPException(status_code=409, detail="That page already exists in this language.")
-        if not pages_store.slug_taken(category["project_id"], slug):
+        if not pages_store.slug_taken(category["project_id"], version, slug):
             raise HTTPException(status_code=404, detail="There is no page with that slug to translate.")
     else:
-        slug = _unique_slug(title, pages_store.slug_taken, category["project_id"])
+        slug = _unique_slug(title, pages_store.slug_taken, category["project_id"], version)
 
     try:
         page = pages_store.create_page(
@@ -398,7 +458,7 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
     slug = (
         page["slug"]
         if title == page["title"] or not renamable
-        else _unique_slug(title, pages_store.slug_taken, page["project_id"], exclude_id=page_id)
+        else _unique_slug(title, pages_store.slug_taken, page["project_id"], page["version"], exclude_id=page_id)
     )
     try:
         updated = pages_store.update_page(page_id, title, slug, body.markdown_content, body.category_id, _author(request))
@@ -446,6 +506,124 @@ def admin_delete_page(page_id: int, request: Request):
     return {"ok": True}
 
 
+
+# ---- Documentation versions ----
+#
+# Keyed by project SLUG, like the asset routes: a version is a directory in
+# the content repo, and its own id is that directory's name -- there is no
+# database row for a version, only for the categories and pages inside it.
+#
+# Freezing is the only write that CREATES a version, and it is deliberately
+# the only one that can restructure a project: on a project's first freeze it
+# also moves the existing content down into `current/`. Both happen in one
+# commit (see content_versions.freeze), so the repo's history never has a
+# state where the content is in neither shape.
+
+
+class VersionIn(BaseModel):
+    # The directory name and URL segment, e.g. "v2.0". Normalized (not
+    # slugified -- that would eat the dot) and validated server-side; the
+    # form shows what it will become before anything happens.
+    id: str
+    # What the switcher calls it, e.g. "2.0".
+    label: str
+
+
+def _versions_response(project_slug: str) -> dict:
+    document = content_versions.read_versions(project_slug)
+    return {
+        "versioned": document is not None,
+        "current_id": content_versions.CURRENT_ID,
+        "current_label": document["current_label"] if document else content_versions.DEFAULT_CURRENT_LABEL,
+        "default": document["default"] if document else "",
+        "writable": content_versions.writable_version(project_slug),
+        "versions": document["versions"] if document else [],
+        # What a FIRST freeze would move into current/ -- shown in the
+        # confirmation, because that freeze is the one that restructures the
+        # project's directory and the user should see it named beforehand.
+        "would_move": content_versions.would_move(project_slug),
+    }
+
+
+@router.get(
+    "/projects/{project_slug}/versions",
+    summary="A project's documentation versions",
+    description="`versioned` is false for a project that has never frozen one -- its content sits directly in "
+    "the project directory and it has no version in its URLs at all. `would_move` is what a first freeze would "
+    "move into current/, for the confirmation to name before anything happens.",
+)
+def admin_list_versions(project_slug: str):
+    _project_by_slug(project_slug)
+    return _versions_response(project_slug)
+
+
+@router.post(
+    "/projects/{project_slug}/versions",
+    summary="Freeze the current docs as a new version",
+    description="Copies the working version to content/<project>/<id>/ byte for byte and records it in "
+    "_versions.yml. On the project's FIRST freeze it first moves the project's categories and assets/ into "
+    "current/ -- all in one commit, and without rewriting a single page's Markdown (a page stays exactly one "
+    "directory above assets/, so its ../assets/ links still resolve). The new version is read-only from then on.",
+)
+def admin_freeze_version(project_slug: str, body: VersionIn, request: Request):
+    _require_content_repo()
+    project = _project_by_slug(project_slug)
+    version_id = content_versions.normalize_id(body.id)
+    label = body.label.strip()
+    reason = content_versions.rejection_reason(project_slug, version_id, label, body.id)
+    if reason is not None:
+        raise HTTPException(status_code=400, detail=reason)
+
+    first_freeze = not content_versions.is_versioned(project_slug)
+    paths = content_versions.freeze(project_slug, version_id, label)
+    message = f"Freeze version {label} ({version_id}) of {project['name']}"
+    if first_freeze:
+        # Spelled out in the commit, because this is the commit that moved
+        # every file in the project and someone reading `git log` later
+        # deserves to know why without opening the diff.
+        message += (
+            f"\n\nFirst frozen version of this project: its categories and assets/ moved into current/, "
+            f"and current/ was copied to {version_id}/. Page sources are unchanged -- a page still sits one "
+            f"directory above assets/, so its ../assets/ links still resolve."
+        )
+    try:
+        git_content_repo.commit_and_push(paths, message, _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    content_sync.full_sync()
+    return {"id": version_id, "label": label, "first_freeze": first_freeze, **_versions_response(project_slug)}
+
+
+@router.delete(
+    "/projects/{project_slug}/versions/{version_id}",
+    summary="Delete a frozen version",
+    description="Removes content/<project>/<version>/ and its _versions.yml entry in one commit. The working "
+    "version can never be deleted this way -- it is the project's content, not a snapshot of it.",
+)
+def admin_delete_version(project_slug: str, version_id: str, request: Request):
+    _require_content_repo()
+    project = _project_by_slug(project_slug)
+    if version_id == content_versions.CURRENT_ID:
+        raise HTTPException(
+            status_code=400,
+            detail="The current version can't be deleted -- it is the project's content, not a frozen snapshot.",
+        )
+    document = content_versions.read_versions(project_slug)
+    entry = next((v for v in document["versions"] if v["id"] == version_id), None) if document else None
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Version not found.")
+
+    paths = content_versions.delete_version(project_slug, version_id)
+    try:
+        git_content_repo.commit_and_push(
+            paths, f"Remove version {entry['label']} ({version_id}) of {project['name']}", _author(request)
+        )
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    content_sync.full_sync()
+    return _versions_response(project_slug)
+
+
 # ---- Image assets ----
 #
 # Keyed by project SLUG, not by the numeric id every route above uses: an
@@ -456,18 +634,20 @@ def admin_delete_page(page_id: int, request: Request):
 
 
 def _asset_project(project_slug: str) -> dict:
-    project = projects_store.get_project_by_slug(project_slug)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
-    return project
+    return _project_by_slug(project_slug)
 
 
 def _asset_info(project_slug: str, filename: str, size: int) -> dict:
+    # markdown_path() carries no version: a page sits exactly one directory
+    # above its own version's assets/ folder, so `../assets/x.png` is right
+    # in both shapes -- which is precisely why freezing a version never has
+    # to rewrite a page. Only the preview URL, which is addressed from
+    # outside the repo's directory structure, needs the version spelled out.
     return {
         "filename": filename,
         "size": size,
         "markdown_path": content_assets.markdown_path(filename),
-        "url": content_assets.public_url(project_slug, filename),
+        "url": content_assets.public_url(project_slug, filename, _writable_version(project_slug)),
     }
 
 
@@ -508,10 +688,17 @@ async def _read_validated_image(request: Request, filename: str) -> bytes:
     summary="List a project's images",
     description="Everything under content/<project-slug>/assets/, with the relative path to paste into a page.",
 )
-def admin_list_assets(project_slug: str):
+def admin_list_assets(project_slug: str, version: str | None = None):
+    # A read, so it follows the version being LOOKED at, like every other
+    # admin read -- listing the writable version's images while the editor
+    # shows a frozen one would offer images that page cannot reference.
     _asset_project(project_slug)
+    resolved = _admin_version(project_slug, version)
     return {
-        "assets": [_asset_info(project_slug, a["filename"], a["size"]) for a in content_assets.list_assets(project_slug)]
+        "assets": [
+            _asset_info(project_slug, a["filename"], a["size"])
+            for a in content_assets.list_assets(project_slug, resolved)
+        ]
     }
 
 
@@ -523,14 +710,23 @@ def admin_list_assets(project_slug: str):
     "query parameter. The stem is slugified and the real extension kept; an existing name gets -2, -3, ... "
     "rather than being overwritten. Max 10 MB, and the bytes themselves are checked against the extension.",
 )
-async def admin_upload_asset(project_slug: str, filename: str, request: Request):
+async def admin_upload_asset(project_slug: str, filename: str, request: Request, version: str | None = None):
     _require_content_repo()
     project = _asset_project(project_slug)
 
+    # Resolved and checked like every other admin write, rather than always
+    # forced to the writable version: an upload aimed at a frozen version
+    # used to answer 200 and quietly put the file in `current`, so the
+    # caller was told a file exists somewhere it doesn't. Frozen means
+    # frozen here too -- ensure_writable raises FrozenVersionError, which
+    # main.py turns into the same 403 every other frozen write gets.
+    resolved = _admin_version(project_slug, version)
+    content_versions.ensure_writable(project_slug, resolved)
+
     data = await _read_validated_image(request, filename)
 
-    stored_name = content_assets.unique_filename(project_slug, filename)
-    path = content_assets.write_asset(project_slug, stored_name, data)
+    stored_name = content_assets.unique_filename(project_slug, filename, resolved)
+    path = content_assets.write_asset(project_slug, stored_name, data, resolved)
     try:
         git_content_repo.commit_and_push([path], f"Add image: {stored_name} ({project['name']})", _author(request))
     except git_content_repo.GitContentError as exc:
@@ -545,7 +741,7 @@ async def admin_upload_asset(project_slug: str, filename: str, request: Request)
     "image just stops rendering, which is visible in the editor preview, rather than the delete silently "
     "rewriting someone's Markdown.",
 )
-def admin_delete_asset(project_slug: str, filename: str, request: Request):
+def admin_delete_asset(project_slug: str, filename: str, request: Request, version: str | None = None):
     _require_content_repo()
     project = _asset_project(project_slug)
     if "/" in filename or "\\" in filename or filename in (".", ".."):
@@ -554,7 +750,9 @@ def admin_delete_asset(project_slug: str, filename: str, request: Request):
         # traversal attempt, not a typo worth guessing at.
         raise HTTPException(status_code=400, detail="A filename can't contain a path separator.")
 
-    paths = content_assets.delete_asset(project_slug, filename)
+    resolved = _admin_version(project_slug, version)
+    content_versions.ensure_writable(project_slug, resolved)
+    paths = content_assets.delete_asset(project_slug, filename, resolved)
     if not paths:
         raise HTTPException(status_code=404, detail="Asset not found.")
     try:
