@@ -16,16 +16,40 @@ the docs said at a release -- renaming a category in it would silently
 rewrite that release, so it is a file edit in the content repo instead,
 reviewable like any other contribution."""
 
-from app.services import content_files, content_sync, content_versions, db, git_content_repo, projects_store, site_languages
+from app.services import (
+    content_assets,
+    content_files,
+    content_sync,
+    content_versions,
+    db,
+    git_content_repo,
+    projects_store,
+    site_languages,
+)
 
-_COLUMNS = "id, project_id, name, name_i18n, slug, icon, sort_order, version"
+# Qualified, and joined to `projects` for one reason: a category's cover is a
+# path INSIDE its project's directory, so turning it into a URL needs the
+# project's slug -- which is that directory's name. One join costs nothing
+# next to a second query per listing, and it keeps the cover a property of
+# the category rather than something every caller has to pass in (three
+# read functions, each with its own callers in two routers and the MCP
+# tools, would all have to grow a project_slug argument otherwise).
+_COLUMNS = "c.id, c.project_id, c.name, c.name_i18n, c.slug, c.icon, c.sort_order, c.version, c.image, p.slug"
+_FROM = "FROM categories c JOIN projects p ON p.id = c.project_id"
 
 
 def _row_to_dict(row, language: str = "") -> dict:
     """`name` resolved for `language`, plus the raw mapping -- see
     projects_store._row_to_dict(), identical here. `version` rides along so
     a caller holding a category always knows which version's category it is
-    (and therefore whether it may be written to)."""
+    (and therefore whether it may be written to).
+
+    The cover comes out as both `image` (what `_category.yml` literally
+    says) and `image_url` (that path resolved, or null) -- again exactly as
+    projects_store does it. The project slug from the join is used to
+    resolve it and is deliberately NOT in the result: the caller asked for a
+    category, and every one of them already knows which project it asked
+    about."""
     name_i18n = site_languages.parse_i18n(row[3])
     return {
         "id": row[0],
@@ -36,6 +60,11 @@ def _row_to_dict(row, language: str = "") -> dict:
         "icon": row[5],
         "sort_order": row[6],
         "version": row[7],
+        "image": row[8],
+        # The version is passed in as well as the slug: a category's cover
+        # has to resolve inside its OWN version's assets/, so v2.0's tile
+        # keeps showing v2.0's image (see content_assets.category_cover_url).
+        "image_url": content_assets.category_cover_url(row[9], row[7], row[4], row[8]),
     }
 
 
@@ -43,8 +72,8 @@ def list_categories(project_id: int, language: str = "", version: str = "") -> l
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         rows = conn.execute(
-            f"SELECT {_COLUMNS} FROM categories WHERE project_id = {placeholder} AND version = {placeholder} "
-            f"ORDER BY sort_order, name",
+            f"SELECT {_COLUMNS} {_FROM} WHERE c.project_id = {placeholder} AND c.version = {placeholder} "
+            f"ORDER BY c.sort_order, c.name",
             (project_id, version),
         ).fetchall()
     return [_row_to_dict(r, language) for r in rows]
@@ -53,7 +82,7 @@ def list_categories(project_id: int, language: str = "", version: str = "") -> l
 def get_category(category_id: int, language: str = "") -> dict | None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
-        row = conn.execute(f"SELECT {_COLUMNS} FROM categories WHERE id = {placeholder}", (category_id,)).fetchone()
+        row = conn.execute(f"SELECT {_COLUMNS} {_FROM} WHERE c.id = {placeholder}", (category_id,)).fetchone()
     return _row_to_dict(row, language) if row else None
 
 
@@ -61,8 +90,8 @@ def get_category_by_slug(project_id: int, slug: str, language: str = "", version
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(
-            f"SELECT {_COLUMNS} FROM categories WHERE project_id = {placeholder} AND slug = {placeholder} "
-            f"AND version = {placeholder}",
+            f"SELECT {_COLUMNS} {_FROM} WHERE c.project_id = {placeholder} AND c.slug = {placeholder} "
+            f"AND c.version = {placeholder}",
             (project_id, slug, version),
         ).fetchone()
     return _row_to_dict(row, language) if row else None
@@ -126,6 +155,7 @@ def create_category(
     author: str,
     name_i18n: dict[str, str] | None = None,
     order: int | None = None,
+    image: str = "",
 ) -> dict | None:
     """Always creates in the project's WRITABLE version -- '' while the
     project is unversioned, `current` once it is. There is deliberately no
@@ -135,21 +165,32 @@ def create_category(
     `order` None means "at the end", which is what the admin UI always wants
     (it has arrow buttons to move it afterwards). The MCP endpoint passes an
     explicit one when the caller asked for a position, because an assistant
-    creating three categories in one go has no arrows to press."""
+    creating three categories in one go has no arrows to press.
+
+    `image` is last, after `order`, so the MCP endpoint's existing
+    positional call keeps meaning what it meant -- it has no cover to set
+    (create_category is not an image uploader), and "" is exactly the
+    no-cover value."""
     project = projects_store.get_project(project_id)
     if project is None:
         return None
     version = content_versions.writable_version(project["slug"])
     if order is None:
         order = _next_order(project_id, version)
-    paths = content_files.write_category(project["slug"], slug, name, icon, order, name_i18n, version)
+    paths = content_files.write_category(project["slug"], slug, name, icon, image, order, name_i18n, version)
     git_content_repo.commit_and_push(paths, f"Add category: {name} ({project['name']})", author)
     content_sync.full_sync()
     return get_category_by_slug(project_id, slug, "", version)
 
 
 def update_category(
-    category_id: int, name: str, slug: str, icon: str, author: str, name_i18n: dict[str, str] | None = None
+    category_id: int,
+    name: str,
+    slug: str,
+    icon: str,
+    author: str,
+    name_i18n: dict[str, str] | None = None,
+    image: str = "",
 ) -> dict | None:
     current = get_category(category_id)
     if current is None:
@@ -160,7 +201,9 @@ def update_category(
     paths: list[str] = []
     if slug != current["slug"]:
         paths += content_files.rename_category(project["slug"], current["slug"], slug, version)
-    paths += content_files.write_category(project["slug"], slug, name, icon, current["sort_order"], name_i18n, version)
+    paths += content_files.write_category(
+        project["slug"], slug, name, icon, image, current["sort_order"], name_i18n, version
+    )
     git_content_repo.commit_and_push(paths, f"Update category: {name} ({project['name']})", author)
     content_sync.full_sync()
     return get_category_by_slug(current["project_id"], slug, "", version)
@@ -181,13 +224,14 @@ def reorder_category(project_id: int, category_id: int, direction: int, author: 
     if not (0 <= swap_index < len(categories)):
         return
     a, b = categories[index], categories[swap_index]
-    # name_i18n passed back through: this rewrites the whole `_category.yml`,
-    # so dropping it would flatten a translated name on every reorder.
+    # name_i18n and image passed back through: this rewrites the whole
+    # `_category.yml`, so dropping either would flatten a translated name --
+    # or silently delete a cover -- on every reorder.
     paths = content_files.write_category(
-        project["slug"], a["slug"], a["name"], a["icon"], b["sort_order"], a["name_i18n"], version
+        project["slug"], a["slug"], a["name"], a["icon"], a["image"], b["sort_order"], a["name_i18n"], version
     )
     paths += content_files.write_category(
-        project["slug"], b["slug"], b["name"], b["icon"], a["sort_order"], b["name_i18n"], version
+        project["slug"], b["slug"], b["name"], b["icon"], b["image"], a["sort_order"], b["name_i18n"], version
     )
     git_content_repo.commit_and_push(paths, f"Reorder categories: {a['name']} / {b['name']}", author)
     content_sync.full_sync()

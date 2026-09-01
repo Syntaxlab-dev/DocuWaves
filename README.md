@@ -12,6 +12,9 @@ save, so nobody has to touch `git` directly if they don't want to.
   through to exactly the project they're looking for.
 - **Categories as tiles** — a project's docs are grouped into categories,
   shown as clickable tiles rather than one long sidebar to scroll through.
+  A project tile and a category tile can each carry a cover image, so the
+  way into the docs looks like something (see "Tile cover images"); one
+  that doesn't have one looks exactly as it always did.
 - **Markdown, with a live preview** — pages are written in Markdown (GFM:
   tables, checklists, fenced code blocks with syntax highlighting) and
   edited in a split editor/preview pane.
@@ -117,6 +120,7 @@ into a phantom project tile on the homepage.
 name: My Project
 icon: 🚀
 color: "#5b8def"
+image: assets/cover.png     # optional cover for the homepage tile
 description: A short one-line description shown on the homepage tile.
 order: 0
 ```
@@ -126,8 +130,13 @@ order: 0
 ```yaml
 name: Getting Started
 icon: 📘
+image: ../assets/getting-started.png    # optional cover for the tile
 order: 0
 ```
+
+`image` is optional in both, and everything else works exactly as it always
+has without it — see "Tile cover images" below for the path rules and what
+happens when one doesn't resolve.
 
 A page's `.md` file — YAML frontmatter, then the Markdown body:
 
@@ -400,6 +409,62 @@ Images aren't subject to the draft/published distinction — only pages are.
 An image sitting in `assets/` is publicly readable as soon as it's in the
 repo, whether or not any published page references it. Don't put anything in
 there that isn't meant to be seen; the content repo itself is the boundary.
+
+### Tile cover images
+
+The homepage lists projects as tiles and a project page lists its categories
+as tiles. Either can carry a real image instead of being an icon on a grey
+box — optional, off until you set one, and a tile without one looks exactly
+as it always did.
+
+It's the `image:` field in `_project.yml` / `_category.yml`, and it holds a
+**normal relative path from the file it appears in**, for exactly the reason
+a page's image does — the same string resolves when someone browses the repo
+on GitHub:
+
+```yaml
+# content/my-project/_project.yml     (sits IN the project directory)
+image: assets/cover.png
+
+# content/my-project/getting-started/_category.yml   (one directory deeper)
+image: ../assets/getting-started.png
+```
+
+The file itself goes in the project's ordinary `assets/` folder, so a cover
+and a screenshot on a page are the same kind of thing in the same place, and
+either can be re-used as the other. Everything under "Images" above applies
+to it unchanged, because it is the same code: the allowed types, the 10 MB
+limit, the content-checked upload, the restrictive `Content-Security-Policy`
+on an SVG, and the rule that a path may never leave the project directory.
+
+**A cover that doesn't resolve is simply no cover.** A typo, a deleted file,
+a path pointing at a `.txt`, a path climbing out of the project, a value
+that isn't even a string — each one yields no URL at all, and the tile falls
+back to the icon and title it has without one. Nothing 404s, nothing shows a
+broken image, and the site does not care. Same rule the `logo:` in
+`_site.yml` already follows.
+
+**A category's cover belongs to its documentation version.** `assets/` lives
+inside the version directory, so `v2.0`'s category resolves `../assets/x.png`
+inside `v2.0/` and keeps showing what it showed at the freeze, however the
+current version's images change afterwards. A path that climbs out into
+another version resolves to nothing rather than crossing over.
+
+A **project's** cover is version-independent, because `_project.yml` is: it
+describes the project, not one release of it, and the homepage tile isn't
+inside a version either. One consequence worth knowing: a project's *first*
+freeze moves `assets/` down into `current/` without rewriting `_project.yml`
+(which stays where it is), so an `image: assets/cover.png` set before that
+freeze stops resolving afterwards — the tile falls back cleanly, and
+re-picking the cover in the admin form stores the now-correct
+`current/assets/cover.png`.
+
+In the admin area, the project and category rows each have an **edit**
+button; the form has a cover field with an upload button, a small preview
+and a way to clear it. Uploading commits the file into the project's
+`assets/` immediately, exactly like the editor's "Insert image" does;
+clearing only drops the reference and removes the `image:` key from the YAML
+— the file stays in `assets/`, where a page may well still be using it.
 
 ### Site branding
 

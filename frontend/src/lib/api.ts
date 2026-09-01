@@ -15,6 +15,17 @@ export interface Project {
   description: string;
   description_i18n: LocalizedText;
   sort_order: number;
+  /** The optional cover, exactly as `_project.yml` spells it: a path
+   *  relative to that file (`assets/cover.png`). "" for the projects that
+   *  have none, which is every project until someone sets one. Only the
+   *  admin form has any use for this -- rendering uses `image_url`. */
+  image: string;
+  /** ...that path resolved against the content repo, or **null** whenever
+   *  it names no real, allowed image inside the project. Null is the single
+   *  answer for "no cover set", "file isn't there", "not an image type" and
+   *  "points outside the project", so a tile falls back to its icon and
+   *  text instead of ever rendering a broken image. */
+  image_url: string | null;
 }
 
 export interface Category {
@@ -29,6 +40,12 @@ export interface Category {
   /** Which documentation version this category belongs to -- "" for a
    *  project that has none, "current" or a frozen id once it has. */
   version: string;
+  /** The optional cover as `_category.yml` spells it -- relative to that
+   *  file, so `../assets/x.png`. See Project.image / Project.image_url; the
+   *  contract is identical, and the resolved URL additionally has to stay
+   *  inside this category's own documentation version. */
+  image: string;
+  image_url: string | null;
 }
 
 export interface PageSummary {
@@ -165,8 +182,15 @@ export interface OidcStatus {
 export interface Asset {
   filename: string;
   size: number;
-  /** The relative path to paste into a page, e.g. `../assets/shot.png`. */
+  /** The relative path to paste into a page, e.g. `../assets/shot.png`.
+   *  Also what a CATEGORY's cover `image:` needs -- `_category.yml` sits
+   *  one directory above assets/, exactly like a page does. */
   markdown_path: string;
+  /** The path relative to the PROJECT directory, e.g. `assets/shot.png` (or
+   *  `current/assets/shot.png` once the project is versioned) -- what a
+   *  project's cover `image:` needs, since `_project.yml` stays at the
+   *  project level. */
+  project_path: string;
   /** The same file as the public endpoint serves it -- for previewing. */
   url: string;
 }
@@ -249,6 +273,9 @@ export interface ProjectInput {
   icon: string;
   color: string;
   description: string;
+  /** The cover path to store, or "" to clear it (which removes the key from
+   *  `_project.yml` rather than writing it empty). Never a URL. */
+  image?: string;
   name_i18n?: LocalizedText;
   description_i18n?: LocalizedText;
 }
@@ -256,6 +283,9 @@ export interface ProjectInput {
 export interface CategoryInput {
   name: string;
   icon: string;
+  /** As ProjectInput.image, in the `../assets/…` form a `_category.yml`
+   *  uses. */
+  image?: string;
   name_i18n?: LocalizedText;
 }
 
@@ -351,8 +381,15 @@ export const api = {
   adminListProjects: () => request<{ projects: Project[] }>("/api/admin/projects"),
   adminCreateProject: (data: ProjectInput) =>
     request<{ id: number; slug: string }>("/api/admin/projects", { method: "POST", body: JSON.stringify(data) }),
+  // Answers with the slug the project now HAS -- renaming one moves its
+  // directory, and the reindex that follows keys rows by slug, so the row
+  // this call started from is gone and the project has a new id too. The
+  // admin panel re-selects by this slug rather than by the id it sent.
   adminUpdateProject: (id: number, data: ProjectInput) =>
-    request(`/api/admin/projects/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    request<{ ok: boolean; slug: string }>(`/api/admin/projects/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   adminMoveProject: (id: number, direction: -1 | 1) =>
     request(`/api/admin/projects/${id}/move?direction=${direction}`, { method: "POST" }),
   adminDeleteProject: (id: number) => request(`/api/admin/projects/${id}`, { method: "DELETE" }),
@@ -367,8 +404,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
+  /** Answers with the category's resulting slug, for the same reason
+   *  adminUpdateProject does. */
   adminUpdateCategory: (id: number, data: CategoryInput) =>
-    request(`/api/admin/categories/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    request<{ ok: boolean; slug: string }>(`/api/admin/categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
   adminMoveCategory: (id: number, direction: -1 | 1) =>
     request(`/api/admin/categories/${id}/move?direction=${direction}`, { method: "POST" }),
   adminDeleteCategory: (id: number) => request(`/api/admin/categories/${id}`, { method: "DELETE" }),

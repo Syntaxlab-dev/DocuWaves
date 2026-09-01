@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, type Project } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CoverImage } from "@/components/CoverImage";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
 import { siteText, useDocumentTitle, useSite } from "@/lib/site";
@@ -38,7 +39,11 @@ export function PublicHome() {
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {projects?.map((p) => (
           <Link key={p.id} to={path(`/p/${p.slug}`)}>
-            <Card className="h-full transition-transform hover:-translate-y-0.5">
+            {/* overflow-hidden only when there IS a cover to clip, so a
+                project without one renders the tile it always did, class
+                for class. */}
+            <Card className={`h-full transition-transform hover:-translate-y-0.5${p.image_url ? " overflow-hidden" : ""}`}>
+              <CoverImage url={p.image_url} />
               <CardHeader>
                 <div className="flex items-center gap-2">
                   {p.icon && <span className="text-xl">{p.icon}</span>}

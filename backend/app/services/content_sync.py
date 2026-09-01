@@ -41,12 +41,43 @@ directory first, then reconciling all of that project's pages (across all of
 its versions) in one single pass.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from app.services import content_files, content_versions, db, site_languages
 
+log = logging.getLogger("docuwaves")
+
+# Files the last sync could not index, and why. Rebuilt from scratch on every
+# run (a fixed repo must clear it), and read by the admin content-repo status
+# panel -- a page that silently does not appear is a worse failure than one
+# that appears with an explanation attached.
+_conflicts: list[dict] = []
+
+
+def conflicts() -> list[dict]:
+    return list(_conflicts)
+
+
+def _record_conflict(project: str, category: str, kept_in: str, slug: str, language: str, version: str) -> None:
+    entry = {
+        "project": project,
+        "slug": slug,
+        "language": language,
+        "version": version,
+        "category": category,
+        "kept_in": kept_in,
+    }
+    _conflicts.append(entry)
+    log.warning(
+        "Duplicate page slug '%s' in project '%s': using the copy in '%s', ignoring the one in '%s'. "
+        "A page's slug is its URL and must be unique within a project -- rename or remove one of the two files.",
+        slug, project, kept_in, category,
+    )
+
 
 def full_sync() -> None:
+    _conflicts.clear()
     if not content_files.content_root().exists():
         # No checkout to reconcile against -- the repo was never cloned, or
         # the clone failed. "No files on disk" is not the same statement as
@@ -78,30 +109,30 @@ def _sync_projects(conn) -> None:
         if data is None:
             continue
         values = (
-            data["name"], _i18n(data["name_i18n"]), data["icon"], data["color"],
+            data["name"], _i18n(data["name_i18n"]), data["icon"], data["color"], data["image"],
             data["description"], _i18n(data["description_i18n"]), data["order"],
         )
         if slug in existing:
             project_id = existing[slug]
             conn.execute(
-                f"UPDATE projects SET name={p}, name_i18n={p}, icon={p}, color={p}, description={p}, "
+                f"UPDATE projects SET name={p}, name_i18n={p}, icon={p}, color={p}, image={p}, description={p}, "
                 f"description_i18n={p}, sort_order={p} WHERE id={p}",
                 (*values, project_id),
             )
         else:
-            columns = "name, name_i18n, slug, icon, color, description, description_i18n, sort_order"
+            columns = "name, name_i18n, slug, icon, color, image, description, description_i18n, sort_order"
             # slug sits second in the tuple, matching its position in the
             # column list -- everything else keeps the shared `values` order.
             params = (values[0], values[1], slug, *values[2:])
             if db.is_postgres():
                 row = conn.execute(
-                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
                     params,
                 ).fetchone()
                 project_id = row[0]
             else:
                 cursor = conn.execute(
-                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p})",
+                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p})",
                     params,
                 )
                 project_id = cursor.lastrowid
@@ -140,22 +171,25 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
             if (version, slug) in existing_categories:
                 category_id = existing_categories[(version, slug)]
                 conn.execute(
-                    f"UPDATE categories SET name={p}, name_i18n={p}, icon={p}, sort_order={p} WHERE id={p}",
-                    (data["name"], _i18n(data["name_i18n"]), data["icon"], data["order"], category_id),
+                    f"UPDATE categories SET name={p}, name_i18n={p}, icon={p}, image={p}, sort_order={p} WHERE id={p}",
+                    (data["name"], _i18n(data["name_i18n"]), data["icon"], data["image"], data["order"], category_id),
                 )
             else:
-                params = (project_id, data["name"], _i18n(data["name_i18n"]), slug, version, data["icon"], data["order"])
+                params = (
+                    project_id, data["name"], _i18n(data["name_i18n"]), slug, version, data["icon"], data["image"],
+                    data["order"],
+                )
                 if db.is_postgres():
                     row = conn.execute(
-                        f"INSERT INTO categories (project_id, name, name_i18n, slug, version, icon, sort_order) "
-                        f"VALUES ({p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                        f"INSERT INTO categories (project_id, name, name_i18n, slug, version, icon, image, sort_order) "
+                        f"VALUES ({p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
                         params,
                     ).fetchone()
                     category_id = row[0]
                 else:
                     cursor = conn.execute(
-                        f"INSERT INTO categories (project_id, name, name_i18n, slug, version, icon, sort_order) "
-                        f"VALUES ({p},{p},{p},{p},{p},{p},{p})",
+                        f"INSERT INTO categories (project_id, name, name_i18n, slug, version, icon, image, sort_order) "
+                        f"VALUES ({p},{p},{p},{p},{p},{p},{p},{p})",
                         params,
                     )
                     category_id = cursor.lastrowid
@@ -176,8 +210,25 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
     }
     seen_page_ids: set[int] = set()
 
+    # A page's slug is unique per PROJECT (its URL is /pages/<slug>, with no
+    # category in it), but nothing on disk stops two categories from holding
+    # the same filename -- a/install.md and b/install.md is a perfectly
+    # ordinary thing for someone to commit, or for a merged pull request to
+    # introduce. The second INSERT then violated the unique constraint and
+    # the exception took the whole instance down at startup: the site was
+    # gone, and nothing said why. One repo file must never be able to do
+    # that. The first one wins (iteration is ordered, so which one that is
+    # stays stable across syncs), the rest are skipped and reported.
+    claimed: dict[tuple, str] = {}
+
     for (version, category_slug), category_id in category_ids.items():
         for slug, language in content_files.list_page_variants(project_slug, category_slug, version):
+            key = (version, slug, language)
+            if key in claimed:
+                _record_conflict(project_slug, category_slug, claimed[key], slug, language, version)
+                continue
+            claimed[key] = category_slug
+
             data = content_files.read_page(project_slug, category_slug, slug, language, version)
             if data is None:
                 continue

@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CoverImage } from "@/components/CoverImage";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
@@ -51,7 +52,10 @@ export function PublicProject() {
       <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {categories.map((c) => (
           <Link key={c.id} to={docPath(nav.project.slug, `/c/${c.slug}`)}>
-            <Card className="h-full transition-transform hover:-translate-y-0.5">
+            {/* Same treatment as the home page's project tiles, and the
+                same conditional overflow-hidden -- see CoverImage. */}
+            <Card className={`h-full transition-transform hover:-translate-y-0.5${c.image_url ? " overflow-hidden" : ""}`}>
+              <CoverImage url={c.image_url} />
               <CardHeader>
                 <div className="flex items-center gap-2">
                   {c.icon && <span className="text-lg">{c.icon}</span>}

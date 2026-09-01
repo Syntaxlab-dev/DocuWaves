@@ -280,7 +280,8 @@ def public_get_site():
     description="Images live in the content repo next to the Markdown that uses them (see the README's "
     "'Content repo structure'). `asset_path` is relative to the project's own directory -- the frontend "
     "resolves a page's relative Markdown src against the page's directory first, so `../assets/x.png` on a "
-    "page arrives here as `assets/x.png`.",
+    "page arrives here as `assets/x.png`. A project's or category's cover image (`image_url` on those "
+    "objects) is served from here too, resolved the same way and by the same code.",
 )
 def public_get_asset(project_slug: str, asset_path: str):
     """Unlike every other route in this router there's no published= filter,

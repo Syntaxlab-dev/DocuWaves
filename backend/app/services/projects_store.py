@@ -15,14 +15,23 @@ CachePanel already made deliberately) -- persisted in `order:` inside
 `_project.yml` now, not just a DB column.
 """
 
-from app.services import content_files, content_sync, db, git_content_repo, site_languages
+from app.services import content_assets, content_files, content_sync, db, git_content_repo, site_languages
 
 
 def _row_to_dict(row, language: str = "") -> dict:
     """`name`/`description` come out resolved for `language` (the default
     language's value when this project has no translation of them, which is
     also every project on a single-language instance), and the raw mapping
-    rides along as `name_i18n` for the admin form to edit."""
+    rides along as `name_i18n` for the admin form to edit.
+
+    The cover comes out twice for the same kind of reason `name` does:
+    `image` is what the file literally says (the admin form edits that), and
+    `image_url` is that path resolved against the repo -- null whenever it
+    names no real, allowed image inside the project, so a tile falls back to
+    its icon and text rather than rendering a broken one. Resolved on read
+    rather than stored, exactly as branding resolves `logo:`: the file on
+    disk is the truth, and whether it currently points at something is a
+    question about right now."""
     name_i18n = site_languages.parse_i18n(row[2])
     description_i18n = site_languages.parse_i18n(row[7])
     return {
@@ -35,10 +44,15 @@ def _row_to_dict(row, language: str = "") -> dict:
         "description": site_languages.pick(row[6], description_i18n, language),
         "description_i18n": description_i18n,
         "sort_order": row[8],
+        "image": row[9],
+        "image_url": content_assets.project_cover_url(row[3], row[9]),
     }
 
 
-_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order"
+# `image` appended rather than slotted in beside `icon`/`color`: every index
+# above is a positional read in _row_to_dict(), and the new column is the one
+# thing here that has no reason to renumber them.
+_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order, image"
 
 
 def list_projects(language: str = "") -> list[dict]:
@@ -92,9 +106,10 @@ def create_project(
     author: str,
     name_i18n: dict[str, str] | None = None,
     description_i18n: dict[str, str] | None = None,
+    image: str = "",
 ) -> dict:
     order = _next_order()
-    paths = content_files.write_project(slug, name, icon, color, description, order, name_i18n, description_i18n)
+    paths = content_files.write_project(slug, name, icon, color, image, description, order, name_i18n, description_i18n)
     git_content_repo.commit_and_push(paths, f"Add project: {name}", author)
     content_sync.full_sync()
     return get_project_by_slug(slug)
@@ -110,6 +125,7 @@ def update_project(
     author: str,
     name_i18n: dict[str, str] | None = None,
     description_i18n: dict[str, str] | None = None,
+    image: str = "",
 ) -> dict | None:
     current = get_project(project_id)
     if current is None:
@@ -118,7 +134,7 @@ def update_project(
     if slug != current["slug"]:
         paths += content_files.rename_project(current["slug"], slug)
     paths += content_files.write_project(
-        slug, name, icon, color, description, current["sort_order"], name_i18n, description_i18n
+        slug, name, icon, color, image, description, current["sort_order"], name_i18n, description_i18n
     )
     git_content_repo.commit_and_push(paths, f"Update project: {name}", author)
     content_sync.full_sync()
@@ -127,10 +143,14 @@ def update_project(
 
 def _rewrite(project: dict, order: int) -> list[str]:
     """Rewrites a project's `_project.yml` unchanged except for its order --
-    every field, translations included, taken from the row as it reads now."""
+    every field, translations and cover included, taken from the row as it
+    reads now. `image` (the raw path, not the resolved URL) has to travel
+    through here for the same reason the i18n mappings do: this rewrites the
+    whole file, so a field left out is a field silently dropped on every
+    reorder."""
     return content_files.write_project(
-        project["slug"], project["name"], project["icon"], project["color"], project["description"], order,
-        project["name_i18n"], project["description_i18n"],
+        project["slug"], project["name"], project["icon"], project["color"], project["image"],
+        project["description"], order, project["name_i18n"], project["description_i18n"],
     )
 
 

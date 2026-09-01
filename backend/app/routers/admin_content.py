@@ -123,7 +123,11 @@ def _git_error_response(exc: git_content_repo.GitContentError) -> HTTPException:
     "for the admin UI's connection banner. Never raises: a connection problem is shown here, not thrown.",
 )
 def admin_content_repo_status():
-    return git_content_repo.status()
+    # Plus whatever the last index run had to skip. A page that simply never
+    # appears is the hardest kind of problem to chase in a file-backed CMS --
+    # the file is right there in the repo -- so the reason belongs somewhere
+    # the operator already looks.
+    return {**git_content_repo.status(), "conflicts": content_sync.conflicts()}
 
 
 @router.post(
@@ -151,6 +155,14 @@ class ProjectIn(BaseModel):
     icon: str = ""
     color: str = ""
     description: str = ""
+    # The optional cover, as a path relative to `_project.yml` itself --
+    # `assets/cover.png`, or `current/assets/cover.png` once the project is
+    # versioned. Stored verbatim and never checked here, exactly as branding
+    # stores `logo:`: a path that names nothing simply resolves to no URL on
+    # the way back out (content_assets.project_cover_url), so a stale one
+    # costs a missing cover rather than a rejected save. "" clears it, which
+    # removes the key from the file.
+    image: str = ""
     # Per-language values for the two human-readable fields, sent only by a
     # multilingual instance's form (see _clean_i18n). `name` stays the
     # default language's value and is what the slug is derived from.
@@ -173,7 +185,7 @@ def admin_create_project(body: ProjectIn, request: Request):
     try:
         project = projects_store.create_project(
             name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
-            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n),
+            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(),
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -193,7 +205,7 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
     try:
         updated = projects_store.update_project(
             project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
-            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n),
+            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(),
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -230,6 +242,10 @@ def admin_delete_project(project_id: int, request: Request):
 class CategoryIn(BaseModel):
     name: str
     icon: str = ""
+    # The optional cover, as a path relative to `_category.yml` itself --
+    # `../assets/x.png`, the same one `..` a page's Markdown uses. Same
+    # store-verbatim/resolve-on-read contract as ProjectIn.image above.
+    image: str = ""
     name_i18n: dict[str, str] = {}
 
 
@@ -259,7 +275,8 @@ def admin_create_category(project_id: int, body: CategoryIn, request: Request):
     slug = _unique_slug(name, categories_store.slug_taken, project_id, _writable_version(project["slug"]))
     try:
         category = categories_store.create_category(
-            project_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n)
+            project_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n),
+            image=body.image.strip(),
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -284,7 +301,8 @@ def admin_update_category(category_id: int, body: CategoryIn, request: Request):
     )
     try:
         updated = categories_store.update_category(
-            category_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n)
+            category_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n),
+            body.image.strip(),
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -630,17 +648,26 @@ def _asset_project(project_slug: str) -> dict:
     return _project_by_slug(project_slug)
 
 
-def _asset_info(project_slug: str, filename: str, size: int) -> dict:
+def _asset_info(project_slug: str, filename: str, size: int, version: str) -> dict:
     # markdown_path() carries no version: a page sits exactly one directory
     # above its own version's assets/ folder, so `../assets/x.png` is right
     # in both shapes -- which is precisely why freezing a version never has
-    # to rewrite a page. Only the preview URL, which is addressed from
-    # outside the repo's directory structure, needs the version spelled out.
+    # to rewrite a page. It is also exactly what a `_category.yml`'s cover
+    # `image:` needs, for the same reason: that file sits one directory
+    # above assets/ too.
+    #
+    # The other two DO need the version spelled out, and take it from the
+    # caller rather than assuming the writable one: `project_path` is what a
+    # `_project.yml`'s cover `image:` needs (that file stays at the project
+    # level when a project is versioned, so assets/ is one directory further
+    # down from there), and `url` is addressed from outside the repo's
+    # directory structure altogether.
     return {
         "filename": filename,
         "size": size,
         "markdown_path": content_assets.markdown_path(filename),
-        "url": content_assets.public_url(project_slug, filename, _writable_version(project_slug)),
+        "project_path": content_assets.project_relative_path(filename, version),
+        "url": content_assets.public_url(project_slug, filename, version),
     }
 
 
@@ -689,7 +716,7 @@ def admin_list_assets(project_slug: str, version: str | None = None):
     resolved = _admin_version(project_slug, version)
     return {
         "assets": [
-            _asset_info(project_slug, a["filename"], a["size"])
+            _asset_info(project_slug, a["filename"], a["size"], resolved)
             for a in content_assets.list_assets(project_slug, resolved)
         ]
     }
@@ -724,7 +751,7 @@ async def admin_upload_asset(project_slug: str, filename: str, request: Request,
         git_content_repo.commit_and_push([path], f"Add image: {stored_name} ({project['name']})", _author(request))
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
-    return _asset_info(project_slug, stored_name, len(data))
+    return _asset_info(project_slug, stored_name, len(data), resolved)
 
 
 @router.delete(

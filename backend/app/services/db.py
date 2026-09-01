@@ -113,6 +113,13 @@ _SQLITE_SCHEMA = [
     # every homepage tile and every sidebar, to carry what the file already
     # holds as one mapping. `name` stays the DEFAULT language's value, so
     # every existing query (ORDER BY name included) reads as it always did.
+    #
+    # `image` is the optional cover, stored EXACTLY as the file spells it --
+    # a relative path from the `_project.yml` it appears in ('' for the vast
+    # majority that have none). Not the resolved URL: the file is the source
+    # of truth, the admin form has to be able to show what it says, and
+    # whether that path currently resolves to a real image is a question for
+    # read time (content_assets.project_cover_url), not for index time.
     """
     CREATE TABLE IF NOT EXISTS projects (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,6 +128,7 @@ _SQLITE_SCHEMA = [
         slug TEXT UNIQUE NOT NULL,
         icon TEXT NOT NULL DEFAULT '',
         color TEXT NOT NULL DEFAULT '',
+        image TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
         description_i18n TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0
@@ -144,6 +152,7 @@ _SQLITE_SCHEMA = [
         slug TEXT NOT NULL,
         version TEXT NOT NULL DEFAULT '',
         icon TEXT NOT NULL DEFAULT '',
+        image TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         UNIQUE(project_id, version, slug)
     )
@@ -230,9 +239,9 @@ _POSTGRES_SCHEMA = [
         last_used_at TEXT NOT NULL DEFAULT ''
     )
     """,
-    # See the SQLite block above for what name_i18n / language / version are
-    # and why they are shaped this way -- the two schemas stay line-for-line
-    # comparable on purpose.
+    # See the SQLite block above for what name_i18n / language / version /
+    # image are and why they are shaped this way -- the two schemas stay
+    # line-for-line comparable on purpose.
     """
     CREATE TABLE IF NOT EXISTS projects (
         id SERIAL PRIMARY KEY,
@@ -241,6 +250,7 @@ _POSTGRES_SCHEMA = [
         slug TEXT UNIQUE NOT NULL,
         icon TEXT NOT NULL DEFAULT '',
         color TEXT NOT NULL DEFAULT '',
+        image TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
         description_i18n TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0
@@ -255,6 +265,7 @@ _POSTGRES_SCHEMA = [
         slug TEXT NOT NULL,
         version TEXT NOT NULL DEFAULT '',
         icon TEXT NOT NULL DEFAULT '',
+        image TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         UNIQUE(project_id, version, slug)
     )
@@ -288,8 +299,8 @@ _POSTGRES_SCHEMA = [
 # rather than version-stamped: the schema above is the single source of
 # truth, and a stamp is one more thing that can disagree with it.
 _REQUIRED_COLUMNS = {
-    "projects": {"name_i18n", "description_i18n"},
-    "categories": {"name_i18n", "version"},
+    "projects": {"name_i18n", "description_i18n", "image"},
+    "categories": {"name_i18n", "version", "image"},
     "pages": {"language", "version"},
 }
 

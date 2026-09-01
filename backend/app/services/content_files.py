@@ -22,7 +22,8 @@ by site_branding.py -- underscore-prefixed names are skipped by every
 enumeration here, see _RESERVED_PREFIX.)
 
 `_project.yml` / `_category.yml` are plain YAML: name, icon, (color/
-description for projects only), order. A page's `.md` file is YAML
+description for projects only), an optional cover `image:`, order. A page's
+`.md` file is YAML
 frontmatter (title, order, published) followed by its Markdown body,
 parsed/written with python-frontmatter so the format is the same one most
 static-site generators already use -- a contributor who's touched Jekyll,
@@ -156,6 +157,21 @@ def _localized_field(data: dict, key: str, fallback: str = "") -> tuple[str, dic
     return (text or fallback), mapping
 
 
+def _image_field(data: dict) -> str:
+    """A cover `image:` as a plain relative path, or "" for anything that
+    isn't one.
+
+    Type-checked, unlike the `icon`/`color` beside it, and the difference is
+    load-bearing rather than fussiness: an icon is only ever printed, while
+    this value is handed to the filesystem resolver, where an `image: 42`
+    would reach `project_dir / 42` and raise -- taking the public site down
+    over one wrong line in a file anyone can send a pull request for. Same
+    rule the README already states for `_site.yml`: a field holding the
+    wrong type falls back to its default."""
+    value = data.get("image")
+    return value.strip() if isinstance(value, str) else ""
+
+
 def read_project(slug: str) -> dict | None:
     path = content_root() / slug / "_project.yml"
     if not path.exists():
@@ -168,6 +184,10 @@ def read_project(slug: str) -> dict | None:
         "name_i18n": name_i18n,
         "icon": data.get("icon", ""),
         "color": data.get("color", ""),
+        # Relative to THIS file's directory (the project directory), so
+        # `assets/cover.png` -- see content_assets.project_cover_url(), which
+        # is the only thing that turns it into a URL.
+        "image": _image_field(data),
         "description": description,
         "description_i18n": description_i18n,
         "order": int(data.get("order", 0)),
@@ -179,6 +199,7 @@ def write_project(
     name: str,
     icon: str,
     color: str,
+    image: str,
     description: str,
     order: int,
     name_i18n: dict[str, str] | None = None,
@@ -195,9 +216,18 @@ def write_project(
         "name": site_languages.to_yaml_value(name, name_i18n or {}, default_lang),
         "icon": icon,
         "color": color,
-        "description": site_languages.to_yaml_value(description, description_i18n or {}, default_lang),
-        "order": order,
     }
+    # Written only when there IS one, unlike every other key here.
+    # `icon: ''` is already in every _project.yml in every repo, so writing
+    # it empty changes nothing; `image` is new, and emitting it empty would
+    # add a line to every file in every existing repo on its next save, for
+    # a feature its owner never asked for. Clearing a cover therefore
+    # removes the key entirely, which is also exactly what a file that never
+    # had one looks like.
+    if image:
+        data["image"] = image
+    data["description"] = site_languages.to_yaml_value(description, description_i18n or {}, default_lang)
+    data["order"] = order
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return [_rel(path)]
 
@@ -247,7 +277,17 @@ def read_category(project_slug: str, slug: str, version: str = "") -> dict | Non
         return None
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     name, name_i18n = _localized_field(data, "name", slug)
-    return {"name": name, "name_i18n": name_i18n, "icon": data.get("icon", ""), "order": int(data.get("order", 0))}
+    return {
+        "name": name,
+        "name_i18n": name_i18n,
+        "icon": data.get("icon", ""),
+        # Relative to THIS file's directory (the category directory, one
+        # below assets/), so `../assets/x.png` -- the same one `..` a page's
+        # Markdown uses, which is what keeps it resolving in GitHub's own
+        # preview of the file as well.
+        "image": _image_field(data),
+        "order": int(data.get("order", 0)),
+    }
 
 
 def write_category(
@@ -255,6 +295,7 @@ def write_category(
     slug: str,
     name: str,
     icon: str,
+    image: str,
     order: int,
     name_i18n: dict[str, str] | None = None,
     version: str = "",
@@ -264,8 +305,12 @@ def write_category(
     data = {
         "name": site_languages.to_yaml_value(name, name_i18n or {}, site_languages.default_language()),
         "icon": icon,
-        "order": order,
     }
+    # Omitted when empty -- see write_project() for why this one key is
+    # treated differently from the ones around it.
+    if image:
+        data["image"] = image
+    data["order"] = order
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return [_rel(path)]
 

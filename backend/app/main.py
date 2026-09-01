@@ -59,7 +59,17 @@ async def lifespan(_app: FastAPI):
         # hinge on the network being up at that moment. full_sync() itself
         # no-ops when there is no checkout at all, so a failed FIRST clone
         # still can't empty anything.
-        content_sync.full_sync()
+        try:
+            content_sync.full_sync()
+        except Exception:
+            # Deliberately broad, and deliberately not fatal. Whatever the
+            # index makes of the files, one committed file must never be able
+            # to stop the application from starting -- a duplicate page slug
+            # used to raise straight out of here and the container exited,
+            # taking the public site down with no way in to see why. Coming
+            # up with a stale or partial index and a logged reason leaves the
+            # admin area reachable, which is where the operator fixes it.
+            log.exception("Initial content index failed; starting with whatever the index already holds")
         sync_task = asyncio.create_task(_periodic_content_sync())
     yield
     if sync_task is not None:

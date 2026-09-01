@@ -36,6 +36,14 @@ project slug goes: `_site/` sits directly inside content/ exactly like a
 project directory does, so every rule below applies to it verbatim rather
 than through a second resolver that could drift from this one.
 
+...and it serves the optional COVER IMAGES a project or a category may
+carry (`image:` in `_project.yml` / `_category.yml`, see
+project_cover_url() / category_cover_url()). Those are relative paths too,
+resolved against the directory of the file that names them, for exactly the
+reason page images are: `assets/cover.png` in a `_project.yml` and
+`../assets/x.png` in a `_category.yml` are what GitHub's own file preview
+resolves as well, so the repo reads correctly outside DocuWaves too.
+
 Uploads are validated on real file content, never on the extension or the
 client's declared content-type alone: an "image/png" upload whose bytes are
 a PHP script would otherwise sit in a public repo waiting for someone to
@@ -45,6 +53,7 @@ magic number.
 """
 
 from pathlib import Path
+from urllib.parse import quote
 from xml.etree import ElementTree
 
 from slugify import slugify
@@ -138,6 +147,100 @@ def public_url(project_slug: str, filename: str, version: str = "") -> str:
     of `assets/`, and the endpoint needs no version parameter of its own."""
     prefix = f"{version}/" if version else ""
     return f"/api/public/assets/{project_slug}/{prefix}{_ASSETS_DIRNAME}/{filename}"
+
+
+def project_relative_path(filename: str, version: str = "") -> str:
+    """Where an uploaded image sits RELATIVE TO THE PROJECT directory, which
+    is what a `_project.yml`'s `image:` has to say (that file lives in the
+    project directory itself, so it has no `..` to climb).
+
+    The version is spelled out here, unlike in markdown_path() above: a page
+    sits one level below its own version's assets/ either way, but
+    `_project.yml` stays at the project level when a project is versioned,
+    so from there the assets folder really is one directory further down."""
+    prefix = f"{version}/" if version else ""
+    return f"{prefix}{_ASSETS_DIRNAME}/{filename}"
+
+
+# ---- Cover images ----
+#
+# A project's and a category's optional `image:`. Everything below funnels
+# into resolve_asset() and answers with a URL the EXISTING public asset
+# endpoint serves -- deliberately, and for the same reason site_branding.py
+# gives for `_site/`: the containment rule, the allowed-extension list and
+# the restrictive Content-Security-Policy an .svg is served with are one
+# implementation, and a second one written for covers would be those rules
+# re-typed, with the copy that quietly drifts always guarding the smaller
+# surface.
+#
+# None -- no URL at all -- is the entire failure story, and it is the same
+# answer branding gives a `logo:` naming a file that isn't there: the tile
+# falls back to the icon-and-text it has always been, instead of rendering
+# an <img> the browser draws a broken box for.
+
+
+def _cover_url(project_slug: str, path_from_project: str, within: Path | None = None) -> str | None:
+    """`path_from_project` resolved as a public URL, or None if it doesn't
+    resolve, isn't an allowed image type, or leaves the project directory.
+
+    `within` narrows the containment by one more directory on top of the
+    project boundary resolve_asset() already enforces -- see
+    category_cover_url(), the only caller that needs it."""
+    path = resolve_asset(project_slug, path_from_project)
+    if path is None:
+        return None
+    if within is not None and not path.is_relative_to(within):
+        return None
+    # Not None: resolve_asset() only answered with a path because this same
+    # lookup succeeded inside it.
+    project_dir = _project_dir(project_slug)
+    inside = path.relative_to(project_dir).as_posix()
+    # The URL is built from the RESOLVED location rather than from what the
+    # file said, so `../assets/x.png` reaches the browser as the plain
+    # `<version>/assets/x.png` it actually is -- a URL still carrying `..`
+    # would be normalized by the browser before it was ever sent, which
+    # works by luck rather than by design. quote() because a file committed
+    # by hand (rather than uploaded, which slugifies) can have spaces in its
+    # name; the default safe="/" keeps the separators.
+    return f"/api/public/assets/{quote(project_slug, safe='')}/{quote(inside)}"
+
+
+def project_cover_url(project_slug: str, image: str) -> str | None:
+    """A `_project.yml`'s `image:`. That file sits in the project directory
+    itself, so its path is already relative to the resolution root and needs
+    no prefix at all: `assets/cover.png` in the file is
+    content/<project>/assets/cover.png on disk."""
+    if not image:
+        return None
+    return _cover_url(project_slug, image)
+
+
+def category_cover_url(project_slug: str, version: str, category_slug: str, image: str) -> str | None:
+    """A `_category.yml`'s `image:`. That file sits one directory deeper
+    than the project's assets/ folder, so the path is resolved from THERE
+    (`../assets/x.png`) -- the identical string a page's Markdown uses, and
+    for the identical reason: it renders in GitHub's preview of that file
+    too.
+
+    `version` bounds the answer as well as building the path. Assets live
+    inside the version directory, so v2.0's category must keep serving
+    v2.0's image: an `image:` that climbs out into another version
+    (`../../current/assets/x.png`) stays inside the project and would pass
+    resolve_asset() on its own, but it would let a frozen release's tile
+    change every time current's images do. It resolves to nothing instead."""
+    if not image:
+        return None
+    project_dir = _project_dir(project_slug)
+    if project_dir is None:
+        return None
+    version_dir = project_content_dir(project_slug, version).resolve()
+    if not version_dir.is_relative_to(project_dir):
+        return None
+    # Built from the real directories rather than by pasting the version id
+    # in front, so the unversioned shape (where the version directory IS the
+    # project directory) needs no special case here.
+    target = (version_dir.relative_to(project_dir) / category_slug / image).as_posix()
+    return _cover_url(project_slug, target, within=version_dir)
 
 
 def list_assets(project_slug: str, version: str = "") -> list[dict]:

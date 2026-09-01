@@ -12,6 +12,7 @@ import {
   ImagePlus,
   KeyRound,
   Moon,
+  Pencil,
   Plus,
   RefreshCw,
   Sun,
@@ -191,13 +192,37 @@ export function AdminApp() {
     }
   }
 
-  function loadProjects() {
-    api.adminListProjects().then((r) => setProjects(r.projects));
+  /** `selectSlug` is the slug a just-saved project now has -- passed in
+   *  because editing a project's name RENAMES its directory, and the
+   *  reindex that follows keys rows by slug, so the saved project comes
+   *  back with a new id as well as a new slug. Without it the selection
+   *  would either point at a row that no longer exists or keep addressing
+   *  the old directory in every version/asset call below. Falling back to
+   *  the id keeps a plain refresh (or a delete) behaving sensibly. */
+  function loadProjects(selectSlug?: string) {
+    api.adminListProjects().then((r) => {
+      setProjects(r.projects);
+      setSelectedProject((current) => {
+        if (!current) return null;
+        const wanted = selectSlug ?? current.slug;
+        return r.projects.find((p) => p.slug === wanted) ?? r.projects.find((p) => p.id === current.id) ?? null;
+      });
+    });
   }
   useEffect(loadProjects, []);
 
-  function loadCategories(projectId: number, version: string) {
-    api.adminListCategories(projectId, version || undefined).then((r) => setCategories(r.categories));
+  function loadCategories(projectId: number, version: string, selectSlug?: string) {
+    // Same reasoning as loadProjects() above: renaming a category moves its
+    // directory, so the row it had is gone and the selection has to follow
+    // the new slug.
+    api.adminListCategories(projectId, version || undefined).then((r) => {
+      setCategories(r.categories);
+      setSelectedCategory((current) => {
+        if (!current) return null;
+        const wanted = selectSlug ?? current.slug;
+        return r.categories.find((c) => c.slug === wanted) ?? r.categories.find((c) => c.id === current.id) ?? null;
+      });
+    });
   }
 
   function loadVersions(projectSlug: string) {
@@ -342,6 +367,7 @@ export function AdminApp() {
                 <div className="grid gap-4 md:grid-cols-[220px_1fr]">
                   <CategoriesPanel
                     projectId={selectedProject.id}
+                    projectSlug={selectedProject.slug}
                     categories={categories}
                     selected={selectedCategory}
                     readOnly={frozen}
@@ -349,7 +375,7 @@ export function AdminApp() {
                       setSelectedCategory(c);
                       setEditing(null);
                     }}
-                    onChanged={() => loadCategories(selectedProject.id, viewing)}
+                    onChanged={(slug) => loadCategories(selectedProject.id, viewing, slug)}
                   />
 
                   <div>
@@ -1312,6 +1338,201 @@ function VersionsCard({
 }
 
 
+/**
+ * A cover image slot, shared by the project and the category form.
+ *
+ * The upload always goes into the PROJECT's own assets/ folder -- that is
+ * the on-disk convention for every image in this app (content/<project>/
+ * [<version>/]assets/), and it is what lets a cover be re-used on a page, or
+ * a page's screenshot be re-used as a cover, without a second copy of the
+ * file. Only the way the path is SPELLED differs, because the two files that
+ * hold it sit at different depths: `assets/x.png` from a `_project.yml`,
+ * `../assets/x.png` from a `_category.yml`. That difference is `pathOf`, and
+ * both spellings come straight from the upload response rather than being
+ * assembled here -- the server knows whether the project is versioned, and a
+ * second guess at it in the browser is a second thing to keep in step.
+ *
+ * Uploading commits the file immediately (that is what gives it a URL to
+ * preview); which file the tile USES is only decided when the form is saved
+ * -- the same split the branding image fields make.
+ */
+function CoverField({
+  projectSlug,
+  pathOf,
+  value,
+  previewUrl,
+  onChange,
+}: {
+  /** The project whose assets/ folder receives the upload. "" while a
+   *  project is being created and has no directory in the repo yet. */
+  projectSlug: string;
+  pathOf: (asset: Asset) => string;
+  /** The stored path, exactly as it will be written to the YAML file. */
+  value: string;
+  /** The resolved URL to preview, or null when the path names no real
+   *  image -- which is also what a stale path looks like, so the preview
+   *  going blank is the honest signal that the tile has no cover either. */
+  previewUrl: string | null;
+  onChange: (image: string, previewUrl: string | null) => void;
+}) {
+  const { t } = useI18n();
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function onPick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Cleared right away so picking the SAME file again still fires change.
+    e.target.value = "";
+    if (!file || !projectSlug) return;
+    setUploading(true);
+    try {
+      const asset = await api.adminUploadAsset(projectSlug, file);
+      onChange(pathOf(asset), asset.url);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">{t("admin.cover")}</span>
+      <div className="flex items-center gap-2">
+        {previewUrl ? (
+          // 16:9, the same crop the public tile uses, so what is judged
+          // here is what will actually be on the tile.
+          <img
+            src={previewUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="h-10 w-[4.5rem] shrink-0 rounded border border-[var(--border)] bg-[var(--surface-2)] object-cover"
+          />
+        ) : (
+          <span className="text-xs text-[var(--muted)]">{t("admin.coverNone")}</span>
+        )}
+        <span className="min-w-0 flex-1 truncate font-mono text-xs text-[var(--muted)]" title={value}>
+          {value}
+        </span>
+        {value && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6"
+            aria-label={t("admin.coverRemove")}
+            // Clearing only drops the reference; the image file itself stays
+            // in assets/, where another page or category may well be using
+            // it. Deleting the file is a separate, deliberate act in the
+            // editor's image panel.
+            onClick={() => onChange("", null)}
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={uploading || !projectSlug}
+        onClick={() => inputRef.current?.click()}
+      >
+        <ImagePlus className="h-3.5 w-3.5" />
+        {uploading ? t("admin.uploadingImage") : t("admin.coverUpload")}
+      </Button>
+      {/* A project has no assets/ folder until it exists in the repo, so a
+          cover is something you add on the second visit to this form. Said
+          out loud rather than left as a button that would 404. */}
+      {!projectSlug && <span className="text-xs text-[var(--muted)]">{t("admin.coverSaveFirst")}</span>}
+      <input ref={inputRef} type="file" accept=".png,.jpg,.jpeg,.gif,.webp,.avif,.svg" className="hidden" onChange={onPick} />
+    </div>
+  );
+}
+
+/** Create OR edit, one form -- `project` null is "new". Both write the same
+ *  `_project.yml`, and having two forms would mean two places for the cover
+ *  (and the next field after it) to be forgotten in. */
+function ProjectForm({ project, onDone }: { project: Project | null; onDone: (slug?: string) => void }) {
+  const { t } = useI18n();
+  const { site } = useSite();
+  const languages = site.languages;
+  const [name, setName] = useState<FieldValues>(() =>
+    project ? toFieldValues(project.name, project.name_i18n, languages, site.default_language) : {},
+  );
+  const [icon, setIcon] = useState(project?.icon ?? "");
+  const [color, setColor] = useState(project?.color ?? "");
+  const [description, setDescription] = useState<FieldValues>(() =>
+    project ? toFieldValues(project.description, project.description_i18n, languages, site.default_language) : {},
+  );
+  const [image, setImage] = useState(project?.image ?? "");
+  const [imageUrl, setImageUrl] = useState<string | null>(project?.image_url ?? null);
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const resolvedName = fromFieldValues(name, languages, site.default_language);
+    const resolvedDescription = fromFieldValues(description, languages, site.default_language);
+    const data = {
+      name: resolvedName.text,
+      name_i18n: resolvedName.i18n,
+      icon,
+      color,
+      image,
+      description: resolvedDescription.text,
+      description_i18n: resolvedDescription.i18n,
+    };
+    setSaving(true);
+    try {
+      if (project) {
+        const saved = await api.adminUpdateProject(project.id, data);
+        onDone(saved.slug);
+      } else {
+        const created = await api.adminCreateProject(data);
+        onDone(created.slug);
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
+      <LocalizedInput label={t("admin.projectName")} values={name} onChange={setName} languages={languages} required />
+      <Input placeholder={t("admin.projectIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
+      <Input placeholder={t("admin.projectColor")} value={color} onChange={(e) => setColor(e.target.value)} />
+      <LocalizedInput
+        label={t("admin.projectDescription")}
+        values={description}
+        onChange={setDescription}
+        languages={languages}
+      />
+      <CoverField
+        projectSlug={project?.slug ?? ""}
+        // `_project.yml` sits in the project directory itself, so the path
+        // it stores is the one relative to THAT directory.
+        pathOf={(asset) => asset.project_path}
+        value={image}
+        previewUrl={imageUrl}
+        onChange={(next, url) => {
+          setImage(next);
+          setImageUrl(url);
+        }}
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving}>
+          {t("admin.save")}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => onDone()}>
+          {t("admin.cancel")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function ProjectsPanel({
   projects,
   selected,
@@ -1321,96 +1542,105 @@ function ProjectsPanel({
   projects: Project[];
   selected: Project | null;
   onSelect: (p: Project) => void;
-  onChanged: () => void;
+  /** `slug` is the slug the saved project now has -- see loadProjects(). */
+  onChanged: (slug?: string) => void;
 }) {
   const { t } = useI18n();
-  const { site } = useSite();
-  const languages = site.languages;
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState<FieldValues>({});
-  const [icon, setIcon] = useState("");
-  const [color, setColor] = useState("");
-  const [description, setDescription] = useState<FieldValues>({});
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    const resolvedName = fromFieldValues(name, languages, site.default_language);
-    const resolvedDescription = fromFieldValues(description, languages, site.default_language);
-    await api.adminCreateProject({
-      name: resolvedName.text,
-      name_i18n: resolvedName.i18n,
-      icon,
-      color,
-      description: resolvedDescription.text,
-      description_i18n: resolvedDescription.i18n,
-    });
-    setName({});
-    setIcon("");
-    setColor("");
-    setDescription({});
-    setShowForm(false);
-    onChanged();
-  }
+  /** The project whose form is open, or null when none is. */
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   async function onDelete(id: number) {
     if (!confirm(t("admin.deleteConfirm"))) return;
-    await api.adminDeleteProject(id);
-    onChanged();
+    try {
+      await api.adminDeleteProject(id);
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
   }
 
   return (
     <div>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.projects")}</h2>
-        <Button variant="ghost" size="icon" onClick={() => setShowForm((v) => !v)} aria-label="add">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => {
+            setShowForm((v) => !v);
+            setEditingId(null);
+          }}
+          aria-label="add"
+        >
           <Plus className="h-4 w-4" />
         </Button>
       </div>
 
       {showForm && (
-        <form onSubmit={onCreate} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
-          <LocalizedInput label={t("admin.projectName")} values={name} onChange={setName} languages={languages} required />
-          <Input placeholder={t("admin.projectIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
-          <Input placeholder={t("admin.projectColor")} value={color} onChange={(e) => setColor(e.target.value)} />
-          <LocalizedInput
-            label={t("admin.projectDescription")}
-            values={description}
-            onChange={setDescription}
-            languages={languages}
-          />
-          <Button type="submit" size="sm">
-            {t("admin.save")}
-          </Button>
-        </form>
+        <ProjectForm
+          project={null}
+          onDone={(slug) => {
+            setShowForm(false);
+            if (slug) onChanged(slug);
+          }}
+        />
       )}
 
       <div className="mt-2 flex flex-col gap-1">
         {projects.map((p, i) => (
-          <div
-            key={p.id}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
-              selected?.id === p.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
-            }`}
-          >
-            <button type="button" onClick={() => onSelect(p)} className="flex flex-1 items-center gap-2 text-left">
-              {p.icon && <span>{p.icon}</span>}
-              {p.name}
-            </button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveProject(p.id, -1).then(onChanged)}>
-              <ArrowUp className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              disabled={i === projects.length - 1}
-              onClick={() => api.adminMoveProject(p.id, 1).then(onChanged)}
+          <div key={p.id}>
+            <div
+              className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+                selected?.id === p.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
+              }`}
             >
-              <ArrowDown className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(p.id)}>
-              <Trash2 className="h-3 w-3" />
-            </Button>
+              <button type="button" onClick={() => onSelect(p)} className="flex flex-1 items-center gap-2 text-left">
+                {p.icon && <span>{p.icon}</span>}
+                {p.name}
+              </button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                aria-label={t("admin.edit")}
+                onClick={() => {
+                  setShowForm(false);
+                  setEditingId((current) => (current === p.id ? null : p.id));
+                }}
+              >
+                <Pencil className="h-3 w-3" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveProject(p.id, -1).then(() => onChanged())}>
+                <ArrowUp className="h-3 w-3" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                disabled={i === projects.length - 1}
+                onClick={() => api.adminMoveProject(p.id, 1).then(() => onChanged())}
+              >
+                <ArrowDown className="h-3 w-3" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(p.id)}>
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+            {editingId === p.id && (
+              // Keyed by id AND slug: a save renames the directory, so the
+              // row that comes back is a different one and the form has to
+              // re-seed from it rather than keep the values it was opened
+              // with.
+              <ProjectForm
+                key={`${p.id}-${p.slug}`}
+                project={p}
+                onDone={(slug) => {
+                  setEditingId(null);
+                  if (slug) onChanged(slug);
+                }}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -1418,8 +1648,84 @@ function ProjectsPanel({
   );
 }
 
+/** Create OR edit, one form -- see ProjectForm, which this mirrors. */
+function CategoryForm({
+  projectId,
+  projectSlug,
+  category,
+  onDone,
+}: {
+  projectId: number;
+  /** The project the cover is uploaded into -- a category has no assets/
+   *  folder of its own, its images live in the project's. */
+  projectSlug: string;
+  category: Category | null;
+  onDone: (slug?: string) => void;
+}) {
+  const { t } = useI18n();
+  const { site } = useSite();
+  const languages = site.languages;
+  const [name, setName] = useState<FieldValues>(() =>
+    category ? toFieldValues(category.name, category.name_i18n, languages, site.default_language) : {},
+  );
+  const [icon, setIcon] = useState(category?.icon ?? "");
+  const [image, setImage] = useState(category?.image ?? "");
+  const [imageUrl, setImageUrl] = useState<string | null>(category?.image_url ?? null);
+  const [saving, setSaving] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    const resolved = fromFieldValues(name, languages, site.default_language);
+    const data = { name: resolved.text, name_i18n: resolved.i18n, icon, image };
+    setSaving(true);
+    try {
+      if (category) {
+        const saved = await api.adminUpdateCategory(category.id, data);
+        onDone(saved.slug);
+      } else {
+        const created = await api.adminCreateCategory(projectId, data);
+        onDone(created.slug);
+      }
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
+      <LocalizedInput label={t("admin.categoryName")} values={name} onChange={setName} languages={languages} required />
+      <Input placeholder={t("admin.categoryIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
+      <CoverField
+        projectSlug={projectSlug}
+        // `_category.yml` sits one directory below assets/, exactly like a
+        // page does -- so it stores the identical `../assets/x.png` a page's
+        // Markdown does, and for the same reason: it resolves in GitHub's
+        // own preview of the file too.
+        pathOf={(asset) => asset.markdown_path}
+        value={image}
+        previewUrl={imageUrl}
+        onChange={(next, url) => {
+          setImage(next);
+          setImageUrl(url);
+        }}
+      />
+      <div className="flex gap-2">
+        <Button type="submit" size="sm" disabled={saving}>
+          {t("admin.save")}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => onDone()}>
+          {t("admin.cancel")}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
 function CategoriesPanel({
   projectId,
+  projectSlug,
   categories,
   selected,
   readOnly,
@@ -1427,34 +1733,26 @@ function CategoriesPanel({
   onChanged,
 }: {
   projectId: number;
+  projectSlug: string;
   categories: Category[];
   selected: Category | null;
   /** A frozen version is being viewed: browse it, don't change it. */
   readOnly: boolean;
   onSelect: (c: Category) => void;
-  onChanged: () => void;
+  onChanged: (slug?: string) => void;
 }) {
   const { t } = useI18n();
-  const { site } = useSite();
-  const languages = site.languages;
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState<FieldValues>({});
-  const [icon, setIcon] = useState("");
-
-  async function onCreate(e: FormEvent) {
-    e.preventDefault();
-    const resolved = fromFieldValues(name, languages, site.default_language);
-    await api.adminCreateCategory(projectId, { name: resolved.text, name_i18n: resolved.i18n, icon });
-    setName({});
-    setIcon("");
-    setShowForm(false);
-    onChanged();
-  }
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   async function onDelete(id: number) {
     if (!confirm(t("admin.deleteConfirm"))) return;
-    await api.adminDeleteCategory(id);
-    onChanged();
+    try {
+      await api.adminDeleteCategory(id);
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
   }
 
   return (
@@ -1462,52 +1760,87 @@ function CategoriesPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.categories")}</h2>
         {!readOnly && (
-          <Button variant="ghost" size="icon" onClick={() => setShowForm((v) => !v)} aria-label="add">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setShowForm((v) => !v);
+              setEditingId(null);
+            }}
+            aria-label="add"
+          >
             <Plus className="h-4 w-4" />
           </Button>
         )}
       </div>
 
       {showForm && !readOnly && (
-        <form onSubmit={onCreate} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
-          <LocalizedInput label={t("admin.categoryName")} values={name} onChange={setName} languages={languages} required />
-          <Input placeholder={t("admin.categoryIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
-          <Button type="submit" size="sm">
-            {t("admin.save")}
-          </Button>
-        </form>
+        <CategoryForm
+          projectId={projectId}
+          projectSlug={projectSlug}
+          category={null}
+          onDone={(slug) => {
+            setShowForm(false);
+            if (slug) onChanged(slug);
+          }}
+        />
       )}
 
       <div className="mt-2 flex flex-col gap-1">
         {categories.map((c, i) => (
-          <div
-            key={c.id}
-            className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
-              selected?.id === c.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
-            }`}
-          >
-            <button type="button" onClick={() => onSelect(c)} className="flex flex-1 items-center gap-2 text-left">
-              {c.icon && <span>{c.icon}</span>}
-              {c.name}
-            </button>
-            {!readOnly && (
-              <>
-                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveCategory(c.id, -1).then(onChanged)}>
-                  <ArrowUp className="h-3 w-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  disabled={i === categories.length - 1}
-                  onClick={() => api.adminMoveCategory(c.id, 1).then(onChanged)}
-                >
-                  <ArrowDown className="h-3 w-3" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id)}>
-                  <Trash2 className="h-3 w-3" />
-                </Button>
-              </>
+          <div key={c.id}>
+            <div
+              className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+                selected?.id === c.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
+              }`}
+            >
+              <button type="button" onClick={() => onSelect(c)} className="flex flex-1 items-center gap-2 text-left">
+                {c.icon && <span>{c.icon}</span>}
+                {c.name}
+              </button>
+              {!readOnly && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    aria-label={t("admin.edit")}
+                    onClick={() => {
+                      setShowForm(false);
+                      setEditingId((current) => (current === c.id ? null : c.id));
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveCategory(c.id, -1).then(() => onChanged())}>
+                    <ArrowUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    disabled={i === categories.length - 1}
+                    onClick={() => api.adminMoveCategory(c.id, 1).then(() => onChanged())}
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+            </div>
+            {editingId === c.id && !readOnly && (
+              <CategoryForm
+                key={`${c.id}-${c.slug}`}
+                projectId={projectId}
+                projectSlug={projectSlug}
+                category={c}
+                onDone={(slug) => {
+                  setEditingId(null);
+                  if (slug) onChanged(slug);
+                }}
+              />
             )}
           </div>
         ))}
