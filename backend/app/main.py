@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
@@ -110,6 +110,14 @@ if FRONTEND_DIST.exists():
         # unauthenticated. Resolve both sides and compare the resolved paths;
         # a prefix check on the unresolved path would still be fooled by a
         # symlink inside the bundle pointing outward.
+        # An /api/ path that reached this catch-all matched no router, so it
+        # is a wrong URL, not a client-side route. Returning the SPA shell
+        # with a 200 hands an API caller HTML where it expects JSON, and the
+        # status code says it worked -- a typo'd endpoint then looks like an
+        # empty success rather than a mistake.
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not found.")
+
         candidate = (FRONTEND_DIST / full_path).resolve()
         index = FRONTEND_DIST / "index.html"
         if full_path and candidate.is_relative_to(FRONTEND_DIST) and candidate.is_file():
