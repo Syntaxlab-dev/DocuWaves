@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type SiteBranding } from "@/lib/api";
+import { useContentLang } from "@/lib/lang";
 import { applyAccent, applyFavicon } from "@/lib/theme";
 
 /** What the app renders before (and instead of, if the request fails) the
@@ -7,8 +8,16 @@ import { applyAccent, applyFavicon } from "@/lib/theme";
  *  for a content repo with no _site.yml in it, so an unbranded instance
  *  never flashes one set of values and then another. */
 const DEFAULT_SITE: SiteBranding = {
+  // No languages until the real branding says otherwise: the language
+  // prefix and switcher are decided from this, so guessing here would flash
+  // a switcher onto a single-language instance for one render.
+  languages: [],
+  default_language: "",
   name: "DocuWaves",
+  name_i18n: {},
   tagline: "",
+  tagline_i18n: {},
+  footer_text_i18n: {},
   logo: "",
   logo_url: null,
   logo_dark: "",
@@ -20,13 +29,21 @@ const DEFAULT_SITE: SiteBranding = {
   footer_links: [],
 };
 
-const SiteContext = createContext<{ site: SiteBranding; reload: () => Promise<void> }>({
+/** `ready` is false until the first branding response has landed (either
+ *  way -- a failed request still counts as answered). Nothing renders
+ *  differently for it, but the language routing does have to wait: the
+ *  configured languages decide whether an unprefixed URL should redirect,
+ *  and redirecting before they are known would send a reader of a
+ *  multilingual site to the wrong place. */
+const SiteContext = createContext<{ site: SiteBranding; ready: boolean; reload: () => Promise<void> }>({
   site: DEFAULT_SITE,
+  ready: false,
   reload: async () => {},
 });
 
 export function SiteProvider({ children }: { children: ReactNode }) {
   const [site, setSite] = useState<SiteBranding>(DEFAULT_SITE);
+  const [ready, setReady] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -36,6 +53,8 @@ export function SiteProvider({ children }: { children: ReactNode }) {
       // docs themselves load from other endpoints and read perfectly well
       // with the default look.
       setSite(DEFAULT_SITE);
+    } finally {
+      setReady(true);
     }
   }, []);
 
@@ -55,11 +74,20 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     applyFavicon(site.favicon_url);
   }, [site.favicon_url]);
 
-  return <SiteContext.Provider value={{ site, reload }}>{children}</SiteContext.Provider>;
+  return <SiteContext.Provider value={{ site, ready, reload }}>{children}</SiteContext.Provider>;
 }
 
 export function useSite() {
   return useContext(SiteContext);
+}
+
+/** A branding text in the content language being read: the per-language
+ *  value when this instance has one, the configured value otherwise. The
+ *  whole mapping is in the one branding response (see the backend's
+ *  read_branding), so switching language never refetches it. */
+export function siteText(site: SiteBranding, field: "name" | "tagline" | "footer_text", lang: string): string {
+  const mapping = field === "name" ? site.name_i18n : field === "tagline" ? site.tagline_i18n : site.footer_text_i18n;
+  return (lang && mapping[lang]) || site[field];
 }
 
 /** `<page title> · <site name>`, or just the site name on the home page
@@ -68,9 +96,14 @@ export function useSite() {
  *  page's own, not something the URL spells out. */
 export function useDocumentTitle(pageTitle?: string) {
   const { site } = useSite();
+  // The site name in the content language being read, when this instance
+  // translates it -- the tab is part of the page, so it says the same thing
+  // the header does.
+  const { lang } = useContentLang();
+  const name = siteText(site, "name", lang);
   useEffect(() => {
-    document.title = pageTitle ? `${pageTitle} · ${site.name}` : site.name;
-  }, [pageTitle, site.name]);
+    document.title = pageTitle ? `${pageTitle} · ${name}` : name;
+  }, [pageTitle, name]);
 }
 
 /** The logo to render for the current colour scheme: the dark variant only

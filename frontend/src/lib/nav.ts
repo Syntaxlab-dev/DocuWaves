@@ -7,10 +7,18 @@ import { ApiError, api, type NavCategory, type NavPage, type ProjectNav } from "
  *  would send them looking for a mistake they didn't make. */
 export type NavStatus = "loading" | "ready" | "notfound" | "failed";
 
-/** The project's whole published structure, which the project, category and
- *  page views all need (the sidebar is on all three). One hook rather than
- *  the same effect copied into each of them. */
-export function useProjectNav(projectSlug: string | undefined): { nav: ProjectNav | null; status: NavStatus } {
+/** The project's whole published structure IN ONE CONTENT LANGUAGE, which
+ *  the project, category and page views all need (the sidebar is on all
+ *  three). One hook rather than the same effect copied into each of them.
+ *
+ *  `lang` is part of the effect's dependencies, not just of the URL: a
+ *  reader switching language has to get the tree back in that language --
+ *  with the titles translated, and with the pages that only exist in the
+ *  fallback language marked. */
+export function useProjectNav(
+  projectSlug: string | undefined,
+  lang?: string,
+): { nav: ProjectNav | null; status: NavStatus } {
   const [nav, setNav] = useState<ProjectNav | null>(null);
   const [status, setStatus] = useState<NavStatus>("loading");
 
@@ -20,7 +28,7 @@ export function useProjectNav(projectSlug: string | undefined): { nav: ProjectNa
     setNav(null);
     setStatus("loading");
     api
-      .publicGetProjectNav(projectSlug)
+      .publicGetProjectNav(projectSlug, lang)
       .then((data) => {
         if (!current) return;
         setNav(data);
@@ -36,7 +44,7 @@ export function useProjectNav(projectSlug: string | undefined): { nav: ProjectNa
     return () => {
       current = false;
     };
-  }, [projectSlug]);
+  }, [projectSlug, lang]);
 
   return { nav, status };
 }

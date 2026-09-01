@@ -46,12 +46,20 @@ async def lifespan(_app: FastAPI):
             # pushed while the container was down stayed invisible until
             # the first periodic sync or a manual "Sync now".
             git_content_repo.sync_pull()
-            content_sync.full_sync()
         except git_content_repo.GitContentError as exc:
             # Doesn't prevent startup -- the admin UI's connection status
             # panel surfaces this instead of the app refusing to boot over
             # what might just be a transient network issue.
             log.warning("Initial content repo sync failed: %s", exc)
+        # Reindex from the working clone on disk whether or not the pull
+        # above got through: the clone lives on the same persistent volume
+        # as the index, so its files are there either way -- and after
+        # db.init_schema() has rebuilt the content tables for a new schema
+        # (see db.py) this is the call that fills them again, which must not
+        # hinge on the network being up at that moment. full_sync() itself
+        # no-ops when there is no checkout at all, so a failed FIRST clone
+        # still can't empty anything.
+        content_sync.full_sync()
         sync_task = asyncio.create_task(_periodic_content_sync())
     yield
     if sync_task is not None:

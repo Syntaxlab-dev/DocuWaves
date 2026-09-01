@@ -26,6 +26,12 @@ save, so nobody has to touch `git` directly if they don't want to.
   needing its own build.
 - **Draft vs. published** — a page stays invisible to the public site
   until you explicitly publish it.
+- **Multiple languages, optionally** — a page can exist in several
+  languages (`installation.de.md` next to `installation.en.md`), with the
+  language in the URL, a switcher in the header, and an honest notice on a
+  page that isn't translated yet rather than a dead end (see
+  "Multiple languages"). Off unless you ask for it: an instance that never
+  sets `languages:` behaves exactly as it always has.
 - **Full-text search** across every published page in every project.
 - **Single admin account** — password login, or single sign-on via any
   standard OIDC provider (Authentik, Keycloak, Authelia, Zitadel, ...).
@@ -75,7 +81,8 @@ content/
       <image-file>
     <category-slug>/
       _category.yml
-      <page-slug>.md
+      <page-slug>.md            <- the default language
+      <page-slug>.<lang>.md     <- the same page in another language
       <another-page-slug>.md
     <another-category-slug>/
       _category.yml
@@ -129,6 +136,95 @@ changes that.
 Slugs (the folder/file names themselves) become part of each page's URL, so
 keep them stable once published — renaming a project/category/page's name
 in the admin editor changes its slug (and therefore moves the file) too.
+
+### Multiple languages
+
+Entirely optional, and off until you switch it on: **a content repo with no
+`languages:` in `_site.yml` behaves exactly as it always has** — one
+language, no URL prefix, no switcher, no per-language fields anywhere in
+the admin UI, and every file stays where it is. Nothing below needs doing
+to keep an existing install working.
+
+To offer the docs in more than one language, list them in
+`content/_site.yml`, in order — **the first one is the default**:
+
+```yaml
+languages: [de, en]
+```
+
+That's the whole switch. Three things follow from it:
+
+**1. A page's language is in its filename.** `<page-slug>.<lang>.md`, with
+a two-letter code:
+
+```
+content/cachepanel/erste-schritte/
+  _category.yml
+  installation.de.md
+  installation.en.md
+  erweitert.de.md        <- German only; the missing English is visible at a glance
+```
+
+The **slug is the same in all of them** (`installation`), because these are
+one page in two languages, not two pages: a reader who switches language
+stays on the page they were reading. A plain `<page-slug>.md` with no code
+means the default language — so the existing files of a repo that only just
+added `languages:` are simply read as German (in the example above), in
+place. Nothing is moved or rewritten, and a page can keep that name
+forever; the admin editor only spells the code out on files it creates
+from now on.
+
+A code is only recognized as a language when it's one you configured, so a
+file named `release.v2.md` keeps the slug `release.v2` and doesn't become a
+Venda translation of `release`.
+
+**2. Names can be per language.** `name` and `description` in
+`_project.yml`, `name` in `_category.yml`, and `name` / `tagline` /
+`footer_text` in `_site.yml` each accept **either** a plain string (applies
+to every language, exactly as before) **or** a mapping:
+
+```yaml
+name:
+  de: Erste Schritte
+  en: Getting Started
+```
+
+A language missing from the mapping falls back to the default language's
+value. Both forms are valid at the same time in the same repo — translate
+the two names that matter and leave the rest as plain strings.
+
+**3. The language is in the URL**, as a path prefix:
+
+```
+/de/p/cachepanel/pages/installation
+/en/p/cachepanel/pages/installation
+```
+
+An unprefixed URL (every link that was ever shared before you added a
+second language) redirects to the default language, so nothing breaks.
+
+**A missing translation is never a dead end.** If a page has no version in
+the language being read, the default language's version is served —
+`200`, not `404` — with an unobtrusive notice above it saying so ("This
+page has not been translated yet — showing the German version"). In the
+sidebar and in category listings, such a page is listed normally and marked
+with a small muted language code after its title, so the language it opens
+in isn't a surprise. **Search stays in one language:** searching in English
+returns the English pages, plus the pages that exist *only* in the default
+language — never a page and its own translation as two hits.
+
+In the admin editor, a page gets one tab per configured language. A tab for
+a language the page doesn't exist in yet opens an empty editor and saves as
+`<slug>.<lang>.md` under that same slug — creating a translation, never a
+new page. Only the **default language's** title steers the slug, so
+renaming a translation can't move the page's URL out from under anyone.
+Deleting a page deletes all of its translations; to remove just one, delete
+that file in the content repo.
+
+The reader's *interface* language (button labels) is a separate thing they
+pick for themselves — but on a multi-language instance it follows whatever
+content language they're reading in, for the languages the interface has
+translations for.
 
 ### Images
 
@@ -192,6 +288,7 @@ build, image or environment variable.
 `_site.yml` — every field is optional, and so is the file itself:
 
 ```yaml
+languages: [de, en]                   # optional; omit for a single-language site
 name: SyntaxLab Docs                  # header, and the browser tab title
 tagline: Documentation for every…     # one line under the name on the home page
 logo: logo.png                        # a file in _site/; omit for text only
@@ -208,6 +305,7 @@ What each field does:
 
 | Field | Default when absent |
 |---|---|
+| `languages` | Single-language: no URL prefix, no switcher, no per-language fields (see "Multiple languages") |
 | `name` | `DocuWaves`. Shown in the header and used for the tab title — a page reads `<page title> · <name>`, the home page just `<name>` |
 | `tagline` | The generic "choose a project" line on the home page |
 | `logo` / `logo_dark` | No image; the name renders as text. `logo_dark` falls back to `logo`, so one file works for both modes |
@@ -219,7 +317,10 @@ Edit it in the admin area under **Branding** — name, tagline, a colour
 picker, footer text, footer link rows and upload buttons for the three
 images, with a live preview of the header. Saving writes `_site.yml`,
 commits and pushes it like any other content change. Hand-editing the file
-in the repo (or in a pull request) works just as well.
+in the repo (or in a pull request) works just as well. `name`, `tagline`
+and `footer_text` get one input per language once `languages:` names more
+than one; `languages` itself is shown there but only editable in the file,
+since it decides how every page file in the repo is named.
 
 The images in `_site/` follow exactly the same rules as a project's images
 (allowed types, 10 MB, content checked against the extension, SVGs screened

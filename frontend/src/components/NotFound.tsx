@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
+import { useContentLang } from "@/lib/lang";
 import { useDocumentTitle } from "@/lib/site";
 
 /**
@@ -13,6 +14,7 @@ import { useDocumentTitle } from "@/lib/site";
  */
 export function NotFound() {
   const { t } = useI18n();
+  const { path } = useContentLang();
   useDocumentTitle(t("notFound.title"));
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -21,7 +23,7 @@ export function NotFound() {
         <h1 className="mt-4 text-2xl font-semibold">{t("notFound.title")}</h1>
         <p className="mx-auto mt-2 max-w-md text-[var(--muted)]">{t("notFound.body")}</p>
         <Button asChild className="mt-6">
-          <Link to="/">{t("notFound.home")}</Link>
+          <Link to={path("/")}>{t("notFound.home")}</Link>
         </Button>
       </div>
     </div>

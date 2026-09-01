@@ -33,14 +33,16 @@ from urllib.parse import quote
 
 import yaml
 
-from app.services import content_assets
+from app.services import content_assets, site_languages
 from app.services.content_files import content_root
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
 
 SITE_DIRNAME = "_site"
-SITE_FILENAME = "_site.yml"
+# Same file site_languages.py reads `languages:` out of -- named there
+# because that module sits below this one and has to find it on its own.
+SITE_FILENAME = site_languages.SITE_FILENAME
 
 # The product's own name, used when `_site.yml` has no `name:` -- the same
 # string the frontend's app.title carries in both dictionaries, so an
@@ -126,23 +128,10 @@ def write_site_asset(filename: str, data: bytes) -> str:
 
 def _load() -> dict:
     """The raw mapping from `_site.yml`, or {} for every failure mode there
-    is. Logged, not raised: a typo in this one file must not take the public
-    site down with it, and a warning in the container log is what tells the
-    admin why their branding stopped applying."""
-    path = site_file()
-    if not path.is_file():
-        return {}
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
-        log.warning("Ignoring unreadable %s: %s", SITE_FILENAME, exc)
-        return {}
-    if data is None:
-        return {}  # an empty file parses to None, which is not an error
-    if not isinstance(data, dict):
-        log.warning("Ignoring %s: expected a YAML mapping, got %s.", SITE_FILENAME, type(data).__name__)
-        return {}
-    return data
+    is -- see site_languages.load_site_document(), which is this loader,
+    moved one layer down so the language list can share it (and so the file
+    is parsed once per change rather than once per reader)."""
+    return site_languages.load_site_document()
 
 
 def _text(data: dict, key: str, default: str = "") -> str:
@@ -153,6 +142,19 @@ def _text(data: dict, key: str, default: str = "") -> str:
     if not isinstance(value, str):
         return default
     return value.strip()[:_MAX_TEXT] or default
+
+
+def _localized_text(data: dict, key: str, default: str = "") -> tuple[str, dict[str, str]]:
+    """`name`/`tagline`/`footer_text` as (default-language text, per-language
+    mapping) -- the same string-or-mapping rule `_project.yml` follows, see
+    site_languages.split_localized(). A plain string still answers exactly
+    as _text() does, mapping empty, which is every existing instance."""
+    value = data.get(key)
+    if not isinstance(value, dict):
+        return _text(data, key, default), {}
+    text, mapping = site_languages.split_localized(value)
+    mapping = {code: value[:_MAX_TEXT] for code, value in mapping.items()}
+    return (text[:_MAX_TEXT] or default), mapping
 
 
 def _accent(data: dict) -> str:
@@ -204,14 +206,36 @@ def _asset_field(data: dict, key: str) -> tuple[str, str | None]:
 
 def read_branding() -> dict:
     """The resolved branding, every field filled in -- what both
-    GET /api/public/site and the admin form are built from."""
+    GET /api/public/site and the admin form are built from.
+
+    The three human-readable fields come back twice: `name` is the default
+    language's value (what a single-language instance has always had), and
+    `name_i18n` is the raw per-language mapping, empty for a plain string.
+    Resolving them server-side would mean the frontend refetching branding
+    on every language switch -- the mappings are two short strings, so the
+    one response carries every language and the reader's current one is
+    picked in the browser.
+
+    `languages` / `default_language` ride along because they live in this
+    same file and every consumer that has the branding needs them (the
+    header's switcher, the URL prefix, the admin form's per-language
+    fields)."""
     data = _load()
     logo, logo_url = _asset_field(data, "logo")
     logo_dark, logo_dark_url = _asset_field(data, "logo_dark")
     favicon, favicon_url = _asset_field(data, "favicon")
+    name, name_i18n = _localized_text(data, "name", DEFAULT_NAME)
+    tagline, tagline_i18n = _localized_text(data, "tagline")
+    footer_text, footer_text_i18n = _localized_text(data, "footer_text")
     return {
-        "name": _text(data, "name", DEFAULT_NAME),
-        "tagline": _text(data, "tagline"),
+        "languages": site_languages.languages(),
+        "default_language": site_languages.default_language(),
+        "name": name,
+        "name_i18n": name_i18n,
+        "tagline": tagline,
+        "tagline_i18n": tagline_i18n,
+        "footer_text": footer_text,
+        "footer_text_i18n": footer_text_i18n,
         "logo": logo,
         "logo_url": logo_url,
         "logo_dark": logo_dark,
@@ -219,12 +243,28 @@ def read_branding() -> dict:
         "favicon": favicon,
         "favicon_url": favicon_url,
         "accent": _accent(data),
-        "footer_text": _text(data, "footer_text"),
         "footer_links": _footer_links(data),
     }
 
 
 # ---- Writing ----
+
+
+def _i18n_payload(payload: dict, key: str) -> dict[str, str]:
+    """A `*_i18n` mapping as it arrived from the admin form, filtered to
+    real strings. Only the CONFIGURED languages survive: the form can't
+    offer any others, so anything else is a hand-crafted request, and
+    letting it through would put a language in the file that no reader of
+    this instance can ever select."""
+    raw = payload.get(key)
+    if not isinstance(raw, dict):
+        return {}
+    configured = site_languages.languages()
+    return {
+        code: value.strip()[:_MAX_TEXT]
+        for code, value in raw.items()
+        if code in configured and isinstance(value, str) and value.strip()
+    }
 
 
 def write_branding(payload: dict) -> list[str]:
@@ -238,15 +278,26 @@ def write_branding(payload: dict) -> list[str]:
     omitted key and an empty one already mean the same thing to the reader
     above. Keys this version doesn't know about are NOT carried over -- the
     admin form is the whole file's editor, and silently re-emitting something
-    it can't show would be worse than the honest round-trip."""
+    it can't show would be worse than the honest round-trip.
+
+    `languages:` is the one exception, and it is re-emitted from the FILE
+    rather than from the payload: it decides how every page file in the repo
+    is named and how every URL is shaped, so a branding save must never be
+    able to drop or change it (a stale admin tab posting a payload from
+    before the key existed would otherwise silently un-translate the whole
+    instance). It is edited in the file, by hand or by pull request."""
+    default_lang = site_languages.default_language()
     normalized = {
-        "name": _text(payload, "name", DEFAULT_NAME),
-        "tagline": _text(payload, "tagline"),
+        "languages": site_languages.languages(),
+        "name": site_languages.to_yaml_value(_text(payload, "name", DEFAULT_NAME), _i18n_payload(payload, "name_i18n"), default_lang),
+        "tagline": site_languages.to_yaml_value(_text(payload, "tagline"), _i18n_payload(payload, "tagline_i18n"), default_lang),
         "logo": _text(payload, "logo"),
         "logo_dark": _text(payload, "logo_dark"),
         "favicon": _text(payload, "favicon"),
         "accent": _accent(payload),
-        "footer_text": _text(payload, "footer_text"),
+        "footer_text": site_languages.to_yaml_value(
+            _text(payload, "footer_text"), _i18n_payload(payload, "footer_text_i18n"), default_lang
+        ),
         "footer_links": _footer_links(payload),
     }
     document = {k: v for k, v in normalized.items() if v}

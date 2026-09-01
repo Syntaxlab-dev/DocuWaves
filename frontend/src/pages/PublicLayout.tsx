@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from "react";
-import { Link, Outlet, useNavigate } from "react-router-dom";
-import { Moon, Search, Sun } from "lucide-react";
+import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Languages, Moon, Search, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
-import { logoForTheme, useSite } from "@/lib/site";
+import { languageName, useContentLang } from "@/lib/lang";
+import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 
 export function PublicLayout() {
-  const { t, lang, setLang } = useI18n();
+  const { t, lang: uiLang, setLang: setUiLang } = useI18n();
   const { site } = useSite();
+  const contentLang = useContentLang();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [isDark, setIsDark] = useState(getPreferredTheme() === "dark");
@@ -22,11 +24,12 @@ export function PublicLayout() {
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
-    if (q.trim()) navigate(`/search?q=${encodeURIComponent(q.trim())}`);
+    if (q.trim()) navigate(contentLang.path(`/search?q=${encodeURIComponent(q.trim())}`));
   }
 
   const logoUrl = logoForTheme(site, isDark);
-  const hasFooter = Boolean(site.footer_text) || site.footer_links.length > 0;
+  const footerText = siteText(site, "footer_text", contentLang.lang);
+  const hasFooter = Boolean(footerText) || site.footer_links.length > 0;
 
   return (
     // flex column so the footer sits at the bottom of a short page instead
@@ -34,11 +37,11 @@ export function PublicLayout() {
     <div className="flex min-h-screen flex-col">
       <header className="border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
-          <Link to="/" className="flex items-center gap-2 text-lg font-semibold">
+          <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">
             {/* alt="" -- the name sits right next to it in text, so a screen
                 reader announcing the logo too would just say it twice. */}
             {logoUrl && <img src={logoUrl} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />}
-            <span>{site.name}</span>
+            <span>{siteText(site, "name", contentLang.lang)}</span>
           </Link>
           <form onSubmit={onSearch} className="ml-auto flex flex-1 max-w-sm items-center gap-2">
             <div className="relative flex-1">
@@ -54,9 +57,19 @@ export function PublicLayout() {
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="theme">
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setLang(lang === "de" ? "en" : "de")}>
-            {lang === "de" ? "EN" : "DE"}
-          </Button>
+          {/* Two different questions, so two different controls -- and only
+              ever one of them at a time. On a multilingual instance the
+              switcher picks the CONTENT language (and the interface follows
+              it, see lib/lang.tsx); on a single-language one there is no
+              content language to pick, so the interface toggle stays
+              exactly the control it has always been. */}
+          {contentLang.multilingual ? (
+            <ContentLanguageSwitcher />
+          ) : (
+            <Button variant="ghost" size="sm" onClick={() => setUiLang(uiLang === "de" ? "en" : "de")}>
+              {uiLang === "de" ? "EN" : "DE"}
+            </Button>
+          )}
         </div>
       </header>
       {/* No container of its own: the docs views need a wider one than the
@@ -70,7 +83,7 @@ export function PublicLayout() {
       {hasFooter && (
         <footer className="mt-12 border-t border-[var(--border)] bg-[var(--surface)]">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-6 text-sm text-[var(--muted)]">
-            {site.footer_text && <span>{site.footer_text}</span>}
+            {footerText && <span>{footerText}</span>}
             {site.footer_links.map((link) => (
               <a
                 key={`${link.label}-${link.url}`}
@@ -89,6 +102,48 @@ export function PublicLayout() {
           </div>
         </footer>
       )}
+    </div>
+  );
+}
+
+/**
+ * Switches the content language while staying on the same page: the slug is
+ * shared by a page's translations, so only the URL's language segment
+ * changes and the reader keeps reading where they were. A page that has no
+ * version in the language they picked still opens -- with the fallback
+ * notice on it (see PublicPage) rather than a 404.
+ *
+ * A plain row of codes rather than a dropdown: an instance has two or three
+ * languages, and a menu to open would be one more click for the one thing a
+ * bilingual reader does most often on this header.
+ */
+function ContentLanguageSwitcher() {
+  const { t } = useI18n();
+  const { lang, languages } = useContentLang();
+  const { pathname, search, hash } = useLocation();
+
+  // Everything after the current language segment is the page itself.
+  const rest = pathname.split("/").slice(2).join("/");
+
+  return (
+    <div className="flex items-center gap-1" aria-label={t("nav.language")}>
+      <Languages className="h-3.5 w-3.5 text-[var(--muted)]" aria-hidden="true" />
+      {languages.map((code) => (
+        <Link
+          key={code}
+          to={`/${code}${rest ? `/${rest}` : ""}${search}${hash}`}
+          hrefLang={code}
+          aria-current={code === lang ? "true" : undefined}
+          title={languageName(code, lang)}
+          className={
+            code === lang
+              ? "rounded px-1.5 py-1 text-sm font-medium text-[var(--accent)]"
+              : "rounded px-1.5 py-1 text-sm text-[var(--muted)] hover:text-[var(--ink)]"
+          }
+        >
+          {code.toUpperCase()}
+        </Link>
+      ))}
     </div>
   );
 }

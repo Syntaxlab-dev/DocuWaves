@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { Languages } from "lucide-react";
 import { ApiError, api, type Category, type Page, type Project } from "@/lib/api";
 import { MarkdownView } from "@/components/MarkdownView";
 import { DocsShell } from "@/components/DocsShell";
@@ -9,6 +10,7 @@ import { TableOfContents } from "@/components/TableOfContents";
 import { collectHeadings } from "@/lib/headings";
 import { useProjectNav, type NavStatus } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
+import { languageName, useContentLang } from "@/lib/lang";
 import { useDocumentTitle } from "@/lib/site";
 
 /** Below this, a contents list is just the page's own outline restated --
@@ -20,8 +22,13 @@ export function PublicPage() {
   const { projectSlug, pageSlug } = useParams<{ projectSlug: string; pageSlug: string }>();
   const { hash } = useLocation();
   const { t } = useI18n();
-  const { nav, status: navStatus } = useProjectNav(projectSlug);
-  const [data, setData] = useState<{ project: Project; category: Category; page: Page } | null>(null);
+  const { lang, path } = useContentLang();
+  const { nav, status: navStatus } = useProjectNav(projectSlug, lang);
+  const [data, setData] = useState<{
+    project: Project;
+    category: Category;
+    page: Page & { fallback: boolean };
+  } | null>(null);
   const [pageStatus, setPageStatus] = useState<NavStatus>("loading");
 
   useEffect(() => {
@@ -30,7 +37,7 @@ export function PublicPage() {
     setData(null);
     setPageStatus("loading");
     api
-      .publicGetPage(projectSlug, pageSlug)
+      .publicGetPage(projectSlug, pageSlug, lang)
       .then((result) => {
         if (!current) return;
         setData(result);
@@ -43,7 +50,9 @@ export function PublicPage() {
     return () => {
       current = false;
     };
-  }, [projectSlug, pageSlug]);
+    // lang included: switching language keeps the reader on this same page
+    // (the slug is shared by its translations) and reloads its content.
+  }, [projectSlug, pageSlug, lang]);
 
   // Before the early returns below -- a hook can't sit behind a condition.
   // Undefined while loading, which just leaves the site name in the tab.
@@ -74,15 +83,31 @@ export function PublicPage() {
       aside={showToc ? <TableOfContents headings={headings} variant="column" /> : undefined}
     >
       <div className="flex flex-wrap items-center gap-1 text-sm text-[var(--muted)]">
-        <Link to={`/p/${data.project.slug}`} className="hover:text-[var(--accent)]">
+        <Link to={path(`/p/${data.project.slug}`)} className="hover:text-[var(--accent)]">
           {data.project.name}
         </Link>
         <span>/</span>
-        <Link to={`/p/${data.project.slug}/c/${data.category.slug}`} className="hover:text-[var(--accent)]">
+        <Link to={path(`/p/${data.project.slug}/c/${data.category.slug}`)} className="hover:text-[var(--accent)]">
           {data.category.name}
         </Link>
       </div>
       <h1 className="mt-2 mb-4 text-2xl font-semibold">{data.page.title}</h1>
+      {/* Between the title and the text, where it is read before the page
+          is: what follows is not in the language that was asked for, and
+          saying so plainly is the whole point -- the alternative would be
+          either a 404 over a translation nobody has written yet, or text
+          silently passed off as translated. */}
+      {data.page.fallback && (
+        <p
+          lang={data.page.language || undefined}
+          className="mb-5 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--muted)]"
+        >
+          <Languages className="mr-1.5 inline h-3.5 w-3.5 align-[-2px]" aria-hidden="true" />
+          {t("page.notTranslatedPrefix")}
+          {languageName(data.page.language, lang)}
+          {t("page.notTranslatedSuffix")}
+        </p>
+      )}
       {showToc && <TableOfContents headings={headings} variant="inline" />}
       <MarkdownView
         content={data.page.markdown_content}

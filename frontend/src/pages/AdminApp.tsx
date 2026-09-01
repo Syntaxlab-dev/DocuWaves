@@ -28,16 +28,105 @@ import {
   type Category,
   type ContentRepoStatus,
   type FooterLink,
+  type LocalizedText,
   type Page,
-  type PageSummary,
   type Project,
   type SiteAsset,
   type SiteBranding,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { languageName } from "@/lib/lang";
 import { logoForTheme, useDocumentTitle, useSite } from "@/lib/site";
 import { accentVariables, applyTheme, getPreferredTheme } from "@/lib/theme";
+
+/**
+ * Every human-readable field the content repo lets you translate (a
+ * project's or category's name and description, the site's name/tagline/
+ * footer) is edited through the three helpers below.
+ *
+ * On a single-language instance they collapse to exactly one plain input --
+ * the field keeps its own label, there are no tabs, no codes, no per-
+ * language rows, nothing at all to notice. The whole feature only appears
+ * once `languages:` in _site.yml names more than one, which is the same
+ * rule the public site follows.
+ *
+ * A field is edited as a map of language code to text; "" is the key a
+ * single-language instance uses, since it has no code to name.
+ */
+type FieldValues = Record<string, string>;
+
+const SINGLE = [""];
+
+function fieldLanguages(languages: string[]): string[] {
+  return languages.length > 1 ? languages : SINGLE;
+}
+
+/** Stored value (default-language text + mapping) -> what the inputs edit. */
+function toFieldValues(text: string, i18n: LocalizedText, languages: string[], defaultLanguage: string): FieldValues {
+  if (languages.length < 2) return { "": text };
+  return Object.fromEntries(
+    languages.map((code) => [code, i18n[code] ?? (code === defaultLanguage ? text : "")]),
+  );
+}
+
+/** ...and back: `text` is always the DEFAULT language's, because that is
+ *  what slugs are derived from and what a reader of an untranslated
+ *  language falls back to. */
+function fromFieldValues(
+  values: FieldValues,
+  languages: string[],
+  defaultLanguage: string,
+): { text: string; i18n: LocalizedText } {
+  if (languages.length < 2) return { text: values[""] ?? "", i18n: {} };
+  return { text: values[defaultLanguage] ?? "", i18n: values };
+}
+
+function LocalizedInput({
+  label,
+  values,
+  onChange,
+  languages,
+  required,
+}: {
+  label: string;
+  values: FieldValues;
+  onChange: (values: FieldValues) => void;
+  languages: string[];
+  required?: boolean;
+}) {
+  const { lang: uiLang } = useI18n();
+  const codes = fieldLanguages(languages);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">{label}</span>
+      {codes.map((code) => (
+        <div key={code} className="flex items-center gap-2">
+          {/* No code beside the input when there is only one language --
+              the single-language form has to look untouched. */}
+          {code && (
+            <span
+              className="w-7 shrink-0 text-xs uppercase text-[var(--muted)]"
+              title={languageName(code, uiLang)}
+            >
+              {code}
+            </span>
+          )}
+          <Input
+            value={values[code] ?? ""}
+            aria-label={code ? `${label} (${languageName(code, uiLang)})` : label}
+            // Required on the default language only: a translation that
+            // hasn't been written yet is a normal state, not a form error.
+            required={required && code === codes[0]}
+            onChange={(e) => onChange({ ...values, [code]: e.target.value })}
+            className="flex-1"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export function AdminApp() {
   const { t, lang, setLang } = useI18n();
@@ -51,8 +140,10 @@ export function AdminApp() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
-  const [pages, setPages] = useState<PageSummary[]>([]);
-  const [editingPageId, setEditingPageId] = useState<number | "new" | null>(null);
+  // Every language variant as its own row (the admin list endpoint does not
+  // collapse them) -- PagesPanel groups them by slug for display.
+  const [pages, setPages] = useState<Page[]>([]);
+  const [editing, setEditing] = useState<EditorTarget | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [showBranding, setShowBranding] = useState(false);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
@@ -165,7 +256,7 @@ export function AdminApp() {
             onSelect={(p) => {
               setSelectedProject(p);
               setSelectedCategory(null);
-              setEditingPageId(null);
+              setEditing(null);
             }}
             onChanged={loadProjects}
           />
@@ -181,7 +272,7 @@ export function AdminApp() {
                   selected={selectedCategory}
                   onSelect={(c) => {
                     setSelectedCategory(c);
-                    setEditingPageId(null);
+                    setEditing(null);
                   }}
                   onChanged={() => loadCategories(selectedProject.id)}
                 />
@@ -189,22 +280,23 @@ export function AdminApp() {
                 <div>
                   {!selectedCategory && <p className="text-[var(--muted)]">{t("admin.selectCategory")}</p>}
 
-                  {selectedCategory && editingPageId === null && (
+                  {selectedCategory && editing === null && (
                     <PagesPanel
                       pages={pages}
-                      onEdit={(id) => setEditingPageId(id)}
+                      onEdit={setEditing}
                       onChanged={() => loadPages(selectedCategory.id)}
                     />
                   )}
 
-                  {selectedCategory && editingPageId !== null && (
+                  {selectedCategory && editing !== null && (
                     <PageEditor
-                      pageId={editingPageId}
+                      target={editing}
                       projectSlug={selectedProject.slug}
                       categoryId={selectedCategory.id}
                       categories={categories}
+                      onSaved={() => loadPages(selectedCategory.id)}
                       onDone={() => {
-                        setEditingPageId(null);
+                        setEditing(null);
                         loadPages(selectedCategory.id);
                       }}
                     />
@@ -312,7 +404,7 @@ function AccountCard({ onClose }: { onClose: () => void }) {
  *  fields; nothing reaches the live site until Save, at which point the site
  *  context is reloaded so the surrounding admin header updates too. */
 function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => void }) {
-  const { t } = useI18n();
+  const { t, lang: uiLang } = useI18n();
   const { reload } = useSite();
   const [draft, setDraft] = useState<SiteBranding | null>(null);
   const [saving, setSaving] = useState(false);
@@ -340,12 +432,15 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
       // disappears from the form here rather than sitting in it looking saved.
       const saved = await api.adminUpdateSite({
         name: draft.name,
+        name_i18n: draft.name_i18n,
         tagline: draft.tagline,
+        tagline_i18n: draft.tagline_i18n,
         logo: draft.logo,
         logo_dark: draft.logo_dark,
         favicon: draft.favicon,
         accent: draft.accent,
         footer_text: draft.footer_text,
+        footer_text_i18n: draft.footer_text_i18n,
         footer_links: draft.footer_links,
       });
       setDraft(saved);
@@ -373,14 +468,35 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
             <BrandingPreview draft={draft} isDark={isDark} />
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="flex flex-col gap-1.5 text-sm font-medium">
-                {t("admin.brandingName")}
-                <Input value={draft.name} onChange={(e) => patch({ name: e.target.value })} />
-              </label>
-              <label className="flex flex-col gap-1.5 text-sm font-medium">
-                {t("admin.brandingTagline")}
-                <Input value={draft.tagline} onChange={(e) => patch({ tagline: e.target.value })} />
-              </label>
+              <BrandingTextField
+                label={t("admin.brandingName")}
+                draft={draft}
+                field="name"
+                mappingField="name_i18n"
+                patch={patch}
+              />
+              <BrandingTextField
+                label={t("admin.brandingTagline")}
+                draft={draft}
+                field="tagline"
+                mappingField="tagline_i18n"
+                patch={patch}
+              />
+            </div>
+
+            {/* Read-only: `languages:` decides how every page file in the
+                content repo is named and how every URL is shaped, so it is
+                changed in _site.yml (by hand or by pull request) rather
+                than by a button that would silently re-language a whole
+                repo -- see the backend's write_branding(). */}
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium">{t("admin.brandingLanguages")}</span>
+              <span className="text-sm text-[var(--muted)]">
+                {draft.languages.length > 0
+                  ? draft.languages.map((code) => `${code} (${languageName(code, uiLang)})`).join(" · ")
+                  : t("admin.brandingLanguagesNone")}
+              </span>
+              <span className="text-xs text-[var(--muted)]">{t("admin.brandingLanguagesHint")}</span>
             </div>
 
             <div className="flex flex-col gap-1.5">
@@ -433,10 +549,13 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
               />
             </div>
 
-            <label className="flex flex-col gap-1.5 text-sm font-medium">
-              {t("admin.brandingFooterText")}
-              <Input value={draft.footer_text} onChange={(e) => patch({ footer_text: e.target.value })} />
-            </label>
+            <BrandingTextField
+              label={t("admin.brandingFooterText")}
+              draft={draft}
+              field="footer_text"
+              mappingField="footer_text_i18n"
+              patch={patch}
+            />
 
             <FooterLinksEditor links={draft.footer_links} onChange={(footer_links) => patch({ footer_links })} />
 
@@ -452,6 +571,38 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** One of the three translatable branding texts. Exactly the plain input it
+ *  has always been on a single-language instance; one input per language
+ *  once `languages:` names more than one, with the default language's value
+ *  kept in the plain field (which is what an unbranded/untranslated read
+ *  falls back to). */
+function BrandingTextField({
+  label,
+  draft,
+  field,
+  mappingField,
+  patch,
+}: {
+  label: string;
+  draft: SiteBranding;
+  field: "name" | "tagline" | "footer_text";
+  mappingField: "name_i18n" | "tagline_i18n" | "footer_text_i18n";
+  patch: (changes: Partial<SiteBranding>) => void;
+}) {
+  const values = toFieldValues(draft[field], draft[mappingField], draft.languages, draft.default_language);
+  return (
+    <LocalizedInput
+      label={label}
+      values={values}
+      languages={draft.languages}
+      onChange={(next) => {
+        const resolved = fromFieldValues(next, draft.languages, draft.default_language);
+        patch({ [field]: resolved.text, [mappingField]: resolved.i18n } as Partial<SiteBranding>);
+      }}
+    />
   );
 }
 
@@ -632,19 +783,30 @@ function ProjectsPanel({
   onChanged: () => void;
 }) {
   const { t } = useI18n();
+  const { site } = useSite();
+  const languages = site.languages;
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState<FieldValues>({});
   const [icon, setIcon] = useState("");
   const [color, setColor] = useState("");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState<FieldValues>({});
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
-    await api.adminCreateProject({ name, icon, color, description });
-    setName("");
+    const resolvedName = fromFieldValues(name, languages, site.default_language);
+    const resolvedDescription = fromFieldValues(description, languages, site.default_language);
+    await api.adminCreateProject({
+      name: resolvedName.text,
+      name_i18n: resolvedName.i18n,
+      icon,
+      color,
+      description: resolvedDescription.text,
+      description_i18n: resolvedDescription.i18n,
+    });
+    setName({});
     setIcon("");
     setColor("");
-    setDescription("");
+    setDescription({});
     setShowForm(false);
     onChanged();
   }
@@ -666,13 +828,14 @@ function ProjectsPanel({
 
       {showForm && (
         <form onSubmit={onCreate} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
-          <Input placeholder={t("admin.projectName")} value={name} onChange={(e) => setName(e.target.value)} required />
+          <LocalizedInput label={t("admin.projectName")} values={name} onChange={setName} languages={languages} required />
           <Input placeholder={t("admin.projectIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
           <Input placeholder={t("admin.projectColor")} value={color} onChange={(e) => setColor(e.target.value)} />
-          <Input
-            placeholder={t("admin.projectDescription")}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+          <LocalizedInput
+            label={t("admin.projectDescription")}
+            values={description}
+            onChange={setDescription}
+            languages={languages}
           />
           <Button type="submit" size="sm">
             {t("admin.save")}
@@ -728,14 +891,17 @@ function CategoriesPanel({
   onChanged: () => void;
 }) {
   const { t } = useI18n();
+  const { site } = useSite();
+  const languages = site.languages;
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState<FieldValues>({});
   const [icon, setIcon] = useState("");
 
   async function onCreate(e: FormEvent) {
     e.preventDefault();
-    await api.adminCreateCategory(projectId, { name, icon });
-    setName("");
+    const resolved = fromFieldValues(name, languages, site.default_language);
+    await api.adminCreateCategory(projectId, { name: resolved.text, name_i18n: resolved.i18n, icon });
+    setName({});
     setIcon("");
     setShowForm(false);
     onChanged();
@@ -758,7 +924,7 @@ function CategoriesPanel({
 
       {showForm && (
         <form onSubmit={onCreate} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
-          <Input placeholder={t("admin.categoryName")} value={name} onChange={(e) => setName(e.target.value)} required />
+          <LocalizedInput label={t("admin.categoryName")} values={name} onChange={setName} languages={languages} required />
           <Input placeholder={t("admin.categoryIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
           <Button type="submit" size="sm">
             {t("admin.save")}
@@ -800,16 +966,58 @@ function CategoriesPanel({
   );
 }
 
+/**
+ * What the editor was opened on. A page and one of its translations are the
+ * same page, so the editor is addressed by SLUG plus language rather than
+ * by the numeric id of one language's row -- "translate this page" has to
+ * mean "the English version of this same slug", never "a new page called
+ * whatever the English title turned out to be".
+ */
+type EditorTarget =
+  /** A page that doesn't exist yet: no slug until it is first saved. */
+  | { kind: "new" }
+  /** An existing page, opened in one of the languages it exists in. */
+  | { kind: "page"; slug: string; language: string }
+  /** A translation that does not exist yet, of a page that does. */
+  | { kind: "translation"; slug: string; language: string };
+
+/** The language variants of one page, keyed by language code. */
+interface PageGroup {
+  slug: string;
+  title: string;
+  variants: Map<string, Page>;
+}
+
+/** One entry per page, however many languages it exists in -- the admin
+ *  list endpoint returns a row per translation, and a list showing
+ *  "Installation" three times would be a list of files, not of pages. */
+function groupPages(pages: Page[], defaultLanguage: string): PageGroup[] {
+  const groups = new Map<string, PageGroup>();
+  for (const page of pages) {
+    const group = groups.get(page.slug) ?? { slug: page.slug, title: page.title, variants: new Map() };
+    group.variants.set(page.language, page);
+    // The default language's title labels the group: it is the one that
+    // always exists (a translation is written from it) and the one the slug
+    // came from.
+    if (page.language === defaultLanguage || group.variants.size === 1) group.title = page.title;
+    groups.set(page.slug, group);
+  }
+  return [...groups.values()];
+}
+
 function PagesPanel({
   pages,
   onEdit,
   onChanged,
 }: {
-  pages: Page[] | PageSummary[];
-  onEdit: (id: number | "new") => void;
+  pages: Page[];
+  onEdit: (target: EditorTarget) => void;
   onChanged: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang: uiLang } = useI18n();
+  const { site } = useSite();
+  const multilingual = site.languages.length > 1;
+  const groups = groupPages(pages, site.default_language);
 
   async function onDelete(id: number) {
     if (!confirm(t("admin.deleteConfirm"))) return;
@@ -821,46 +1029,131 @@ function PagesPanel({
     <div>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.pages")}</h2>
-        <Button variant="outline" size="sm" onClick={() => onEdit("new")}>
+        <Button variant="outline" size="sm" onClick={() => onEdit({ kind: "new" })}>
           <Plus className="h-3.5 w-3.5" />
           {t("admin.newPage")}
         </Button>
       </div>
       <div className="mt-2 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
-        {pages.map((p) => (
-          <div key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-            <button type="button" onClick={() => onEdit(p.id)} className="flex-1 text-left">
-              {p.title}
-            </button>
-            {"published" in p && (
-              <span className={`text-xs ${p.published ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
-                {p.published ? t("admin.published") : t("admin.draft")}
-              </span>
-            )}
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(p.id)}>
-              <Trash2 className="h-3 w-3" />
-            </Button>
-          </div>
-        ))}
+        {groups.map((group) => {
+          // Opening the row itself lands on the default language, which is
+          // the version that always exists.
+          const primary = group.variants.get(site.default_language) ?? [...group.variants.values()][0];
+          return (
+            <div key={group.slug} className="flex items-center gap-2 px-3 py-2 text-sm">
+              <button
+                type="button"
+                onClick={() => onEdit({ kind: "page", slug: group.slug, language: primary.language })}
+                className="flex-1 text-left"
+              >
+                {group.title}
+              </button>
+
+              {/* Which languages this page exists in, and which are still
+                  missing -- one row of codes, each a link into the editor
+                  on that language. A missing one is dimmed and dashed,
+                  clicking it starts the translation. Nothing of this shows
+                  on a single-language instance. */}
+              {multilingual && (
+                <div className="flex items-center gap-1" aria-label={t("admin.pageLanguages")}>
+                  {site.languages.map((code) => {
+                    const variant = group.variants.get(code);
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        title={
+                          variant
+                            ? `${languageName(code, uiLang)} — ${variant.published ? t("admin.published") : t("admin.draft")}`
+                            : `${languageName(code, uiLang)} — ${t("admin.createTranslation")}`
+                        }
+                        onClick={() =>
+                          onEdit(
+                            variant
+                              ? { kind: "page", slug: group.slug, language: code }
+                              : { kind: "translation", slug: group.slug, language: code },
+                          )
+                        }
+                        className={
+                          variant
+                            ? `rounded border border-[var(--border)] px-1 text-[10px] uppercase leading-4 ${
+                                variant.published ? "text-[var(--accent)]" : "text-[var(--muted)]"
+                              }`
+                            : "rounded border border-dashed border-[var(--border)] px-1 text-[10px] uppercase leading-4 text-[var(--muted)] opacity-60"
+                        }
+                      >
+                        {code}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* On a single-language instance this is the same published/
+                  draft label it always was; with languages the state is per
+                  translation and lives on the codes above instead. */}
+              {!multilingual && primary && (
+                <span className={`text-xs ${primary.published ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
+                  {primary.published ? t("admin.published") : t("admin.draft")}
+                </span>
+              )}
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                aria-label={t("admin.delete")}
+                onClick={() => onDelete(primary.id)}
+              >
+                <Trash2 className="h-3 w-3" />
+              </Button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
 }
 
+/**
+ * One page, in one language at a time, with a tab per configured language.
+ *
+ * The tabs are the whole multi-language story here: a language the page
+ * already exists in loads that translation, a language it doesn't exist in
+ * yet opens an empty editor that will be SAVED UNDER THE SAME SLUG (see
+ * PageInput.slug) -- which is what makes it a translation rather than a
+ * second page that happens to say something similar. The slug itself is
+ * never editable and never derived from a translated title; only the
+ * default language's title steers it, on the backend.
+ *
+ * A single-language instance sees no tab strip at all: `languages` is empty
+ * there, so the editor is exactly the one-language editor it always was.
+ */
 function PageEditor({
-  pageId,
+  target,
   projectSlug,
   categoryId,
   categories,
+  onSaved,
   onDone,
 }: {
-  pageId: number | "new";
+  target: EditorTarget;
   projectSlug: string;
   categoryId: number;
   categories: Category[];
+  onSaved: () => void;
   onDone: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang: uiLang } = useI18n();
+  const { site } = useSite();
+  const multilingual = site.languages.length > 1;
+
+  const [slug, setSlug] = useState(target.kind === "new" ? "" : target.slug);
+  const [language, setLanguage] = useState(target.kind === "new" ? site.default_language : target.language);
+  /** Which languages this page exists in, as the backend last told us --
+   *  refreshed on every load and after every save, so a translation created
+   *  here immediately becomes a normal tab. */
+  const [existing, setExisting] = useState<string[]>([]);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [targetCategoryId, setTargetCategoryId] = useState(categoryId);
@@ -868,6 +1161,7 @@ function PageEditor({
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
+  const [dirty, setDirty] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
 
   // The page's own category, not the one it was opened from: the dropdown
@@ -876,36 +1170,84 @@ function PageEditor({
   const targetCategorySlug = categories.find((c) => c.id === targetCategoryId)?.slug;
 
   useEffect(() => {
-    if (pageId === "new") {
+    let current = true;
+    setTab("edit");
+    setDirty(false);
+    if (!slug) {
+      // Brand-new page: nothing to load, and no other language to offer
+      // until it has been saved once and has a slug of its own.
       setTitle("");
       setContent("");
       setTargetCategoryId(categoryId);
       setPublished(false);
       setLoadedId(null);
-    } else {
-      api.adminGetPage(pageId).then((p) => {
-        setTitle(p.title);
-        setContent(p.markdown_content);
-        setTargetCategoryId(p.category_id);
-        setPublished(p.published);
-        setLoadedId(p.id);
-      });
+      setExisting([]);
+      return;
     }
-  }, [pageId, categoryId]);
+    api.adminFindPage(projectSlug, slug, language).then((page) => {
+      if (!current) return;
+      setExisting(page.languages);
+      if (page.page) {
+        setTitle(page.page.title);
+        setContent(page.page.markdown_content);
+        setTargetCategoryId(page.page.category_id);
+        setPublished(page.page.published);
+        setLoadedId(page.page.id);
+      } else {
+        // This language has no version yet: an empty editor, but on the
+        // page's own slug and in its own category.
+        setTitle("");
+        setContent("");
+        setPublished(false);
+        setLoadedId(null);
+      }
+    });
+    return () => {
+      current = false;
+    };
+  }, [projectSlug, slug, language, categoryId]);
+
+  function switchLanguage(code: string) {
+    if (code === language) return;
+    // Switching tabs reloads from the server, so unsaved text would be
+    // gone without a word.
+    if (dirty && !confirm(t("admin.deleteConfirm"))) return;
+    setLanguage(code);
+  }
 
   async function onSave() {
     setSaving(true);
     try {
       if (loadedId === null) {
-        const created = await api.adminCreatePage({ title, markdown_content: content, category_id: targetCategoryId });
+        const created = await api.adminCreatePage({
+          title,
+          markdown_content: content,
+          category_id: targetCategoryId,
+          // Both only matter on a multilingual instance; the backend reads
+          // an empty language as "the default" and an empty slug as "a new
+          // page, derive it from the title".
+          language,
+          slug: slug || undefined,
+        });
         await api.adminPublishPage(created.id, published);
         setLoadedId(created.id);
+        setSlug(created.slug);
+        setExisting((codes) => (codes.includes(created.language) ? codes : [...codes, created.language]));
       } else {
-        await api.adminUpdatePage(loadedId, { title, markdown_content: content, category_id: targetCategoryId });
+        await api.adminUpdatePage(loadedId, {
+          title,
+          markdown_content: content,
+          category_id: targetCategoryId,
+          language,
+        });
         await api.adminPublishPage(loadedId, published);
       }
+      setDirty(false);
       toast.success(t("admin.save"));
-      onDone();
+      // The list behind the editor is refreshed, but the editor stays open
+      // on this page -- writing the other language is the very next thing
+      // an author does after saving a translation.
+      onSaved();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("common.error"));
     } finally {
@@ -926,6 +1268,7 @@ function PageEditor({
     const start = el.selectionStart;
     const end = el.selectionEnd;
     setContent(content.slice(0, start) + snippet + content.slice(end));
+    setDirty(true);
     // After React has re-rendered with the new value, or setting the
     // caret would immediately be overwritten by the controlled update.
     requestAnimationFrame(() => {
@@ -936,8 +1279,56 @@ function PageEditor({
 
   return (
     <div>
+      {multilingual && (
+        <div className="mb-3 flex flex-wrap items-center gap-1" aria-label={t("admin.pageLanguages")}>
+          {site.languages.map((code) => {
+            const exists = existing.includes(code);
+            const active = code === language;
+            return (
+              <button
+                key={code}
+                type="button"
+                onClick={() => switchLanguage(code)}
+                disabled={!slug && !active}
+                aria-current={active ? "true" : undefined}
+                title={
+                  !slug && !active
+                    ? t("admin.saveFirstForTranslations")
+                    : exists
+                      ? languageName(code, uiLang)
+                      : `${languageName(code, uiLang)} — ${t("admin.createTranslation")}`
+                }
+                className={[
+                  "rounded-t border-b-2 px-3 py-1.5 text-sm",
+                  active ? "border-[var(--accent)] font-medium" : "border-transparent text-[var(--muted)]",
+                  // Dashed and dimmed = this translation doesn't exist yet.
+                  // The same treatment the page list uses, so the two read
+                  // as the same fact stated twice.
+                  !exists && !active ? "opacity-60" : "",
+                  !slug && !active ? "cursor-not-allowed" : "",
+                ].join(" ")}
+              >
+                {languageName(code, uiLang)}
+                {!exists && <span className="ml-1.5 text-xs">·</span>}
+              </button>
+            );
+          })}
+          <span className="ml-2 text-xs text-[var(--muted)]">
+            {existing.includes(language) ? "" : t("admin.translationMissing")}
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t("admin.pageTitle")} className="flex-1 text-base font-medium" />
+        <Input
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setDirty(true);
+          }}
+          placeholder={t("admin.pageTitle")}
+          className="flex-1 text-base font-medium"
+        />
         <select
           value={targetCategoryId}
           onChange={(e) => setTargetCategoryId(Number(e.target.value))}
@@ -981,7 +1372,10 @@ function PageEditor({
           <Textarea
             ref={editorRef}
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={(e) => {
+              setContent(e.target.value);
+              setDirty(true);
+            }}
             className="min-h-[420px] font-mono"
           />
         ) : (

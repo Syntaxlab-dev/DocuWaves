@@ -23,6 +23,7 @@ const de = {
   "nav.search": "Suchen…",
   "nav.public": "Zur Website",
   "nav.contents": "Inhalt",
+  "nav.language": "Sprache",
   "page.onThisPage": "Auf dieser Seite",
   "page.pageNav": "Seitennavigation",
   "page.previous": "Vorherige Seite",
@@ -31,6 +32,10 @@ const de = {
   "page.copyCode": "Code kopieren",
   "page.copied": "Kopiert",
   "page.copyFailed": "Kopieren fehlgeschlagen",
+  "page.notTranslatedPrefix": "Diese Seite ist noch nicht übersetzt — angezeigt wird die Fassung auf ",
+  "page.notTranslatedSuffix": ".",
+  "page.fallbackBadge": "Nur auf ",
+  "page.fallbackBadgeSuffix": " verfügbar",
   "notFound.title": "Seite nicht gefunden",
   "notFound.body":
     "Zu dieser Adresse gibt es keine veröffentlichte Seite. Möglicherweise wurde sie umbenannt, entfernt — oder sie ist noch ein Entwurf.",
@@ -45,6 +50,7 @@ const de = {
   "search.placeholder": "Doku durchsuchen…",
   "search.empty": "Keine Treffer.",
   "search.resultsFor": "Ergebnisse für",
+  "search.language": "Sprache",
   "admin.projects": "Projekte",
   "admin.newProject": "Neues Projekt",
   "admin.projectName": "Name",
@@ -62,6 +68,10 @@ const de = {
   "admin.pages": "Seiten",
   "admin.newPage": "Neue Seite",
   "admin.pageTitle": "Titel",
+  "admin.pageLanguages": "Sprachen",
+  "admin.translationMissing": "Noch nicht übersetzt",
+  "admin.createTranslation": "Übersetzung anlegen",
+  "admin.saveFirstForTranslations": "Seite zuerst speichern, dann können Übersetzungen angelegt werden.",
   "admin.published": "Veröffentlicht",
   "admin.draft": "Entwurf",
   "admin.editPage": "Seite bearbeiten",
@@ -94,6 +104,10 @@ const de = {
   "admin.brandingAddLink": "Link hinzufügen",
   "admin.brandingPreview": "Vorschau",
   "admin.brandingSaved": "Branding gespeichert.",
+  "admin.brandingLanguages": "Inhaltssprachen",
+  "admin.brandingLanguagesHint":
+    "Wird über languages: in _site.yml im Content-Repo festgelegt — die erste Sprache ist die Standardsprache.",
+  "admin.brandingLanguagesNone": "Nur eine Sprache (kein languages: in _site.yml)",
   "admin.moveUp": "Nach oben",
   "admin.moveDown": "Nach unten",
   "admin.selectProject": "Wähle links ein Projekt.",
@@ -141,6 +155,7 @@ const en: Dict = {
   "nav.search": "Search…",
   "nav.public": "View site",
   "nav.contents": "Contents",
+  "nav.language": "Language",
   "page.onThisPage": "On this page",
   "page.pageNav": "Page navigation",
   "page.previous": "Previous",
@@ -149,6 +164,10 @@ const en: Dict = {
   "page.copyCode": "Copy code",
   "page.copied": "Copied",
   "page.copyFailed": "Copy failed",
+  "page.notTranslatedPrefix": "This page has not been translated yet — showing the ",
+  "page.notTranslatedSuffix": " version.",
+  "page.fallbackBadge": "Only in ",
+  "page.fallbackBadgeSuffix": "",
   "notFound.title": "Page not found",
   "notFound.body":
     "There's no published page at this address. It may have been renamed, removed -- or it's still a draft.",
@@ -163,6 +182,7 @@ const en: Dict = {
   "search.placeholder": "Search the docs…",
   "search.empty": "No matches.",
   "search.resultsFor": "Results for",
+  "search.language": "Language",
   "admin.projects": "Projects",
   "admin.newProject": "New project",
   "admin.projectName": "Name",
@@ -180,6 +200,10 @@ const en: Dict = {
   "admin.pages": "Pages",
   "admin.newPage": "New page",
   "admin.pageTitle": "Title",
+  "admin.pageLanguages": "Languages",
+  "admin.translationMissing": "Not translated yet",
+  "admin.createTranslation": "Create translation",
+  "admin.saveFirstForTranslations": "Save the page first, then its translations can be created.",
   "admin.published": "Published",
   "admin.draft": "Draft",
   "admin.editPage": "Edit page",
@@ -212,6 +236,10 @@ const en: Dict = {
   "admin.brandingAddLink": "Add link",
   "admin.brandingPreview": "Preview",
   "admin.brandingSaved": "Branding saved.",
+  "admin.brandingLanguages": "Content languages",
+  "admin.brandingLanguagesHint":
+    "Set with languages: in _site.yml in the content repo -- the first one is the default language.",
+  "admin.brandingLanguagesNone": "Single language (no languages: in _site.yml)",
   "admin.moveUp": "Move up",
   "admin.moveDown": "Move down",
   "admin.selectProject": "Select a project on the left.",
@@ -237,6 +265,15 @@ const en: Dict = {
 const dictionaries: Record<string, Dict> = { de, en };
 
 type Lang = "de" | "en";
+
+/** Whether a CONTENT language code is one the interface has words for --
+ *  what lets the UI follow a reader's content-language choice on a
+ *  multilingual instance (see lib/lang.tsx). A content language with no
+ *  dictionary here simply leaves the interface as it is; the docs
+ *  themselves are what that reader came for. */
+export function isUiLang(code: string): code is Lang {
+  return code === "de" || code === "en";
+}
 
 const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (key: keyof Dict) => string }>({
   lang: "en",

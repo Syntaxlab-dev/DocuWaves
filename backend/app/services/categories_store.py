@@ -8,47 +8,51 @@ Reads unchanged (DB index, kept current by content_sync.py); writes go
 through content_files.py + git_content_repo.py, see projects_store.py's own
 docstring for the full reasoning, identical here."""
 
-from app.services import content_files, content_sync, db, git_content_repo, projects_store
+from app.services import content_files, content_sync, db, git_content_repo, projects_store, site_languages
 
-_COLUMNS = "id, project_id, name, slug, icon, sort_order"
+_COLUMNS = "id, project_id, name, name_i18n, slug, icon, sort_order"
 
 
-def _row_to_dict(row) -> dict:
+def _row_to_dict(row, language: str = "") -> dict:
+    """`name` resolved for `language`, plus the raw mapping -- see
+    projects_store._row_to_dict(), identical here."""
+    name_i18n = site_languages.parse_i18n(row[3])
     return {
         "id": row[0],
         "project_id": row[1],
-        "name": row[2],
-        "slug": row[3],
-        "icon": row[4],
-        "sort_order": row[5],
+        "name": site_languages.pick(row[2], name_i18n, language),
+        "name_i18n": name_i18n,
+        "slug": row[4],
+        "icon": row[5],
+        "sort_order": row[6],
     }
 
 
-def list_categories(project_id: int) -> list[dict]:
+def list_categories(project_id: int, language: str = "") -> list[dict]:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         rows = conn.execute(
             f"SELECT {_COLUMNS} FROM categories WHERE project_id = {placeholder} ORDER BY sort_order, name",
             (project_id,),
         ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_row_to_dict(r, language) for r in rows]
 
 
-def get_category(category_id: int) -> dict | None:
+def get_category(category_id: int, language: str = "") -> dict | None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(f"SELECT {_COLUMNS} FROM categories WHERE id = {placeholder}", (category_id,)).fetchone()
-    return _row_to_dict(row) if row else None
+    return _row_to_dict(row, language) if row else None
 
 
-def get_category_by_slug(project_id: int, slug: str) -> dict | None:
+def get_category_by_slug(project_id: int, slug: str, language: str = "") -> dict | None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(
             f"SELECT {_COLUMNS} FROM categories WHERE project_id = {placeholder} AND slug = {placeholder}",
             (project_id, slug),
         ).fetchone()
-    return _row_to_dict(row) if row else None
+    return _row_to_dict(row, language) if row else None
 
 
 def slug_taken(project_id: int, slug: str, exclude_id: int | None = None) -> bool:
@@ -77,18 +81,22 @@ def _next_order(project_id: int) -> int:
     return row[0]
 
 
-def create_category(project_id: int, name: str, slug: str, icon: str, author: str) -> dict | None:
+def create_category(
+    project_id: int, name: str, slug: str, icon: str, author: str, name_i18n: dict[str, str] | None = None
+) -> dict | None:
     project = projects_store.get_project(project_id)
     if project is None:
         return None
     order = _next_order(project_id)
-    paths = content_files.write_category(project["slug"], slug, name, icon, order)
+    paths = content_files.write_category(project["slug"], slug, name, icon, order, name_i18n)
     git_content_repo.commit_and_push(paths, f"Add category: {name} ({project['name']})", author)
     content_sync.full_sync()
     return get_category_by_slug(project_id, slug)
 
 
-def update_category(category_id: int, name: str, slug: str, icon: str, author: str) -> dict | None:
+def update_category(
+    category_id: int, name: str, slug: str, icon: str, author: str, name_i18n: dict[str, str] | None = None
+) -> dict | None:
     current = get_category(category_id)
     if current is None:
         return None
@@ -96,7 +104,7 @@ def update_category(category_id: int, name: str, slug: str, icon: str, author: s
     paths: list[str] = []
     if slug != current["slug"]:
         paths += content_files.rename_category(project["slug"], current["slug"], slug)
-    paths += content_files.write_category(project["slug"], slug, name, icon, current["sort_order"])
+    paths += content_files.write_category(project["slug"], slug, name, icon, current["sort_order"], name_i18n)
     git_content_repo.commit_and_push(paths, f"Update category: {name} ({project['name']})", author)
     content_sync.full_sync()
     return get_category_by_slug(current["project_id"], slug)
@@ -112,8 +120,10 @@ def reorder_category(project_id: int, category_id: int, direction: int, author: 
         return
     a, b = categories[index], categories[swap_index]
     project = projects_store.get_project(project_id)
-    paths = content_files.write_category(project["slug"], a["slug"], a["name"], a["icon"], b["sort_order"])
-    paths += content_files.write_category(project["slug"], b["slug"], b["name"], b["icon"], a["sort_order"])
+    # name_i18n passed back through: this rewrites the whole `_category.yml`,
+    # so dropping it would flatten a translated name on every reorder.
+    paths = content_files.write_category(project["slug"], a["slug"], a["name"], a["icon"], b["sort_order"], a["name_i18n"])
+    paths += content_files.write_category(project["slug"], b["slug"], b["name"], b["icon"], a["sort_order"], b["name_i18n"])
     git_content_repo.commit_and_push(paths, f"Reorder categories: {a['name']} / {b['name']}", author)
     content_sync.full_sync()
 

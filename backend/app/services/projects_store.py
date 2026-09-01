@@ -15,42 +15,54 @@ CachePanel already made deliberately) -- persisted in `order:` inside
 `_project.yml` now, not just a DB column.
 """
 
-from app.services import content_files, content_sync, db, git_content_repo
+from app.services import content_files, content_sync, db, git_content_repo, site_languages
 
 
-def _row_to_dict(row) -> dict:
+def _row_to_dict(row, language: str = "") -> dict:
+    """`name`/`description` come out resolved for `language` (the default
+    language's value when this project has no translation of them, which is
+    also every project on a single-language instance), and the raw mapping
+    rides along as `name_i18n` for the admin form to edit."""
+    name_i18n = site_languages.parse_i18n(row[2])
+    description_i18n = site_languages.parse_i18n(row[7])
     return {
         "id": row[0],
-        "name": row[1],
-        "slug": row[2],
-        "icon": row[3],
-        "color": row[4],
-        "description": row[5],
-        "sort_order": row[6],
+        "name": site_languages.pick(row[1], name_i18n, language),
+        "name_i18n": name_i18n,
+        "slug": row[3],
+        "icon": row[4],
+        "color": row[5],
+        "description": site_languages.pick(row[6], description_i18n, language),
+        "description_i18n": description_i18n,
+        "sort_order": row[8],
     }
 
 
-_COLUMNS = "id, name, slug, icon, color, description, sort_order"
+_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order"
 
 
-def list_projects() -> list[dict]:
+def list_projects(language: str = "") -> list[dict]:
+    # Ordered by the DEFAULT language's name, not the reader's: the tile
+    # order on the homepage is a property of the site, and a list that
+    # reshuffles itself when a reader switches language would make the same
+    # instance feel like two different ones.
     with db.get_connection() as conn:
         rows = conn.execute(f"SELECT {_COLUMNS} FROM projects ORDER BY sort_order, name").fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_row_to_dict(r, language) for r in rows]
 
 
-def get_project(project_id: int) -> dict | None:
+def get_project(project_id: int, language: str = "") -> dict | None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(f"SELECT {_COLUMNS} FROM projects WHERE id = {placeholder}", (project_id,)).fetchone()
-    return _row_to_dict(row) if row else None
+    return _row_to_dict(row, language) if row else None
 
 
-def get_project_by_slug(slug: str) -> dict | None:
+def get_project_by_slug(slug: str, language: str = "") -> dict | None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(f"SELECT {_COLUMNS} FROM projects WHERE slug = {placeholder}", (slug,)).fetchone()
-    return _row_to_dict(row) if row else None
+    return _row_to_dict(row, language) if row else None
 
 
 def slug_taken(slug: str, exclude_id: int | None = None) -> bool:
@@ -71,25 +83,55 @@ def _next_order() -> int:
     return row[0]
 
 
-def create_project(name: str, slug: str, icon: str, color: str, description: str, author: str) -> dict:
+def create_project(
+    name: str,
+    slug: str,
+    icon: str,
+    color: str,
+    description: str,
+    author: str,
+    name_i18n: dict[str, str] | None = None,
+    description_i18n: dict[str, str] | None = None,
+) -> dict:
     order = _next_order()
-    paths = content_files.write_project(slug, name, icon, color, description, order)
+    paths = content_files.write_project(slug, name, icon, color, description, order, name_i18n, description_i18n)
     git_content_repo.commit_and_push(paths, f"Add project: {name}", author)
     content_sync.full_sync()
     return get_project_by_slug(slug)
 
 
-def update_project(project_id: int, name: str, slug: str, icon: str, color: str, description: str, author: str) -> dict | None:
+def update_project(
+    project_id: int,
+    name: str,
+    slug: str,
+    icon: str,
+    color: str,
+    description: str,
+    author: str,
+    name_i18n: dict[str, str] | None = None,
+    description_i18n: dict[str, str] | None = None,
+) -> dict | None:
     current = get_project(project_id)
     if current is None:
         return None
     paths: list[str] = []
     if slug != current["slug"]:
         paths += content_files.rename_project(current["slug"], slug)
-    paths += content_files.write_project(slug, name, icon, color, description, current["sort_order"])
+    paths += content_files.write_project(
+        slug, name, icon, color, description, current["sort_order"], name_i18n, description_i18n
+    )
     git_content_repo.commit_and_push(paths, f"Update project: {name}", author)
     content_sync.full_sync()
     return get_project_by_slug(slug)
+
+
+def _rewrite(project: dict, order: int) -> list[str]:
+    """Rewrites a project's `_project.yml` unchanged except for its order --
+    every field, translations included, taken from the row as it reads now."""
+    return content_files.write_project(
+        project["slug"], project["name"], project["icon"], project["color"], project["description"], order,
+        project["name_i18n"], project["description_i18n"],
+    )
 
 
 def reorder_project(project_id: int, direction: int, author: str) -> None:
@@ -105,8 +147,11 @@ def reorder_project(project_id: int, direction: int, author: str) -> None:
     if not (0 <= swap_index < len(projects)):
         return
     a, b = projects[index], projects[swap_index]
-    paths = content_files.write_project(a["slug"], a["name"], a["icon"], a["color"], a["description"], b["sort_order"])
-    paths += content_files.write_project(b["slug"], b["name"], b["icon"], b["color"], b["description"], a["sort_order"])
+    # The i18n mappings are passed straight back through: this rewrites the
+    # whole `_project.yml`, so leaving them out would quietly flatten a
+    # translated name into its default language on every reorder.
+    paths = _rewrite(a, b["sort_order"])
+    paths += _rewrite(b, a["sort_order"])
     git_content_repo.commit_and_push(paths, f"Reorder projects: {a['name']} / {b['name']}", author)
     content_sync.full_sync()
 

@@ -2,35 +2,62 @@
 authentication (see auth_guard.py's unconditional /api/public/* exemption),
 and every query here filters to published=True: an unpublished page must
 never be reachable through this router by slug-guessing, only through the
-admin endpoints."""
+admin endpoints.
+
+Every content route takes an optional `lang`: the content language being
+read, which the frontend takes from the URL's own `/de/...` prefix. It is
+normalized here rather than trusted (_language()), so a hand-typed
+`?lang=zz` reads the default language instead of returning nothing, and an
+instance with no `languages:` configured ignores the parameter entirely and
+answers exactly as it did before this existed."""
 
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from app.services import categories_store, content_assets, pages_store, projects_store, site_branding
+from app.services import (
+    categories_store,
+    content_assets,
+    pages_store,
+    projects_store,
+    site_branding,
+    site_languages,
+)
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
+_LANG_QUERY = Query(default=None, max_length=8, description="Content language; defaults to the site's first one.")
+
+
+def _language(lang: str | None) -> str:
+    """The language to actually serve: the requested one when this instance
+    has it configured, its default otherwise ('' when it has none)."""
+    if lang and lang in site_languages.languages():
+        return lang
+    return site_languages.default_language()
+
 
 @router.get("/projects")
-def public_list_projects():
-    return {"projects": projects_store.list_projects()}
+def public_list_projects(lang: str | None = _LANG_QUERY):
+    return {"projects": projects_store.list_projects(_language(lang))}
 
 
 @router.get("/projects/{project_slug}")
-def public_get_project(project_slug: str):
-    project = projects_store.get_project_by_slug(project_slug)
+def public_get_project(project_slug: str, lang: str | None = _LANG_QUERY):
+    language = _language(lang)
+    project = projects_store.get_project_by_slug(project_slug, language)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
-    categories = categories_store.list_categories(project["id"])
+    categories = categories_store.list_categories(project["id"], language)
     # Only categories that actually have at least one published page are
     # worth showing -- an empty category tile the admin hasn't filled in
-    # yet would just be a dead end for a visitor.
+    # yet would just be a dead end for a visitor. A category whose pages
+    # only exist in the fallback language still counts: those pages are
+    # readable, and list_pages() marks them.
     visible = []
     for c in categories:
-        pages = pages_store.list_pages(c["id"], published_only=True)
+        pages = pages_store.list_pages(c["id"], published_only=True, language=language)
         if pages:
             visible.append({**c, "page_count": len(pages)})
     return {"project": project, "categories": visible}
@@ -44,15 +71,27 @@ def public_get_project(project_slug: str):
     "for all of the project's pages, however many categories there are -- this is on the path of every "
     "single page view.",
 )
-def public_get_project_nav(project_slug: str):
-    project = projects_store.get_project_by_slug(project_slug)
+def public_get_project_nav(project_slug: str, lang: str | None = _LANG_QUERY):
+    language = _language(lang)
+    project = projects_store.get_project_by_slug(project_slug, language)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
 
     pages_by_category: dict[int, list[dict]] = {}
-    for page in pages_store.list_project_pages(project["id"], published_only=True):
+    # One entry per page, never one per translation: `language` says which
+    # one this entry actually is and `fallback` whether that is the reader's
+    # own -- the sidebar lists such a page normally (it is readable) and
+    # marks it, rather than hiding it or pretending it is translated.
+    for page in pages_store.list_project_pages(project["id"], published_only=True, language=language):
         pages_by_category.setdefault(page["category_id"], []).append(
-            {"id": page["id"], "title": page["title"], "slug": page["slug"], "sort_order": page["sort_order"]}
+            {
+                "id": page["id"],
+                "title": page["title"],
+                "slug": page["slug"],
+                "sort_order": page["sort_order"],
+                "language": page["language"],
+                "fallback": page["fallback"],
+            }
         )
 
     # A category with nothing published in it stays here with an empty page
@@ -65,42 +104,57 @@ def public_get_project_nav(project_slug: str):
         "project": project,
         "categories": [
             {**c, "pages": pages_by_category.get(c["id"], [])}
-            for c in categories_store.list_categories(project["id"])
+            for c in categories_store.list_categories(project["id"], language)
         ],
     }
 
 
 @router.get("/projects/{project_slug}/categories/{category_slug}")
-def public_get_category(project_slug: str, category_slug: str):
-    project = projects_store.get_project_by_slug(project_slug)
+def public_get_category(project_slug: str, category_slug: str, lang: str | None = _LANG_QUERY):
+    language = _language(lang)
+    project = projects_store.get_project_by_slug(project_slug, language)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
-    category = categories_store.get_category_by_slug(project["id"], category_slug)
+    category = categories_store.get_category_by_slug(project["id"], category_slug, language)
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found.")
-    pages = pages_store.list_pages(category["id"], published_only=True)
+    pages = pages_store.list_pages(category["id"], published_only=True, language=language)
     return {
         "project": project,
         "category": category,
-        "pages": [{"id": p["id"], "title": p["title"], "slug": p["slug"]} for p in pages],
+        "pages": [
+            {"id": p["id"], "title": p["title"], "slug": p["slug"], "language": p["language"], "fallback": p["fallback"]}
+            for p in pages
+        ],
     }
 
 
-@router.get("/projects/{project_slug}/pages/{page_slug}")
-def public_get_page(project_slug: str, page_slug: str):
-    project = projects_store.get_project_by_slug(project_slug)
+@router.get(
+    "/projects/{project_slug}/pages/{page_slug}",
+    summary="One published page, in the requested content language",
+    description="Answers with the requested language's version when there is one, and with the best other one "
+    "there is as a FALLBACK when there isn't (the site's default language first) -- 200 either way, with "
+    "`page.fallback` true and `page.language` naming what was actually served, so the reader gets the page "
+    "plus an honest notice instead of a 404 over a translation nobody has written yet.",
+)
+def public_get_page(project_slug: str, page_slug: str, lang: str | None = _LANG_QUERY):
+    language = _language(lang)
+    project = projects_store.get_project_by_slug(project_slug, language)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
-    page = pages_store.get_page_by_slug(project["id"], page_slug)
-    if page is None or not page["published"]:
+    # published_only, not a published check on the result: an unfinished
+    # draft in the reader's own language must not shadow the published
+    # version they could be reading instead (see resolve_page).
+    page = pages_store.resolve_page(project["id"], page_slug, language, published_only=True)
+    if page is None:
         raise HTTPException(status_code=404, detail="Page not found.")
-    category = categories_store.get_category(page["category_id"])
+    category = categories_store.get_category(page["category_id"], language)
     return {"project": project, "category": category, "page": page}
 
 
 @router.get("/search")
-def public_search(q: str = Query(..., min_length=1, max_length=200)):
-    return {"results": pages_store.search(q)}
+def public_search(q: str = Query(..., min_length=1, max_length=200), lang: str | None = _LANG_QUERY):
+    return {"results": pages_store.search(q, language=_language(lang))}
 
 
 @router.get(
