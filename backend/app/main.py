@@ -3,14 +3,14 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
 from app.routers import admin_content, auth, public_content
-from app.services import content_sync, db, git_content_repo, session_secret
+from app.services import content_sync, content_versions, db, git_content_repo, session_secret
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -88,6 +88,21 @@ app.add_middleware(
     same_site="lax",
     https_only=False,  # typically sits behind a reverse proxy or is hit directly over plain HTTP on a LAN
 )
+
+
+@app.exception_handler(content_versions.FrozenVersionError)
+def _frozen_version_handler(_request: Request, exc: content_versions.FrozenVersionError) -> JSONResponse:
+    """A write aimed at a frozen documentation version, refused. Registered
+    centrally rather than caught in each admin route so that EVERY write
+    path is covered by construction -- including one added later that
+    forgets to wrap its store call -- and so the reason the store raised
+    (which names the version and the file to edit instead) is what the
+    caller actually reads. 403 rather than 409: nothing conflicted, this
+    version is simply read-only. `detail` matches the shape every other
+    error in this API uses, so the frontend's own error handling shows it
+    without a special case."""
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
 
 app.include_router(auth.router)
 app.include_router(admin_content.router)

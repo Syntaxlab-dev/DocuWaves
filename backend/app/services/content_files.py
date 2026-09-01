@@ -10,6 +10,13 @@ understand):
     content/<project-slug>/<category-slug>/<page-slug>.md
     content/<project-slug>/<category-slug>/<page-slug>.<lang>.md
 
+...or, once the project has frozen a documentation version, with one extra
+directory level between the project and its categories:
+
+    content/<project-slug>/_versions.yml
+    content/<project-slug>/current/<category-slug>/<page-slug>.<lang>.md
+    content/<project-slug>/v2.0/<category-slug>/<page-slug>.<lang>.md
+
 (content/_site.yml and content/_site/ are the instance's own branding, owned
 by site_branding.py -- underscore-prefixed names are skipped by every
 enumeration here, see _RESERVED_PREFIX.)
@@ -36,6 +43,13 @@ An instance with no `languages:` configured hits neither: no suffix is
 recognized, every field is a plain string, and every function below behaves
 exactly as it did before any of this existed.
 
+Versions are the same kind of addition, one level up: every function below
+takes a `version`, and content_versions.content_dir() resolves it to the
+project directory itself for a project with no `_versions.yml` -- so an
+unversioned project reads and writes exactly the paths it always did, with
+`version=""` flowing through untouched. The default is "" on purpose:
+nothing has to pass a version for the unversioned case to keep working.
+
 Every write function returns the list of paths it touched, *relative to the
 content repo root* (not the `content/` subdirectory), exactly the form
 git_content_repo.commit_and_push() expects for staging.
@@ -49,7 +63,7 @@ import frontmatter
 import yaml
 from slugify import slugify
 
-from app.services import site_languages
+from app.services import content_versions, site_languages
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -70,6 +84,14 @@ _RESERVED_PREFIX = "_"
 
 def content_root() -> Path:
     return Path(settings.content_repo_path) / _CONTENT_DIRNAME
+
+
+def project_content_dir(project_slug: str, version: str = "") -> Path:
+    """Where this project's categories and assets/ live for `version` -- the
+    project directory itself while the project is unversioned. Every path
+    below is built from this one function, so the optional version level is
+    resolved in exactly one place (content_versions.content_dir())."""
+    return content_versions.content_dir(project_slug, version)
 
 
 def is_reserved(name: str) -> bool:
@@ -179,8 +201,8 @@ def rename_project(old_slug: str, new_slug: str) -> list[str]:
 # ---- Categories ----
 
 
-def list_category_slugs(project_slug: str) -> list[str]:
-    root = content_root() / project_slug
+def list_category_slugs(project_slug: str, version: str = "") -> list[str]:
+    root = project_content_dir(project_slug, version)
     if not root.exists():
         return []
     return sorted(
@@ -188,8 +210,8 @@ def list_category_slugs(project_slug: str) -> list[str]:
     )
 
 
-def read_category(project_slug: str, slug: str) -> dict | None:
-    path = content_root() / project_slug / slug / "_category.yml"
+def read_category(project_slug: str, slug: str, version: str = "") -> dict | None:
+    path = project_content_dir(project_slug, version) / slug / "_category.yml"
     if not path.exists():
         return None
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -198,9 +220,15 @@ def read_category(project_slug: str, slug: str) -> dict | None:
 
 
 def write_category(
-    project_slug: str, slug: str, name: str, icon: str, order: int, name_i18n: dict[str, str] | None = None
+    project_slug: str,
+    slug: str,
+    name: str,
+    icon: str,
+    order: int,
+    name_i18n: dict[str, str] | None = None,
+    version: str = "",
 ) -> list[str]:
-    path = content_root() / project_slug / slug / "_category.yml"
+    path = project_content_dir(project_slug, version) / slug / "_category.yml"
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {
         "name": site_languages.to_yaml_value(name, name_i18n or {}, site_languages.default_language()),
@@ -211,8 +239,8 @@ def write_category(
     return [_rel(path)]
 
 
-def delete_category(project_slug: str, slug: str) -> list[str]:
-    path = content_root() / project_slug / slug
+def delete_category(project_slug: str, slug: str, version: str = "") -> list[str]:
+    path = project_content_dir(project_slug, version) / slug
     if not path.exists():
         return []
     touched = [_rel(p) for p in path.rglob("*") if p.is_file()]
@@ -220,9 +248,10 @@ def delete_category(project_slug: str, slug: str) -> list[str]:
     return touched
 
 
-def rename_category(project_slug: str, old_slug: str, new_slug: str) -> list[str]:
-    old_path = content_root() / project_slug / old_slug
-    new_path = content_root() / project_slug / new_slug
+def rename_category(project_slug: str, old_slug: str, new_slug: str, version: str = "") -> list[str]:
+    directory = project_content_dir(project_slug, version)
+    old_path = directory / old_slug
+    new_path = directory / new_slug
     if not old_path.exists() or new_path.exists():
         return []
     old_files = [_rel(p) for p in old_path.rglob("*") if p.is_file()]
@@ -234,7 +263,7 @@ def rename_category(project_slug: str, old_slug: str, new_slug: str) -> list[str
 # ---- Pages ----
 
 
-def list_page_variants(project_slug: str, category_slug: str) -> list[tuple[str, str]]:
+def list_page_variants(project_slug: str, category_slug: str, version: str = "") -> list[tuple[str, str]]:
     """Every page file in the category as (slug, language) -- one entry per
     file, so `installation.de.md` and `installation.en.md` are two entries
     sharing one slug. `language` is the file's EFFECTIVE language: the
@@ -248,7 +277,7 @@ def list_page_variants(project_slug: str, category_slug: str) -> list[tuple[str,
     the explicitly suffixed file -- see page_path(), which prefers it as the
     more specific statement of what it is. The duplicate is logged so it
     doesn't stay invisible."""
-    root = content_root() / project_slug / category_slug
+    root = project_content_dir(project_slug, version) / category_slug
     if not root.exists():
         return []
     default_lang = site_languages.default_language()
@@ -267,7 +296,9 @@ def list_page_variants(project_slug: str, category_slug: str) -> list[tuple[str,
     return list(variants)
 
 
-def _page_paths(project_slug: str, category_slug: str, slug: str, language: str) -> tuple[Path, Path | None]:
+def _page_paths(
+    project_slug: str, category_slug: str, slug: str, language: str, version: str = ""
+) -> tuple[Path, Path | None]:
     """(the file this language would be named, the unsuffixed `<slug>.md` if
     that file is ALSO this language's).
 
@@ -277,34 +308,34 @@ def _page_paths(project_slug: str, category_slug: str, slug: str, language: str)
     any other language it is somebody else's file and must be left alone --
     reading it would serve German text as English, writing it would
     overwrite the very page the translation was made from."""
-    directory = content_root() / project_slug / category_slug
+    directory = project_content_dir(project_slug, version) / category_slug
     suffixed = directory / site_languages.page_filename(slug, language)
     plain = directory / f"{slug}.md"
     return suffixed, (plain if language == site_languages.default_language() else None)
 
 
-def page_path(project_slug: str, category_slug: str, slug: str, language: str) -> Path:
+def page_path(project_slug: str, category_slug: str, slug: str, language: str, version: str = "") -> Path:
     """Where a page in `language` lives, for reading."""
-    suffixed, plain = _page_paths(project_slug, category_slug, slug, language)
+    suffixed, plain = _page_paths(project_slug, category_slug, slug, language, version)
     if suffixed.exists() or plain is None:
         return suffixed
     return plain
 
 
-def _page_path_for_write(project_slug: str, category_slug: str, slug: str, language: str) -> Path:
+def _page_path_for_write(project_slug: str, category_slug: str, slug: str, language: str, version: str = "") -> Path:
     """Where to WRITE a page in `language`. An existing file is rewritten
     where it already is (so saving a page whose default-language version
     the repo spells `installation.md` doesn't leave that file behind and
     start a second `installation.de.md` beside it); anything new gets the
     explicit `<slug>.<lang>.md` name on a multilingual instance."""
-    suffixed, plain = _page_paths(project_slug, category_slug, slug, language)
+    suffixed, plain = _page_paths(project_slug, category_slug, slug, language, version)
     if not suffixed.exists() and plain is not None and plain.exists():
         return plain
     return suffixed
 
 
-def read_page(project_slug: str, category_slug: str, slug: str, language: str = "") -> dict | None:
-    path = page_path(project_slug, category_slug, slug, language)
+def read_page(project_slug: str, category_slug: str, slug: str, language: str = "", version: str = "") -> dict | None:
+    path = page_path(project_slug, category_slug, slug, language, version)
     if not path.exists():
         return None
     post = frontmatter.loads(path.read_text(encoding="utf-8"))
@@ -326,22 +357,23 @@ def write_page(
     order: int,
     published: bool,
     language: str = "",
+    version: str = "",
 ) -> list[str]:
-    path = _page_path_for_write(project_slug, category_slug, slug, language)
+    path = _page_path_for_write(project_slug, category_slug, slug, language, version)
     path.parent.mkdir(parents=True, exist_ok=True)
     post = frontmatter.Post(markdown_content, title=title, order=order, published=published)
     path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
     return [_rel(path)]
 
 
-def page_variant_paths(project_slug: str, category_slug: str, slug: str) -> list[Path]:
+def page_variant_paths(project_slug: str, category_slug: str, slug: str, version: str = "") -> list[Path]:
     """Every file that is this page, in any language -- `<slug>.md` plus
     every `<slug>.<lang>.md`. The unit of a rename/move/delete is the PAGE,
     not one translation of it: the slug is shared by definition (that's what
     keeps a reader on the same page when they switch language), so a slug
     that changes has to change for all of them at once or the translations
     silently come apart."""
-    directory = content_root() / project_slug / category_slug
+    directory = project_content_dir(project_slug, version) / category_slug
     if not directory.is_dir():
         return []
     return [
@@ -351,15 +383,22 @@ def page_variant_paths(project_slug: str, category_slug: str, slug: str) -> list
     ]
 
 
-def delete_page(project_slug: str, category_slug: str, slug: str) -> list[str]:
-    paths = page_variant_paths(project_slug, category_slug, slug)
+def delete_page(project_slug: str, category_slug: str, slug: str, version: str = "") -> list[str]:
+    paths = page_variant_paths(project_slug, category_slug, slug, version)
     touched = [_rel(p) for p in paths]
     for path in paths:
         path.unlink()
     return touched
 
 
-def relocate_page(project_slug: str, old_category_slug: str, old_slug: str, new_category_slug: str, new_slug: str) -> list[str]:
+def relocate_page(
+    project_slug: str,
+    old_category_slug: str,
+    old_slug: str,
+    new_category_slug: str,
+    new_slug: str,
+    version: str = "",
+) -> list[str]:
     """Handles both cases an admin edit can trigger at once -- a title edit
     that changes the slug, and/or picking a different category for the page
     -- in one filesystem move (always within the same project: the admin
@@ -372,10 +411,10 @@ def relocate_page(project_slug: str, old_category_slug: str, old_slug: str, new_
     page_variant_paths()."""
     if old_category_slug == new_category_slug and old_slug == new_slug:
         return []
-    old_paths = page_variant_paths(project_slug, old_category_slug, old_slug)
+    old_paths = page_variant_paths(project_slug, old_category_slug, old_slug, version)
     if not old_paths:
         return []
-    new_directory = content_root() / project_slug / new_category_slug
+    new_directory = project_content_dir(project_slug, version) / new_category_slug
     moves: list[tuple[Path, Path]] = []
     for old_path in old_paths:
         _, code = site_languages.parse_page_filename(old_path.stem)

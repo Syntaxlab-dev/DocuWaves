@@ -5,6 +5,7 @@ which owns the Markdown/YAML side of the same clone).
 Convention (see the README's "Content repo structure" section):
 
     content/<project-slug>/assets/<filename>
+    content/<project-slug>/<version>/assets/<filename>   (once versioned)
 
 A page at content/<project>/<category>/<page>.md references one with a
 NORMAL relative Markdown path -- `![Dashboard](../assets/dashboard.png)` --
@@ -12,13 +13,22 @@ deliberately, so GitHub/Gitea's own file preview of that same .md renders
 the image too. A rewritten absolute URL in the source would only ever work
 inside DocuWaves itself.
 
+`assets/` sits INSIDE the version directory once a project is versioned,
+because a screenshot belongs to the version it documents. That keeps the
+one `..` exactly right in both shapes -- a page is one directory below
+assets/ either way -- so freezing a version never rewrites a single page's
+Markdown (see content_versions.py).
+
 Resolution rule: a page's relative path is resolved against that page's own
 directory in the clone, and the result must stay inside that page's own
 PROJECT directory. `../assets/x.png` from a category directory lands in the
-project's assets/ folder (fine); `../../other-project/x.png`, an absolute
-path, or a symlink pointing out of the clone must never resolve (see
-resolve_asset() -- it compares fully resolved paths, never string prefixes,
-so a symlink or a `..` segment can't sneak past it).
+project's (or the version's) assets/ folder (fine);
+`../../other-project/x.png`, an absolute path, or a symlink pointing out of
+the clone must never resolve (see resolve_asset() -- it compares fully
+resolved paths, never string prefixes, so a symlink or a `..` segment can't
+sneak past it). The containment boundary stays the PROJECT directory, which
+is what lets one resolver serve `assets/x.png` and `v2.0/assets/x.png`
+without knowing that versions exist at all.
 
 The same machinery serves the instance's branding images
 (content/_site/logo.png -- see site_branding.py), which pass `_site` where a
@@ -39,7 +49,7 @@ from xml.etree import ElementTree
 
 from slugify import slugify
 
-from app.services.content_files import content_root
+from app.services.content_files import content_root, project_content_dir
 from app.settings import settings
 
 _ASSETS_DIRNAME = "assets"
@@ -61,8 +71,8 @@ CONTENT_TYPES: dict[str, str] = {
 MAX_ASSET_BYTES = 10 * 1024 * 1024
 
 
-def assets_dir(project_slug: str) -> Path:
-    return content_root() / project_slug / _ASSETS_DIRNAME
+def assets_dir(project_slug: str, version: str = "") -> Path:
+    return project_content_dir(project_slug, version) / _ASSETS_DIRNAME
 
 
 def _rel(path: Path) -> str:
@@ -117,15 +127,21 @@ def markdown_path(filename: str) -> str:
     return f"../{_ASSETS_DIRNAME}/{filename}"
 
 
-def public_url(project_slug: str, filename: str) -> str:
+def public_url(project_slug: str, filename: str, version: str = "") -> str:
     """The same file as the public serving endpoint addresses it -- used for
     the admin uploader's preview, where markdown_path() alone wouldn't
-    resolve (the editor isn't sitting in a category directory)."""
-    return f"/api/public/assets/{project_slug}/{_ASSETS_DIRNAME}/{filename}"
+    resolve (the editor isn't sitting in a category directory).
+
+    The path after the project slug is the file's location RELATIVE TO THE
+    PROJECT directory, which is exactly what the endpoint resolves -- so a
+    versioned project's asset simply carries its version directory in front
+    of `assets/`, and the endpoint needs no version parameter of its own."""
+    prefix = f"{version}/" if version else ""
+    return f"/api/public/assets/{project_slug}/{prefix}{_ASSETS_DIRNAME}/{filename}"
 
 
-def list_assets(project_slug: str) -> list[dict]:
-    directory = assets_dir(project_slug)
+def list_assets(project_slug: str, version: str = "") -> list[dict]:
+    directory = assets_dir(project_slug, version)
     if not directory.is_dir():
         return []
     return sorted(
@@ -159,8 +175,8 @@ def unique_filename_in(directory: Path, original_name: str) -> str:
     return candidate
 
 
-def unique_filename(project_slug: str, original_name: str) -> str:
-    return unique_filename_in(assets_dir(project_slug), original_name)
+def unique_filename(project_slug: str, original_name: str, version: str = "") -> str:
+    return unique_filename_in(assets_dir(project_slug, version), original_name)
 
 
 def write_asset_in(directory: Path, filename: str, data: bytes) -> str:
@@ -173,14 +189,14 @@ def write_asset_in(directory: Path, filename: str, data: bytes) -> str:
     return _rel(path)
 
 
-def write_asset(project_slug: str, filename: str, data: bytes) -> str:
-    return write_asset_in(assets_dir(project_slug), filename, data)
+def write_asset(project_slug: str, filename: str, data: bytes, version: str = "") -> str:
+    return write_asset_in(assets_dir(project_slug, version), filename, data)
 
 
-def delete_asset(project_slug: str, filename: str) -> list[str]:
+def delete_asset(project_slug: str, filename: str, version: str = "") -> list[str]:
     """Empty list = the file wasn't there, which callers treat as a no-op
     rather than an error (same contract as content_files.delete_page)."""
-    directory = assets_dir(project_slug)
+    directory = assets_dir(project_slug, version)
     path = directory / filename
     # Defence in depth behind the router's own separator check: a name whose
     # parent isn't exactly this project's assets/ folder is treated the same

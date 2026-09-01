@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { ProjectNav } from "@/lib/api";
 import { readingOrder } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
-import { useContentLang } from "@/lib/lang";
+import { useDocPath } from "@/lib/version";
 
 /**
  * Where a reader goes when they've finished a page: the neighbours in
@@ -16,7 +16,7 @@ import { useContentLang } from "@/lib/lang";
  */
 export function PageFooterNav({ nav, pageSlug }: { nav: ProjectNav; pageSlug: string }) {
   const { t } = useI18n();
-  const { path } = useContentLang();
+  const docPath = useDocPath();
 
   const order = readingOrder(nav);
   const index = order.findIndex((entry) => entry.page.slug === pageSlug);
@@ -30,7 +30,7 @@ export function PageFooterNav({ nav, pageSlug }: { nav: ProjectNav; pageSlug: st
     <nav className="mt-12 grid gap-3 border-t border-[var(--border)] pt-6 sm:grid-cols-2" aria-label={t("page.pageNav")}>
       {previous && (
         <Link
-          to={path(`/p/${nav.project.slug}/pages/${previous.page.slug}`)}
+          to={docPath(nav.project.slug, `/pages/${previous.page.slug}`)}
           className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 hover:bg-[var(--surface-2)]"
         >
           <ChevronLeft className="h-4 w-4 shrink-0 text-[var(--muted)]" />
@@ -45,7 +45,7 @@ export function PageFooterNav({ nav, pageSlug }: { nav: ProjectNav; pageSlug: st
         // where the reader's eye already is, instead of sliding left into
         // the gap the missing "previous" left behind.
         <Link
-          to={path(`/p/${nav.project.slug}/pages/${next.page.slug}`)}
+          to={docPath(nav.project.slug, `/pages/${next.page.slug}`)}
           className="flex items-center justify-end gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-right hover:bg-[var(--surface-2)] sm:col-start-2"
         >
           <span className="min-w-0">

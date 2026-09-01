@@ -125,6 +125,35 @@ const de = {
   "admin.repoNotConfiguredTitle": "Kein Content-Repo verbunden",
   "admin.repoNotConfiguredBody":
     "DocuWaves speichert alle Inhalte als Markdown-Dateien in einem separaten Git-Repository. Trage CONTENT_REPO_URL (und CONTENT_REPO_TOKEN oder CONTENT_REPO_SSH_KEY) in der .env-Datei ein und starte den Container neu — siehe README für die genaue Anleitung.",
+  "search.scopePrefix": "Nur in: ",
+  "version.switcher": "Version",
+  "version.oldPrefix": "Du liest die Dokumentation für ",
+  "version.oldMiddle": ". Die aktuelle Version ist ",
+  "version.oldSuffix": ".",
+  "admin.versions": "Versionen",
+  "admin.versionsIntro":
+    "Eine eingefrorene Version ist eine Momentaufnahme dieser Doku zum Release-Zeitpunkt — ein eigener Ordner im Content-Repo, der sich nie wieder ändert. Sie ist hier bewusst schreibgeschützt: Korrekturen an einer alten Version macht man als Datei-Änderung im Content-Repo (z. B. per Pull Request).",
+  "admin.versionCurrent": "Aktuell (wird bearbeitet)",
+  "admin.versionFreeze": "Version einfrieren",
+  "admin.versionId": "Versions-ID (Ordnername, z. B. v2.0)",
+  "admin.versionLabel": "Beschriftung (z. B. 2.0)",
+  "admin.versionFreezeConfirmTitle": "Das passiert beim Einfrieren:",
+  "admin.versionFreezeStepCopy": "current/ wird Byte für Byte nach {id}/ kopiert und in _versions.yml eingetragen.",
+  "admin.versionFreezeStepMove":
+    "Erste Version dieses Projekts: die folgenden Ordner/Dateien werden zuerst nach current/ verschoben —",
+  "admin.versionFreezeStepAssets":
+    "assets/ zieht mit um, weil ein Screenshot zur Version gehört, die er zeigt. Kein Seiten-Markdown wird dabei geändert: ../assets/… stimmt weiterhin.",
+  "admin.versionFreezeStepCommit": "Alles zusammen als EIN Commit im Content-Repo.",
+  "admin.versionFreezeGo": "Jetzt einfrieren",
+  "admin.versionFrozen": "Version eingefroren.",
+  "admin.versionReadOnly":
+    "Diese Version ist eingefroren und hier schreibgeschützt. Zum Korrigieren die Datei unter content/{project}/{version}/ im Content-Repo bearbeiten.",
+  "admin.versionDeleteConfirm":
+    "Version {label} wirklich löschen? Damit wird content/{project}/{id}/ mit allen Seiten und Bildern dieser Version aus dem Content-Repo entfernt. Das kann nicht rückgängig gemacht werden (steht aber weiter in der Git-Historie).",
+  "admin.versionDeleted": "Version gelöscht.",
+  "admin.versionReleased": "Eingefroren am",
+  "admin.versionNone": "Noch keine Version eingefroren — dieses Projekt hat keine Versionsebene.",
+  "admin.versionViewing": "Angezeigte Version",
   "common.loading": "Lädt…",
   "common.error": "Etwas ist schiefgelaufen.",
   "common.back": "Zurück",
@@ -257,6 +286,35 @@ const en: Dict = {
   "admin.repoNotConfiguredTitle": "No content repo connected",
   "admin.repoNotConfiguredBody":
     "DocuWaves stores all content as Markdown files in a separate Git repository. Set CONTENT_REPO_URL (and CONTENT_REPO_TOKEN or CONTENT_REPO_SSH_KEY) in your .env file and restart the container -- see the README for the full walkthrough.",
+  "search.scopePrefix": "Only in: ",
+  "version.switcher": "Version",
+  "version.oldPrefix": "You are reading the documentation for ",
+  "version.oldMiddle": ". The current version is ",
+  "version.oldSuffix": ".",
+  "admin.versions": "Versions",
+  "admin.versionsIntro":
+    "A frozen version is a snapshot of these docs as they stood at that release -- its own directory in the content repo, which never changes again. It is deliberately read-only here: correcting an old version is a file edit in the content repo (a pull request, say).",
+  "admin.versionCurrent": "Current (being edited)",
+  "admin.versionFreeze": "Freeze a version",
+  "admin.versionId": "Version id (directory name, e.g. v2.0)",
+  "admin.versionLabel": "Label (e.g. 2.0)",
+  "admin.versionFreezeConfirmTitle": "Here is what freezing will do:",
+  "admin.versionFreezeStepCopy": "Copy current/ byte for byte to {id}/ and record it in _versions.yml.",
+  "admin.versionFreezeStepMove":
+    "This project's first version: these will be moved into current/ first --",
+  "admin.versionFreezeStepAssets":
+    "assets/ moves with it, because a screenshot belongs to the version it documents. No page's Markdown is rewritten: ../assets/… still resolves.",
+  "admin.versionFreezeStepCommit": "All of it as ONE commit in the content repo.",
+  "admin.versionFreezeGo": "Freeze now",
+  "admin.versionFrozen": "Version frozen.",
+  "admin.versionReadOnly":
+    "This version is frozen and read-only here. To correct it, edit the file under content/{project}/{version}/ in the content repo.",
+  "admin.versionDeleteConfirm":
+    "Really delete version {label}? This removes content/{project}/{id}/ from the content repo, with every page and image in that version. It can't be undone (it does stay in the Git history).",
+  "admin.versionDeleted": "Version deleted.",
+  "admin.versionReleased": "Frozen on",
+  "admin.versionNone": "No version frozen yet -- this project has no version level.",
+  "admin.versionViewing": "Viewing version",
   "common.loading": "Loading…",
   "common.error": "Something went wrong.",
   "common.back": "Back",

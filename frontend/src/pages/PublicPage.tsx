@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { Languages } from "lucide-react";
-import { ApiError, api, type Category, type Page, type Project } from "@/lib/api";
+import { ApiError, api, type Category, type Page, type Project, type VersionInfo } from "@/lib/api";
 import { MarkdownView } from "@/components/MarkdownView";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
@@ -11,6 +11,7 @@ import { collectHeadings } from "@/lib/headings";
 import { useProjectNav, type NavStatus } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
+import { useDocPath, useReportProjectVersion } from "@/lib/version";
 import { useDocumentTitle } from "@/lib/site";
 
 /** Below this, a contents list is just the page's own outline restated --
@@ -19,15 +20,21 @@ import { useDocumentTitle } from "@/lib/site";
 const MIN_TOC_HEADINGS = 2;
 
 export function PublicPage() {
-  const { projectSlug, pageSlug } = useParams<{ projectSlug: string; pageSlug: string }>();
+  const { projectSlug, pageSlug, version } = useParams<{
+    projectSlug: string;
+    pageSlug: string;
+    version: string;
+  }>();
   const { hash } = useLocation();
   const { t } = useI18n();
-  const { lang, path } = useContentLang();
-  const { nav, status: navStatus } = useProjectNav(projectSlug, lang);
+  const { lang } = useContentLang();
+  const docPath = useDocPath();
+  const { nav, status: navStatus } = useProjectNav(projectSlug, lang, version);
   const [data, setData] = useState<{
     project: Project;
     category: Category;
     page: Page & { fallback: boolean };
+    versions: VersionInfo | null;
   } | null>(null);
   const [pageStatus, setPageStatus] = useState<NavStatus>("loading");
 
@@ -37,7 +44,7 @@ export function PublicPage() {
     setData(null);
     setPageStatus("loading");
     api
-      .publicGetPage(projectSlug, pageSlug, lang)
+      .publicGetPage(projectSlug, pageSlug, lang, version)
       .then((result) => {
         if (!current) return;
         setData(result);
@@ -52,7 +59,18 @@ export function PublicPage() {
     };
     // lang included: switching language keeps the reader on this same page
     // (the slug is shared by its translations) and reloads its content.
-  }, [projectSlug, pageSlug, lang]);
+    // version likewise -- the same slug in another version is another file.
+  }, [projectSlug, pageSlug, lang, version]);
+
+  // `versions.available` here is the versions this page is PUBLISHED in, so
+  // the switcher can stay on the page where it exists and land on the
+  // version's home where it doesn't -- never on a 404.
+  useReportProjectVersion({
+    projectSlug: projectSlug ?? "",
+    version: version ?? "",
+    tail: pageSlug ? `/pages/${pageSlug}` : "",
+    info: data?.versions ?? null,
+  });
 
   // Before the early returns below -- a hook can't sit behind a condition.
   // Undefined while loading, which just leaves the site name in the tab.
@@ -83,11 +101,11 @@ export function PublicPage() {
       aside={showToc ? <TableOfContents headings={headings} variant="column" /> : undefined}
     >
       <div className="flex flex-wrap items-center gap-1 text-sm text-[var(--muted)]">
-        <Link to={path(`/p/${data.project.slug}`)} className="hover:text-[var(--accent)]">
+        <Link to={docPath(data.project.slug, "")} className="hover:text-[var(--accent)]">
           {data.project.name}
         </Link>
         <span>/</span>
-        <Link to={path(`/p/${data.project.slug}/c/${data.category.slug}`)} className="hover:text-[var(--accent)]">
+        <Link to={docPath(data.project.slug, `/c/${data.category.slug}`)} className="hover:text-[var(--accent)]">
           {data.category.name}
         </Link>
       </div>
@@ -109,10 +127,15 @@ export function PublicPage() {
         </p>
       )}
       {showToc && <TableOfContents headings={headings} variant="inline" />}
+      {/* versionDir is the page file's own directory name, not the URL
+          segment: `../assets/x.png` in the source resolves against
+          content/<project>/<version>/<category>/, and "" (an unversioned
+          project) makes that exactly the path it always was. */}
       <MarkdownView
         content={data.page.markdown_content}
         projectSlug={data.project.slug}
         categorySlug={data.category.slug}
+        versionDir={data.page.version}
       />
       <PageFooterNav nav={nav} pageSlug={data.page.slug} />
     </DocsShell>

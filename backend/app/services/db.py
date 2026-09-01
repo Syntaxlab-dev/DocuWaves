@@ -100,6 +100,15 @@ _SQLITE_SCHEMA = [
         sort_order INTEGER NOT NULL DEFAULT 0
     )
     """,
+    # `version` is the documentation version a row belongs to (see
+    # content_versions.py): '' for a project that has no `_versions.yml` at
+    # all -- so such a project keeps exactly one row per category/page and
+    # (project, slug) is the same uniqueness it always had -- and otherwise
+    # the version's directory name, 'current' for the working one. It is
+    # part of the key rather than a filter because a frozen version holds
+    # its OWN copy of every category and page: the same slug legitimately
+    # exists once per version, and they are different rows describing
+    # different files.
     """
     CREATE TABLE IF NOT EXISTS categories (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,9 +116,10 @@ _SQLITE_SCHEMA = [
         name TEXT NOT NULL,
         name_i18n TEXT NOT NULL DEFAULT '',
         slug TEXT NOT NULL,
+        version TEXT NOT NULL DEFAULT '',
         icon TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
-        UNIQUE(project_id, slug)
+        UNIQUE(project_id, version, slug)
     )
     """,
     # One row per page PER LANGUAGE -- `installation.de.md` and
@@ -126,12 +136,13 @@ _SQLITE_SCHEMA = [
         title TEXT NOT NULL,
         slug TEXT NOT NULL,
         language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
         markdown_content TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         published INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(project_id, slug, language)
+        UNIQUE(project_id, version, slug, language)
     )
     """,
     # External-content FTS5 index -- content='pages' means the index stores
@@ -180,8 +191,8 @@ _POSTGRES_SCHEMA = [
         user_agent TEXT NOT NULL
     )
     """,
-    # See the SQLite block above for what name_i18n / language are and why
-    # they are shaped this way -- the two schemas stay line-for-line
+    # See the SQLite block above for what name_i18n / language / version are
+    # and why they are shaped this way -- the two schemas stay line-for-line
     # comparable on purpose.
     """
     CREATE TABLE IF NOT EXISTS projects (
@@ -203,9 +214,10 @@ _POSTGRES_SCHEMA = [
         name TEXT NOT NULL,
         name_i18n TEXT NOT NULL DEFAULT '',
         slug TEXT NOT NULL,
+        version TEXT NOT NULL DEFAULT '',
         icon TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
-        UNIQUE(project_id, slug)
+        UNIQUE(project_id, version, slug)
     )
     """,
     """
@@ -216,12 +228,13 @@ _POSTGRES_SCHEMA = [
         title TEXT NOT NULL,
         slug TEXT NOT NULL,
         language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
         markdown_content TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         published BOOLEAN NOT NULL DEFAULT FALSE,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
-        UNIQUE(project_id, slug, language)
+        UNIQUE(project_id, version, slug, language)
     )
     """,
     # No triggers/materialized tsvector column here -- to_tsvector() is
@@ -237,8 +250,8 @@ _POSTGRES_SCHEMA = [
 # truth, and a stamp is one more thing that can disagree with it.
 _REQUIRED_COLUMNS = {
     "projects": {"name_i18n", "description_i18n"},
-    "categories": {"name_i18n"},
-    "pages": {"language"},
+    "categories": {"name_i18n", "version"},
+    "pages": {"language", "version"},
 }
 
 # Only the content index is ever rebuilt. `auth` and `sessions` are real

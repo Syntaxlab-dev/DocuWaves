@@ -10,13 +10,20 @@ import { useI18n } from "@/lib/i18n";
  * Images are written in a page as a plain relative path
  * (`![Dashboard](../assets/dashboard.png)`) so the same .md still renders on
  * GitHub -- which means the browser can't load them as-is: relative to
- * /p/<project>/<page> they point at nothing. `projectSlug` + `categorySlug`
- * are the page's location in the content repo, and are all that's needed to
- * turn such a path into the public asset URL.
+ * /p/<project>/<page> they point at nothing. `projectSlug`, `versionDir` and
+ * `categorySlug` are the page's location in the content repo, and are all
+ * that's needed to turn such a path into the public asset URL.
  *
- * Both are optional: without them (nothing renders MarkdownView that way
- * today, but a future caller might) relative images are simply left alone
- * rather than rewritten into a wrong URL.
+ * `versionDir` is the DIRECTORY name of the page's documentation version
+ * ("current", "v2.0"), not the URL segment -- "" for an unversioned project,
+ * where the path resolved is exactly the one it always was. It matters
+ * because assets/ moves under the version with the pages that use it, so
+ * v2.0's screenshot and current's are two different files reached by the
+ * same `../assets/x.png`.
+ *
+ * All three are optional: without them (nothing renders MarkdownView that
+ * way today, but a future caller might) relative images are simply left
+ * alone rather than rewritten into a wrong URL.
  *
  * Heading anchors and code-block copy buttons need no props at all, so the
  * admin editor's preview pane gets them too without knowing about them.
@@ -25,10 +32,12 @@ export function MarkdownView({
   content,
   projectSlug,
   categorySlug,
+  versionDir,
 }: {
   content: string;
   projectSlug?: string;
   categorySlug?: string;
+  versionDir?: string;
 }) {
   const { t } = useI18n();
 
@@ -52,7 +61,7 @@ export function MarkdownView({
           // the DOM element, which React would warn about.
           img({ node, src, alt, ...props }) {
             void node;
-            const resolved = resolveImageSrc(typeof src === "string" ? src : "", projectSlug, categorySlug);
+            const resolved = resolveImageSrc(typeof src === "string" ? src : "", projectSlug, categorySlug, versionDir);
             return (
               <img
                 {...props}
@@ -205,7 +214,7 @@ const urlTransform = (url: string, key: string, node: { tagName?: string }): str
  *  `#anchor` is already a complete address and must survive untouched. */
 const ABSOLUTE_SRC = /^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i;
 
-function resolveImageSrc(src: string, projectSlug?: string, categorySlug?: string): string {
+function resolveImageSrc(src: string, projectSlug?: string, categorySlug?: string, versionDir?: string): string {
   if (!src || !projectSlug || ABSOLUTE_SRC.test(src)) return src;
 
   // A query string or fragment is carried over verbatim; only the path part
@@ -214,9 +223,13 @@ function resolveImageSrc(src: string, projectSlug?: string, categorySlug?: strin
   const path = cut === -1 ? src : src.slice(0, cut);
   const suffix = cut === -1 ? "" : src.slice(cut);
 
-  // Resolved against the PAGE's directory -- which is the category
-  // directory, since a page is content/<project>/<category>/<page>.md.
-  const segments: string[] = categorySlug ? [categorySlug] : [];
+  // Resolved against the PAGE's directory -- the category directory, one
+  // level below the version's when the project has one, since a page is
+  // content/<project>/[<version>/]<category>/<page>.md. Popping past the
+  // project directory (not past the version's) is what stays "outside your
+  // own project", which is also exactly where the server's own containment
+  // check draws the line.
+  const segments: string[] = [versionDir, categorySlug].filter((part): part is string => Boolean(part));
   for (const part of path.split("/")) {
     if (part === "" || part === ".") continue;
     if (part !== "..") {

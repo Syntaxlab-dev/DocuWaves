@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth";
 import { I18nProvider } from "@/lib/i18n";
 import { ContentLangProvider, useContentLang } from "@/lib/lang";
+import { ProjectVersionProvider } from "@/lib/version";
 import { SiteProvider, useSite } from "@/lib/site";
 import { PublicLayout } from "@/pages/PublicLayout";
 import { PublicHome } from "@/pages/PublicHome";
@@ -23,6 +24,16 @@ import { NotFound } from "@/components/NotFound";
  * multilingual one it keeps every link that was ever shared working, by
  * redirecting to the default language (ContentLangProvider). Written as one
  * list rendered twice so the two can't drift apart.
+ *
+ * The same is true one level down for documentation VERSIONS: a project's
+ * three reading routes exist with and without a `:version` segment, and the
+ * version-less ones are what an unversioned project (and every project's
+ * DEFAULT version) uses -- so no link ever breaks when a project starts
+ * versioning. The two shapes can't collide: the version-less routes all
+ * have a fixed segment (`c`, `pages`) exactly where the versioned ones have
+ * `:version`, and react-router ranks a literal segment above a dynamic one.
+ * `c` and `pages` are refused as version ids on the backend for that reason
+ * (see content_versions._RESERVED_IDS).
  */
 const readingRoutes = [
   { path: "", element: <PublicHome /> },
@@ -30,6 +41,9 @@ const readingRoutes = [
   { path: "p/:projectSlug", element: <PublicProject /> },
   { path: "p/:projectSlug/c/:categorySlug", element: <PublicCategory /> },
   { path: "p/:projectSlug/pages/:pageSlug", element: <PublicPage /> },
+  { path: "p/:projectSlug/:version", element: <PublicProject /> },
+  { path: "p/:projectSlug/:version/c/:categorySlug", element: <PublicCategory /> },
+  { path: "p/:projectSlug/:version/pages/:pageSlug", element: <PublicPage /> },
 ];
 
 function readingRouteElements(keyPrefix: string) {
@@ -69,7 +83,11 @@ function LanguageRouting() {
     <ContentLangProvider languages={site.languages} defaultLanguage={site.default_language} ready={ready}>
       <Routes>
         <Route path="/admin/*" element={<AdminGate />} />
-        <Route element={<PublicLayout />}>
+        {/* Inside the layout route's element, so the header's version
+            switcher and the docs views below it share one context -- the
+            views report which version they loaded, the header renders the
+            switcher for it. */}
+        <Route element={<ProjectVersionProvider><PublicLayout /></ProjectVersionProvider>}>
           {readingRouteElements("plain")}
           <Route path=":lang" element={<LanguageGate />}>
             {readingRouteElements("lang")}

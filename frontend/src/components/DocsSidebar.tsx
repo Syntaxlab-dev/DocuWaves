@@ -5,7 +5,7 @@ import type { ProjectNav } from "@/lib/api";
 import { FallbackBadge } from "@/components/FallbackBadge";
 import { visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
-import { useContentLang } from "@/lib/lang";
+import { useDocPath } from "@/lib/version";
 import { cn } from "@/lib/utils";
 
 /**
@@ -29,7 +29,7 @@ export function DocsSidebar({
   activePageSlug?: string;
 }) {
   const { t } = useI18n();
-  const { path } = useContentLang();
+  const docPath = useDocPath();
   const [mobileOpen, setMobileOpen] = useState(false);
   // Only sections the reader has explicitly toggled land here; everything
   // else keeps following the active page as they navigate.
@@ -68,7 +68,7 @@ export function DocsSidebar({
         )}
       >
         <Link
-          to={path(`/p/${nav.project.slug}`)}
+          to={docPath(nav.project.slug, "")}
           className={cn(
             "flex items-center gap-2 text-sm font-semibold",
             activeCategorySlug || activePageSlug ? "text-[var(--ink)]" : "text-[var(--accent)]",
@@ -94,7 +94,7 @@ export function DocsSidebar({
                     {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                   </button>
                   <Link
-                    to={path(`/p/${nav.project.slug}/c/${category.slug}`)}
+                    to={docPath(nav.project.slug, `/c/${category.slug}`)}
                     className={cn(
                       "text-xs font-semibold uppercase tracking-wide hover:text-[var(--accent)]",
                       category.slug === activeCategorySlug ? "text-[var(--ink)]" : "text-[var(--muted)]",
@@ -111,7 +111,7 @@ export function DocsSidebar({
                       return (
                         <li key={page.id}>
                           <Link
-                            to={path(`/p/${nav.project.slug}/pages/${page.slug}`)}
+                            to={docPath(nav.project.slug, `/pages/${page.slug}`)}
                             // aria-current is what tells a screen reader
                             // which entry is the page being read; the
                             // colour alone says it to nobody else.

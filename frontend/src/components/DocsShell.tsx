@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ProjectNav } from "@/lib/api";
 import { DocsSidebar } from "@/components/DocsSidebar";
+import { OldVersionNotice } from "@/components/OldVersionNotice";
 
 /**
  * The three reading views (project, category, page) all sit in the same
@@ -31,7 +32,14 @@ export function DocsShell({
         {/* min-w-0: without it a wide code block or table inside the
             Markdown stretches this flex item instead of scrolling in place,
             and pushes the columns off the screen. */}
-        <div className="mt-8 min-w-0 flex-1 lg:mt-0">{children}</div>
+        {/* One place for the "this is an old version" notice rather than
+            one per view: all three reading views sit in this frame, and a
+            reader on a frozen version has to see it on every one of them,
+            not only on a page. It renders nothing anywhere else. */}
+        <div className="mt-8 min-w-0 flex-1 lg:mt-0">
+          <OldVersionNotice />
+          {children}
+        </div>
         {aside}
       </div>
     </div>

@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
+import { useProjectVersion } from "@/lib/version";
+import { VersionSwitcher } from "@/components/VersionSwitcher";
 import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 
@@ -12,6 +14,7 @@ export function PublicLayout() {
   const { t, lang: uiLang, setLang: setUiLang } = useI18n();
   const { site } = useSite();
   const contentLang = useContentLang();
+  const projectVersion = useProjectVersion();
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [isDark, setIsDark] = useState(getPreferredTheme() === "dark");
@@ -24,7 +27,19 @@ export function PublicLayout() {
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
-    if (q.trim()) navigate(contentLang.path(`/search?q=${encodeURIComponent(q.trim())}`));
+    if (!q.trim()) return;
+    // Searching from inside a documentation version searches THAT version:
+    // the reader is standing in one release's docs, and a hit from another
+    // one would move them out of it without saying so. Carried in the URL
+    // rather than in component state so the results page is a shareable
+    // address that means the same thing tomorrow. Nothing is added at all
+    // outside a versioned project, so an unversioned instance's search URLs
+    // are exactly the ones it always had.
+    const scope = projectVersion.info
+      ? `&project=${encodeURIComponent(projectVersion.projectSlug)}` +
+        `&version=${encodeURIComponent(projectVersion.version || projectVersion.info.default)}`
+      : "";
+    navigate(contentLang.path(`/search?q=${encodeURIComponent(q.trim())}${scope}`));
   }
 
   const logoUrl = logoForTheme(site, isDark);
@@ -63,6 +78,9 @@ export function PublicLayout() {
               it, see lib/lang.tsx); on a single-language one there is no
               content language to pick, so the interface toggle stays
               exactly the control it has always been. */}
+          {/* Next to the language switcher, and on the same terms: it
+              renders only where there is something to switch. */}
+          <VersionSwitcher />
           {contentLang.multilingual ? (
             <ContentLanguageSwitcher />
           ) : (

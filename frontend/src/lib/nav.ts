@@ -14,10 +14,13 @@ export type NavStatus = "loading" | "ready" | "notfound" | "failed";
  *  `lang` is part of the effect's dependencies, not just of the URL: a
  *  reader switching language has to get the tree back in that language --
  *  with the titles translated, and with the pages that only exist in the
- *  fallback language marked. */
+ *  fallback language marked. `version` likewise: each documentation version
+ *  has its own categories and pages. Both are "" on an instance/project that
+ *  has neither, and the request is then the one it always was. */
 export function useProjectNav(
   projectSlug: string | undefined,
   lang?: string,
+  version?: string,
 ): { nav: ProjectNav | null; status: NavStatus } {
   const [nav, setNav] = useState<ProjectNav | null>(null);
   const [status, setStatus] = useState<NavStatus>("loading");
@@ -28,7 +31,7 @@ export function useProjectNav(
     setNav(null);
     setStatus("loading");
     api
-      .publicGetProjectNav(projectSlug, lang)
+      .publicGetProjectNav(projectSlug, lang, version)
       .then((data) => {
         if (!current) return;
         setNav(data);
@@ -44,7 +47,10 @@ export function useProjectNav(
     return () => {
       current = false;
     };
-  }, [projectSlug, lang]);
+    // `version` is a dependency for the same reason `lang` is: a reader who
+    // switches version needs that version's own tree, since a category or
+    // page can exist in one version and not in another.
+  }, [projectSlug, lang, version]);
 
   return { nav, status };
 }

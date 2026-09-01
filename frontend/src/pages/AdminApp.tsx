@@ -12,6 +12,8 @@ import {
   Plus,
   RefreshCw,
   Sun,
+  History,
+  Lock,
   Trash2,
   Upload,
   X,
@@ -24,6 +26,7 @@ import { MarkdownView } from "@/components/MarkdownView";
 import {
   api,
   ApiError,
+  type AdminVersions,
   type Asset,
   type Category,
   type ContentRepoStatus,
@@ -37,6 +40,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { languageName } from "@/lib/lang";
+import { normalizeVersionId } from "@/lib/version";
 import { logoForTheme, useDocumentTitle, useSite } from "@/lib/site";
 import { accentVariables, applyTheme, getPreferredTheme } from "@/lib/theme";
 
@@ -148,6 +152,20 @@ export function AdminApp() {
   const [showBranding, setShowBranding] = useState(false);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
+  // The selected project's documentation versions, and which one the panels
+  // below are showing. `viewing` is the WRITABLE version by default -- the
+  // one the editor writes to, and the project directory itself while the
+  // project has no versions at all, where every panel behaves exactly as it
+  // did before versions existed.
+  const [versions, setVersions] = useState<AdminVersions | null>(null);
+  const [viewing, setViewing] = useState("");
+  const [showVersions, setShowVersions] = useState(false);
+  // Read-only: a frozen version is a snapshot of a release. Every control
+  // that writes is hidden while one is being viewed, and the API refuses
+  // the write anyway (see the backend's content_versions.ensure_writable) --
+  // this is the half that stops someone reaching for a button that would
+  // then fail.
+  const frozen = Boolean(versions && viewing && viewing !== versions.writable);
 
   function loadRepoStatus() {
     api.contentRepoStatus().then(setRepoStatus);
@@ -173,16 +191,36 @@ export function AdminApp() {
   }
   useEffect(loadProjects, []);
 
-  function loadCategories(projectId: number) {
-    api.adminListCategories(projectId).then((r) => setCategories(r.categories));
+  function loadCategories(projectId: number, version: string) {
+    api.adminListCategories(projectId, version || undefined).then((r) => setCategories(r.categories));
   }
+
+  function loadVersions(projectSlug: string) {
+    api.adminListVersions(projectSlug).then((data) => {
+      setVersions(data);
+      setViewing(data.writable);
+    });
+  }
+
   useEffect(() => {
-    if (selectedProject) loadCategories(selectedProject.id);
+    if (selectedProject) loadVersions(selectedProject.slug);
+    else {
+      setVersions(null);
+      setViewing("");
+      setShowVersions(false);
+    }
+  }, [selectedProject]);
+
+  useEffect(() => {
+    // Waits for the versions response: loading categories before `viewing`
+    // is known would fetch the wrong version's for one round trip.
+    if (selectedProject && versions) loadCategories(selectedProject.id, viewing);
     else {
       setCategories([]);
       setSelectedCategory(null);
     }
-  }, [selectedProject]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject, versions, viewing]);
 
   function loadPages(categoryId: number) {
     api.adminListPages(categoryId).then((r) => setPages(r.pages));
@@ -265,44 +303,76 @@ export function AdminApp() {
             {!selectedProject && <p className="text-[var(--muted)]">{t("admin.selectProject")}</p>}
 
             {selectedProject && (
-              <div className="grid gap-4 md:grid-cols-[220px_1fr]">
-                <CategoriesPanel
-                  projectId={selectedProject.id}
-                  categories={categories}
-                  selected={selectedCategory}
-                  onSelect={(c) => {
-                    setSelectedCategory(c);
+              <>
+                <VersionsBar
+                  versions={versions}
+                  viewing={viewing}
+                  onView={(v) => {
+                    setViewing(v);
+                    setSelectedCategory(null);
                     setEditing(null);
                   }}
-                  onChanged={() => loadCategories(selectedProject.id)}
+                  open={showVersions}
+                  onToggle={() => setShowVersions((v) => !v)}
                 />
 
-                <div>
-                  {!selectedCategory && <p className="text-[var(--muted)]">{t("admin.selectCategory")}</p>}
+                {showVersions && versions && (
+                  <VersionsCard
+                    project={selectedProject}
+                    versions={versions}
+                    onChanged={() => {
+                      loadVersions(selectedProject.slug);
+                      setSelectedCategory(null);
+                      setEditing(null);
+                    }}
+                  />
+                )}
 
-                  {selectedCategory && editing === null && (
-                    <PagesPanel
-                      pages={pages}
-                      onEdit={setEditing}
-                      onChanged={() => loadPages(selectedCategory.id)}
-                    />
-                  )}
+                {frozen && <FrozenNotice projectSlug={selectedProject.slug} version={viewing} />}
 
-                  {selectedCategory && editing !== null && (
-                    <PageEditor
-                      target={editing}
-                      projectSlug={selectedProject.slug}
-                      categoryId={selectedCategory.id}
-                      categories={categories}
-                      onSaved={() => loadPages(selectedCategory.id)}
-                      onDone={() => {
-                        setEditing(null);
-                        loadPages(selectedCategory.id);
-                      }}
-                    />
-                  )}
+                <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+                  <CategoriesPanel
+                    projectId={selectedProject.id}
+                    categories={categories}
+                    selected={selectedCategory}
+                    readOnly={frozen}
+                    onSelect={(c) => {
+                      setSelectedCategory(c);
+                      setEditing(null);
+                    }}
+                    onChanged={() => loadCategories(selectedProject.id, viewing)}
+                  />
+
+                  <div>
+                    {!selectedCategory && <p className="text-[var(--muted)]">{t("admin.selectCategory")}</p>}
+
+                    {selectedCategory && editing === null && (
+                      <PagesPanel
+                        pages={pages}
+                        readOnly={frozen}
+                        onEdit={setEditing}
+                        onChanged={() => loadPages(selectedCategory.id)}
+                      />
+                    )}
+
+                    {selectedCategory && editing !== null && (
+                      <PageEditor
+                        target={editing}
+                        projectSlug={selectedProject.slug}
+                        categoryId={selectedCategory.id}
+                        categories={categories}
+                        version={viewing}
+                        readOnly={frozen}
+                        onSaved={() => loadPages(selectedCategory.id)}
+                        onDone={() => {
+                          setEditing(null);
+                          loadPages(selectedCategory.id);
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
         </div>
@@ -771,6 +841,230 @@ function FooterLinksEditor({ links, onChange }: { links: FooterLink[]; onChange:
   );
 }
 
+/**
+ * Documentation versions for the selected project.
+ *
+ * The bar is always there (an unversioned project needs a way to reach
+ * "Freeze a version" too), but it only grows a version picker once the
+ * project HAS frozen versions -- a picker with one option would be a
+ * control that does nothing on every project that never versions anything.
+ */
+function VersionsBar({
+  versions,
+  viewing,
+  onView,
+  open,
+  onToggle,
+}: {
+  versions: AdminVersions | null;
+  viewing: string;
+  onView: (version: string) => void;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const { t } = useI18n();
+  const hasFrozen = Boolean(versions && versions.versions.length > 0);
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      {hasFrozen && versions && (
+        <>
+          <span className="text-sm text-[var(--muted)]">{t("admin.versionViewing")}</span>
+          <select
+            aria-label={t("admin.versionViewing")}
+            value={viewing}
+            onChange={(e) => onView(e.target.value)}
+            className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+          >
+            <option value={versions.writable}>{t("admin.versionCurrent")}</option>
+            {versions.versions.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.label}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+      <Button variant="ghost" size="sm" className={hasFrozen ? "" : "ml-auto"} onClick={onToggle}>
+        <History className="h-3.5 w-3.5" />
+        {t("admin.versions")}
+      </Button>
+      {open && <span className="sr-only">{t("admin.versionsIntro")}</span>}
+    </div>
+  );
+}
+
+/** Shown above every panel while a frozen version is selected, so the
+ *  missing buttons below are explained rather than merely absent. */
+function FrozenNotice({ projectSlug, version }: { projectSlug: string; version: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="mb-4 flex items-start gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--muted)]">
+      <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>
+        {t("admin.versionReadOnly").replace("{project}", projectSlug).replace("{version}", version)}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The version list plus the freeze form.
+ *
+ * Freezing spells out what it is about to do BEFORE it does it, and the
+ * first freeze of a project spells out more, because that is the one that
+ * moves the project's existing directories down a level. `would_move`
+ * comes from the server (it lists what is actually on disk right now), so
+ * the confirmation names the real folders rather than a generic promise.
+ */
+function VersionsCard({
+  project,
+  versions,
+  onChanged,
+}: {
+  project: Project;
+  versions: AdminVersions;
+  onChanged: () => void;
+}) {
+  const { t } = useI18n();
+  const [id, setId] = useState("");
+  const [label, setLabel] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // What the id will actually be on disk. Shown in the confirmation rather
+  // than the raw text, so nobody agrees to "copy to V 3.0/" and gets
+  // "v-3.0/" -- the backend normalizes identically and is the authority.
+  const normalizedId = normalizeVersionId(id);
+
+  async function onFreeze() {
+    setBusy(true);
+    try {
+      await api.adminFreezeVersion(project.slug, id.trim(), label.trim());
+      toast.success(t("admin.versionFrozen"));
+      setId("");
+      setLabel("");
+      setConfirming(false);
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(versionId: string, versionLabel: string) {
+    const message = t("admin.versionDeleteConfirm")
+      .replace("{label}", versionLabel)
+      .replace("{project}", project.slug)
+      .replace("{id}", versionId);
+    if (!confirm(message)) return;
+    try {
+      await api.adminDeleteVersion(project.slug, versionId);
+      toast.success(t("admin.versionDeleted"));
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
+  }
+
+  return (
+    <Card className="mb-4">
+      <CardHeader>
+        <CardTitle className="text-base font-semibold text-[var(--ink)]">{t("admin.versions")}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-4 text-sm text-[var(--muted)]">{t("admin.versionsIntro")}</p>
+
+        {versions.versions.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">{t("admin.versionNone")}</p>
+        ) : (
+          <div className="flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+            {versions.versions.map((v) => (
+              <div key={v.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+                <Lock className="h-3.5 w-3.5 text-[var(--muted)]" aria-hidden="true" />
+                <span className="font-medium">{v.label}</span>
+                <span className="font-mono text-xs text-[var(--muted)]">{v.id}</span>
+                {v.released && (
+                  <span className="text-xs text-[var(--muted)]">
+                    {t("admin.versionReleased")} {v.released}
+                  </span>
+                )}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="ml-auto h-6 w-6"
+                  aria-label={t("admin.delete")}
+                  onClick={() => onDelete(v.id, v.label)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="mt-4 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
+          <span className="text-sm font-medium">{t("admin.versionFreeze")}</span>
+          <div className="flex flex-wrap gap-2">
+            <Input
+              value={id}
+              onChange={(e) => {
+                setId(e.target.value);
+                setConfirming(false);
+              }}
+              placeholder={t("admin.versionId")}
+              className="max-w-[16rem] font-mono"
+            />
+            <Input
+              value={label}
+              onChange={(e) => {
+                setLabel(e.target.value);
+                setConfirming(false);
+              }}
+              placeholder={t("admin.versionLabel")}
+              className="max-w-[12rem]"
+            />
+            <Button
+              variant="outline"
+              disabled={!normalizedId || !label.trim() || busy}
+              onClick={() => setConfirming(true)}
+            >
+              {t("admin.versionFreeze")}
+            </Button>
+          </div>
+
+          {confirming && (
+            <div className="mt-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 text-sm">
+              <p className="font-medium">{t("admin.versionFreezeConfirmTitle")}</p>
+              <ul className="mt-2 list-disc pl-5 text-[var(--muted)]">
+                {!versions.versioned && versions.would_move.length > 0 && (
+                  <li>
+                    {t("admin.versionFreezeStepMove")}{" "}
+                    <span className="font-mono text-[var(--ink)]">{versions.would_move.join("  ")}</span>
+                  </li>
+                )}
+                <li>{t("admin.versionFreezeStepCopy").replace("{id}", normalizedId)}</li>
+                {!versions.versioned && <li>{t("admin.versionFreezeStepAssets")}</li>}
+                <li>{t("admin.versionFreezeStepCommit")}</li>
+              </ul>
+              <div className="mt-3 flex gap-2">
+                <Button size="sm" disabled={busy} onClick={onFreeze}>
+                  {t("admin.versionFreezeGo")}
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>
+                  {t("admin.cancel")}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+
 function ProjectsPanel({
   projects,
   selected,
@@ -881,12 +1175,15 @@ function CategoriesPanel({
   projectId,
   categories,
   selected,
+  readOnly,
   onSelect,
   onChanged,
 }: {
   projectId: number;
   categories: Category[];
   selected: Category | null;
+  /** A frozen version is being viewed: browse it, don't change it. */
+  readOnly: boolean;
   onSelect: (c: Category) => void;
   onChanged: () => void;
 }) {
@@ -917,12 +1214,14 @@ function CategoriesPanel({
     <div>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.categories")}</h2>
-        <Button variant="ghost" size="icon" onClick={() => setShowForm((v) => !v)} aria-label="add">
-          <Plus className="h-4 w-4" />
-        </Button>
+        {!readOnly && (
+          <Button variant="ghost" size="icon" onClick={() => setShowForm((v) => !v)} aria-label="add">
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
-      {showForm && (
+      {showForm && !readOnly && (
         <form onSubmit={onCreate} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
           <LocalizedInput label={t("admin.categoryName")} values={name} onChange={setName} languages={languages} required />
           <Input placeholder={t("admin.categoryIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
@@ -944,21 +1243,25 @@ function CategoriesPanel({
               {c.icon && <span>{c.icon}</span>}
               {c.name}
             </button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveCategory(c.id, -1).then(onChanged)}>
-              <ArrowUp className="h-3 w-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              disabled={i === categories.length - 1}
-              onClick={() => api.adminMoveCategory(c.id, 1).then(onChanged)}
-            >
-              <ArrowDown className="h-3 w-3" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id)}>
-              <Trash2 className="h-3 w-3" />
-            </Button>
+            {!readOnly && (
+              <>
+                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveCategory(c.id, -1).then(onChanged)}>
+                  <ArrowUp className="h-3 w-3" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  disabled={i === categories.length - 1}
+                  onClick={() => api.adminMoveCategory(c.id, 1).then(onChanged)}
+                >
+                  <ArrowDown className="h-3 w-3" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id)}>
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -1007,10 +1310,14 @@ function groupPages(pages: Page[], defaultLanguage: string): PageGroup[] {
 
 function PagesPanel({
   pages,
+  readOnly,
   onEdit,
   onChanged,
 }: {
   pages: Page[];
+  /** A frozen version is being viewed: its pages open read-only, and there
+   *  is nothing here to create or delete. */
+  readOnly: boolean;
   onEdit: (target: EditorTarget) => void;
   onChanged: () => void;
 }) {
@@ -1029,10 +1336,12 @@ function PagesPanel({
     <div>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.pages")}</h2>
-        <Button variant="outline" size="sm" onClick={() => onEdit({ kind: "new" })}>
-          <Plus className="h-3.5 w-3.5" />
-          {t("admin.newPage")}
-        </Button>
+        {!readOnly && (
+          <Button variant="outline" size="sm" onClick={() => onEdit({ kind: "new" })}>
+            <Plus className="h-3.5 w-3.5" />
+            {t("admin.newPage")}
+          </Button>
+        )}
       </div>
       <div className="mt-2 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
         {groups.map((group) => {
@@ -1067,6 +1376,10 @@ function PagesPanel({
                             ? `${languageName(code, uiLang)} — ${variant.published ? t("admin.published") : t("admin.draft")}`
                             : `${languageName(code, uiLang)} — ${t("admin.createTranslation")}`
                         }
+                        // A missing translation is not something to start
+                        // in a frozen version, so the dashed "create" click
+                        // is simply not offered there.
+                        disabled={readOnly && !variant}
                         onClick={() =>
                           onEdit(
                             variant
@@ -1098,15 +1411,17 @@ function PagesPanel({
                 </span>
               )}
 
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                aria-label={t("admin.delete")}
-                onClick={() => onDelete(primary.id)}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              {!readOnly && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  aria-label={t("admin.delete")}
+                  onClick={() => onDelete(primary.id)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
             </div>
           );
         })}
@@ -1134,6 +1449,8 @@ function PageEditor({
   projectSlug,
   categoryId,
   categories,
+  version,
+  readOnly,
   onSaved,
   onDone,
 }: {
@@ -1141,6 +1458,14 @@ function PageEditor({
   projectSlug: string;
   categoryId: number;
   categories: Category[];
+  /** Which documentation version this page belongs to: "" for a project
+   *  with none, "current" or a frozen id otherwise. Also the directory the
+   *  preview resolves `../assets/…` against. */
+  version: string;
+  /** The version is frozen: the editor reads it and offers no way to save.
+   *  The API refuses the write too -- this is what stops anyone reaching
+   *  for a button that would only fail. */
+  readOnly: boolean;
   onSaved: () => void;
   onDone: () => void;
 }) {
@@ -1184,7 +1509,7 @@ function PageEditor({
       setExisting([]);
       return;
     }
-    api.adminFindPage(projectSlug, slug, language).then((page) => {
+    api.adminFindPage(projectSlug, slug, language, version || undefined).then((page) => {
       if (!current) return;
       setExisting(page.languages);
       if (page.page) {
@@ -1205,7 +1530,7 @@ function PageEditor({
     return () => {
       current = false;
     };
-  }, [projectSlug, slug, language, categoryId]);
+  }, [projectSlug, slug, language, categoryId, version]);
 
   function switchLanguage(code: string) {
     if (code === language) return;
@@ -1322,6 +1647,7 @@ function PageEditor({
       <div className="flex items-center gap-2">
         <Input
           value={title}
+          disabled={readOnly}
           onChange={(e) => {
             setTitle(e.target.value);
             setDirty(true);
@@ -1331,6 +1657,7 @@ function PageEditor({
         />
         <select
           value={targetCategoryId}
+          disabled={readOnly}
           onChange={(e) => setTargetCategoryId(Number(e.target.value))}
           className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
         >
@@ -1340,7 +1667,7 @@ function PageEditor({
             </option>
           ))}
         </select>
-        <Button variant="outline" size="icon" onClick={() => setPublished((v) => !v)} title={published ? t("admin.published") : t("admin.draft")}>
+        <Button variant="outline" size="icon" disabled={readOnly} onClick={() => setPublished((v) => !v)} title={published ? t("admin.published") : t("admin.draft")}>
           {published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
         </Button>
       </div>
@@ -1362,16 +1689,22 @@ function PageEditor({
         </button>
       </div>
 
-      <ImagesPanel
-        projectSlug={projectSlug}
-        onInsert={(asset) => insertSnippet(`![](${asset.markdown_path})`)}
-      />
+      {/* The uploader writes into the version being EDITED, so it has no
+          place on a frozen one -- and its "insert" would paste a snippet
+          into a textarea that can't be saved anyway. */}
+      {!readOnly && (
+        <ImagesPanel
+          projectSlug={projectSlug}
+          onInsert={(asset) => insertSnippet(`![](${asset.markdown_path})`)}
+        />
+      )}
 
       <div className="mt-3">
         {tab === "edit" ? (
           <Textarea
             ref={editorRef}
             value={content}
+            readOnly={readOnly}
             onChange={(e) => {
               setContent(e.target.value);
               setDirty(true);
@@ -1380,17 +1713,27 @@ function PageEditor({
           />
         ) : (
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
-            <MarkdownView content={content} projectSlug={projectSlug} categorySlug={targetCategorySlug} />
+            <MarkdownView
+              content={content}
+              projectSlug={projectSlug}
+              categorySlug={targetCategorySlug}
+              versionDir={version}
+            />
           </div>
         )}
       </div>
 
       <div className="mt-3 flex gap-2">
-        <Button onClick={onSave} disabled={saving || !title.trim()}>
-          {t("admin.save")}
-        </Button>
+        {/* No Save at all on a frozen version, rather than one that errors:
+            the notice above the panels already says why, and the way to
+            correct an old page is a file edit in the content repo. */}
+        {!readOnly && (
+          <Button onClick={onSave} disabled={saving || !title.trim()}>
+            {t("admin.save")}
+          </Button>
+        )}
         <Button variant="outline" onClick={onDone}>
-          {t("admin.cancel")}
+          {readOnly ? t("common.back") : t("admin.cancel")}
         </Button>
       </div>
     </div>

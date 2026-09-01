@@ -26,6 +26,9 @@ export interface Category {
   icon: string;
   sort_order: number;
   page_count?: number;
+  /** Which documentation version this category belongs to -- "" for a
+   *  project that has none, "current" or a frozen id once it has. */
+  version: string;
 }
 
 export interface PageSummary {
@@ -44,23 +47,62 @@ export interface NavPage extends PageSummary {
   sort_order: number;
 }
 
+/** One frozen documentation version of a project, as _versions.yml records
+ *  it. The working version is not in this list: it always exists, and its
+ *  name comes from `current_label`. */
+export interface FrozenVersion {
+  id: string;
+  label: string;
+  released: string;
+}
+
+/** The version dimension of whatever is being read, or null for a project
+ *  that has no `_versions.yml` at all -- which is what tells the UI there is
+ *  no switcher, no banner and no version segment in this project's URLs. */
+export interface VersionInfo {
+  current_id: string;
+  current_label: string;
+  /** The version an UNPREFIXED URL shows -- so its links never carry a
+   *  version segment, and every link shared before this project was
+   *  versioned still points at it. */
+  default: string;
+  selected: string;
+  is_frozen: boolean;
+  frozen: FrozenVersion[];
+  /** Which versions the thing being read (this page's slug, this category's
+   *  slug) exists in, or null for "all of them". The switcher stays on the
+   *  same page for a version in this list and falls back to that version's
+   *  home for one that isn't -- rather than finding out by 404. */
+  available: string[] | null;
+}
+
 /** A category as the nav endpoint returns it: `pages` holds only published
  *  ones, and is empty for a category nothing has been published in yet --
  *  the endpoint keeps such a category so the sidebar can decide what to do
  *  with it (it hides it). */
 export interface NavCategory extends Category {
   pages: NavPage[];
+  /** Which documentation versions this category slug exists in. Present
+   *  only for a versioned project -- it is what lets the version switcher
+   *  stay on this category when the target version has it, and fall back to
+   *  that version's home when it doesn't. */
+  available_versions?: string[];
 }
 
 export interface ProjectNav {
   project: Project;
   categories: NavCategory[];
+  versions: VersionInfo | null;
 }
 
 export interface Page extends PageSummary {
   project_id: number;
   category_id: number;
   language: string;
+  /** The documentation version this page IS -- also the directory name its
+   *  file sits in, which is what a `../assets/x.png` in its Markdown has to
+   *  be resolved against. */
+  version: string;
   markdown_content: string;
   sort_order: number;
   published: boolean;
@@ -73,6 +115,21 @@ export interface Page extends PageSummary {
  *  much as the present ones. */
 export interface AdminPage extends Page {
   languages: string[];
+}
+
+/** A project's versions as the admin panel needs them. `versioned` false is
+ *  a project that has never frozen one: its content sits directly in the
+ *  project directory, it has no version in its URLs, and `would_move` is
+ *  what a first freeze would move into current/. */
+export interface AdminVersions {
+  versioned: boolean;
+  current_id: string;
+  current_label: string;
+  default: string;
+  /** The version the editor writes to: "" while unversioned, else "current". */
+  writable: string;
+  versions: FrozenVersion[];
+  would_move: string[];
 }
 
 export interface SearchResult {
@@ -88,6 +145,10 @@ export interface SearchResult {
   /** The hit is in the site's default language because this page has no
    *  translation into the language searched in. */
   fallback: boolean;
+  /** Which documentation version the hit is in -- always the one being read
+   *  when the search was scoped to a version, each project's default
+   *  otherwise. */
+  version: string;
 }
 
 export interface AuthStatus {
@@ -235,11 +296,15 @@ async function upload<T>(path: string, file: File): Promise<T> {
   return res.json();
 }
 
-/** `?lang=<code>` for the public endpoints, or nothing at all when the
- *  instance is single-language (lang is "" then) -- so an unprefixed
- *  install's requests stay byte-for-byte the ones it made before. */
-function langQuery(lang: string | undefined, separator: "?" | "&" = "?"): string {
-  return lang ? `${separator}lang=${encodeURIComponent(lang)}` : "";
+/** `?lang=<code>&version=<id>` for the public endpoints, or nothing at all
+ *  when the instance is single-language and the project unversioned (both
+ *  are "" then) -- so an unprefixed, unversioned install's requests stay
+ *  byte-for-byte the ones it made before. */
+function contentQuery(lang?: string, version?: string): string {
+  const parts: string[] = [];
+  if (lang) parts.push(`lang=${encodeURIComponent(lang)}`);
+  if (version) parts.push(`version=${encodeURIComponent(version)}`);
+  return parts.length ? `?${parts.join("&")}` : "";
 }
 
 export const api = {
@@ -272,8 +337,10 @@ export const api = {
   adminDeleteProject: (id: number) => request(`/api/admin/projects/${id}`, { method: "DELETE" }),
 
   // Admin: categories
-  adminListCategories: (projectId: number) =>
-    request<{ categories: Category[] }>(`/api/admin/projects/${projectId}/categories`),
+  adminListCategories: (projectId: number, version?: string) =>
+    request<{ categories: Category[] }>(
+      `/api/admin/projects/${projectId}/categories${version ? `?version=${encodeURIComponent(version)}` : ""}`,
+    ),
   adminCreateCategory: (projectId: number, data: CategoryInput) =>
     request<{ id: number; slug: string }>(`/api/admin/projects/${projectId}/categories`, {
       method: "POST",
@@ -291,10 +358,10 @@ export const api = {
   /** By slug + language, for the editor's language tabs: `page` is null for
    *  a language this page has no version in yet (a tab to create, not an
    *  error), and `languages` is every language it does exist in. */
-  adminFindPage: (projectSlug: string, pageSlug: string, language: string) =>
-    request<{ page: Page | null; languages: string[] }>(
+  adminFindPage: (projectSlug: string, pageSlug: string, language: string, version?: string) =>
+    request<{ page: Page | null; languages: string[]; frozen: boolean }>(
       `/api/admin/projects/${encodeURIComponent(projectSlug)}/pages/by-slug/${encodeURIComponent(pageSlug)}` +
-        `?language=${encodeURIComponent(language)}`,
+        `?language=${encodeURIComponent(language)}${version ? `&version=${encodeURIComponent(version)}` : ""}`,
     ),
   adminCreatePage: (data: PageInput) =>
     request<{ id: number; slug: string; language: string }>("/api/admin/pages", {
@@ -341,23 +408,49 @@ export const api = {
   adminUploadSiteAsset: (file: File) =>
     upload<SiteAsset>(`/api/admin/site/assets?filename=${encodeURIComponent(file.name)}`, file),
 
+  // Admin: documentation versions -- keyed by project slug, like assets: a
+  // version is a directory in the content repo, it has no database row.
+  adminListVersions: (projectSlug: string) =>
+    request<AdminVersions>(`/api/admin/projects/${encodeURIComponent(projectSlug)}/versions`),
+  adminFreezeVersion: (projectSlug: string, id: string, label: string) =>
+    request<AdminVersions & { id: string; label: string; first_freeze: boolean }>(
+      `/api/admin/projects/${encodeURIComponent(projectSlug)}/versions`,
+      { method: "POST", body: JSON.stringify({ id, label }) },
+    ),
+  adminDeleteVersion: (projectSlug: string, versionId: string) =>
+    request<AdminVersions>(
+      `/api/admin/projects/${encodeURIComponent(projectSlug)}/versions/${encodeURIComponent(versionId)}`,
+      { method: "DELETE" },
+    ),
+
   // Public
   publicGetSite: () => request<SiteBranding>("/api/public/site"),
-  publicListProjects: (lang?: string) => request<{ projects: Project[] }>(`/api/public/projects${langQuery(lang)}`),
-  publicGetProject: (slug: string, lang?: string) =>
-    request<{ project: Project; categories: Category[] }>(`/api/public/projects/${slug}${langQuery(lang)}`),
-  publicGetProjectNav: (slug: string, lang?: string) =>
-    request<ProjectNav>(`/api/public/projects/${encodeURIComponent(slug)}/nav${langQuery(lang)}`),
-  publicGetCategory: (projectSlug: string, categorySlug: string, lang?: string) =>
-    request<{ project: Project; category: Category; pages: PageSummary[] }>(
-      `/api/public/projects/${projectSlug}/categories/${categorySlug}${langQuery(lang)}`,
+  publicListProjects: (lang?: string) => request<{ projects: Project[] }>(`/api/public/projects${contentQuery(lang)}`),
+  publicGetProject: (slug: string, lang?: string, version?: string) =>
+    request<{ project: Project; categories: Category[]; versions: VersionInfo | null }>(
+      `/api/public/projects/${slug}${contentQuery(lang, version)}`,
     ),
-  publicGetPage: (projectSlug: string, pageSlug: string, lang?: string) =>
-    request<{ project: Project; category: Category; page: Page & { fallback: boolean } }>(
-      `/api/public/projects/${projectSlug}/pages/${pageSlug}${langQuery(lang)}`,
+  publicGetProjectNav: (slug: string, lang?: string, version?: string) =>
+    request<ProjectNav>(`/api/public/projects/${encodeURIComponent(slug)}/nav${contentQuery(lang, version)}`),
+  publicGetCategory: (projectSlug: string, categorySlug: string, lang?: string, version?: string) =>
+    request<{ project: Project; category: Category; pages: PageSummary[]; versions: VersionInfo | null }>(
+      `/api/public/projects/${projectSlug}/categories/${categorySlug}${contentQuery(lang, version)}`,
     ),
-  search: (q: string, lang?: string) =>
-    request<{ results: SearchResult[] }>(`/api/public/search?q=${encodeURIComponent(q)}${langQuery(lang, "&")}`),
+  publicGetPage: (projectSlug: string, pageSlug: string, lang?: string, version?: string) =>
+    request<{
+      project: Project;
+      category: Category;
+      page: Page & { fallback: boolean };
+      versions: VersionInfo | null;
+    }>(`/api/public/projects/${projectSlug}/pages/${pageSlug}${contentQuery(lang, version)}`),
+  /** `project`+`version` scope the search to the docs the reader is standing
+   *  in; without them it covers each project's default version. */
+  search: (q: string, lang?: string, project?: string, version?: string) => {
+    const scope = project ? `&project=${encodeURIComponent(project)}` : "";
+    return request<{ results: SearchResult[] }>(
+      `/api/public/search?q=${encodeURIComponent(q)}${contentQuery(lang, version).replace("?", "&")}${scope}`,
+    );
+  },
 };
 
 export { ApiError };

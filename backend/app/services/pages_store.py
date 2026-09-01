@@ -28,6 +28,14 @@ mechanisms:
 English-specific stemming, matching FTS5's own non-stemming default --
 keeps search behavior close to identical between the two backends.
 
+A page also exists once per documentation VERSION: a frozen version holds
+its own full copy of every page, so (version, slug, language) is what
+identifies a row. `version` is '' for a project with no `_versions.yml`,
+which keeps such a project's queries exactly the ones they were. Reads take
+the version being served; writes take the version from the page's own row
+and refuse a frozen one (content_versions.ensure_writable) -- frozen means
+frozen, and correcting an old page is a file edit in the content repo.
+
 A page exists once PER LANGUAGE: one row per `<slug>.<lang>.md` file, all
 sharing the slug (see content_files.py). Every reader-facing function here
 therefore takes the language being served and answers with one row per
@@ -43,6 +51,7 @@ from app.services import (
     categories_store,
     content_files,
     content_sync,
+    content_versions,
     db,
     git_content_repo,
     projects_store,
@@ -51,7 +60,7 @@ from app.services import (
 
 _COLUMNS = (
     "id, project_id, category_id, title, slug, language, markdown_content, sort_order, published, "
-    "created_at, updated_at"
+    "created_at, updated_at, version"
 )
 
 _NAV_COLUMNS = "id, category_id, title, slug, language, sort_order"
@@ -70,6 +79,7 @@ def _row_to_dict(row) -> dict:
         "published": bool(row[8]),
         "created_at": row[9],
         "updated_at": row[10],
+        "version": row[11],
     }
 
 
@@ -130,6 +140,9 @@ def _pick_one_per_slug(rows: list[dict], priority: list[str]) -> list[dict]:
 
 
 def list_pages(category_id: int, published_only: bool = False, language: str | None = None) -> list[dict]:
+    """No version parameter: a category id already belongs to exactly one
+    version (categories are per version too), so its pages can only be that
+    version's."""
     placeholder = "%s" if db.is_postgres() else "?"
     query = f"SELECT {_COLUMNS} FROM pages WHERE category_id = {placeholder}"
     params: tuple = (category_id,)
@@ -154,7 +167,9 @@ def list_all_pages(category_id: int) -> list[dict]:
     return [_row_to_dict(r) for r in rows]
 
 
-def list_project_pages(project_id: int, published_only: bool = False, language: str | None = None) -> list[dict]:
+def list_project_pages(
+    project_id: int, published_only: bool = False, language: str | None = None, version: str = ""
+) -> list[dict]:
     """Every page of one project at once, for the caller to group by
     category itself. The docs sidebar needs a project's whole tree on every
     single page view, and building it by walking list_pages() per category
@@ -164,8 +179,8 @@ def list_project_pages(project_id: int, published_only: bool = False, language: 
     needs titles, and selecting every page's full body to build one would be
     by far the most expensive part of the query."""
     placeholder = "%s" if db.is_postgres() else "?"
-    query = f"SELECT {_NAV_COLUMNS} FROM pages WHERE project_id = {placeholder}"
-    params: tuple = (project_id,)
+    query = f"SELECT {_NAV_COLUMNS} FROM pages WHERE project_id = {placeholder} AND version = {placeholder}"
+    params: tuple = (project_id, version)
     if published_only:
         query += " AND published = " + ("TRUE" if db.is_postgres() else "1")
     query += " ORDER BY sort_order, title"
@@ -185,7 +200,7 @@ def get_page(page_id: int) -> dict | None:
     return _row_to_dict(row) if row else None
 
 
-def get_page_by_slug(project_id: int, slug: str, language: str | None = None) -> dict | None:
+def get_page_by_slug(project_id: int, slug: str, language: str | None = None, version: str = "") -> dict | None:
     """Exactly this language's row, or None. Reader-facing callers want
     resolve_page() instead -- this one is for the write paths, which must
     never silently edit a different language's file than the one asked
@@ -195,13 +210,15 @@ def get_page_by_slug(project_id: int, slug: str, language: str | None = None) ->
     with db.get_connection() as conn:
         row = conn.execute(
             f"SELECT {_COLUMNS} FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} "
-            f"AND language = {placeholder}",
-            (project_id, slug, requested),
+            f"AND language = {placeholder} AND version = {placeholder}",
+            (project_id, slug, requested, version),
         ).fetchone()
     return _row_to_dict(row) if row else None
 
 
-def resolve_page(project_id: int, slug: str, language: str | None = None, published_only: bool = False) -> dict | None:
+def resolve_page(
+    project_id: int, slug: str, language: str | None = None, published_only: bool = False, version: str = ""
+) -> dict | None:
     """The page to SERVE a reader of `language`: their own translation, or
     the best other one there is (see _priority), with `fallback` saying
     which happened. None only when the page exists in no language at all --
@@ -215,8 +232,9 @@ def resolve_page(project_id: int, slug: str, language: str | None = None, publis
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         rows = conn.execute(
-            f"SELECT {_COLUMNS} FROM pages WHERE project_id = {placeholder} AND slug = {placeholder}",
-            (project_id, slug),
+            f"SELECT {_COLUMNS} FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} "
+            f"AND version = {placeholder}",
+            (project_id, slug, version),
         ).fetchall()
     pages = [_row_to_dict(r) for r in rows]
     priority = _priority(language)
@@ -230,36 +248,56 @@ def resolve_page(project_id: int, slug: str, language: str | None = None, publis
     return None
 
 
-def page_languages(project_id: int, slug: str) -> list[str]:
+def page_languages(project_id: int, slug: str, version: str = "") -> list[str]:
     """Which languages this page exists in at all -- what the admin editor's
     tab strip needs to show which translations are there and which are still
     missing."""
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         rows = conn.execute(
-            f"SELECT language FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} ORDER BY language",
-            (project_id, slug),
+            f"SELECT language FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} "
+            f"AND version = {placeholder} ORDER BY language",
+            (project_id, slug, version),
         ).fetchall()
     return [r[0] for r in rows]
 
 
-def slug_taken(project_id: int, slug: str, exclude_id: int | None = None) -> bool:
+def slug_taken(project_id: int, version: str, slug: str, exclude_id: int | None = None) -> bool:
     """Any language counts: a slug identifies the page, not one translation
     of it, so a NEW page must not land on a slug some other page already
-    uses in a language nobody is looking at right now."""
+    uses in a language nobody is looking at right now.
+
+    Scoped to ONE version, though: `installation` in v2.0 and `installation`
+    in current are the same page at two points in time, in two separate
+    directories -- one must not push the other's slug to `installation-2`."""
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         if exclude_id is not None:
             row = conn.execute(
-                f"SELECT 1 FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} AND id != {placeholder}",
-                (project_id, slug, exclude_id),
+                f"SELECT 1 FROM pages WHERE project_id = {placeholder} AND version = {placeholder} "
+                f"AND slug = {placeholder} AND id != {placeholder}",
+                (project_id, version, slug, exclude_id),
             ).fetchone()
         else:
             row = conn.execute(
-                f"SELECT 1 FROM pages WHERE project_id = {placeholder} AND slug = {placeholder}",
-                (project_id, slug),
+                f"SELECT 1 FROM pages WHERE project_id = {placeholder} AND version = {placeholder} "
+                f"AND slug = {placeholder}",
+                (project_id, version, slug),
             ).fetchone()
     return row is not None
+
+
+def page_versions(project_id: int, slug: str, published_only: bool = False) -> list[str]:
+    """Which versions this page slug exists in -- what the version switcher
+    needs to decide between staying on this page and landing on the
+    version's home, rather than sending a reader to a 404 to find out."""
+    placeholder = "%s" if db.is_postgres() else "?"
+    query = f"SELECT DISTINCT version FROM pages WHERE project_id = {placeholder} AND slug = {placeholder}"
+    if published_only:
+        query += " AND published = " + ("TRUE" if db.is_postgres() else "1")
+    with db.get_connection() as conn:
+        rows = conn.execute(query, (project_id, slug)).fetchall()
+    return [r[0] for r in rows]
 
 
 def _next_order(category_id: int) -> int:
@@ -292,20 +330,26 @@ def create_page(
     category = categories_store.get_category(category_id)
     if project is None or category is None:
         return None
+    # The version is the CATEGORY's, not a parameter: a page lives in a
+    # category directory, so which version it belongs to is already decided
+    # by the category it is being created in. A frozen one is refused here
+    # rather than after the file has been written.
+    version = category["version"]
+    content_versions.ensure_writable(project["slug"], version)
     requested, _ = _language_pair(language)
     # A translation takes the position the page already has: order is a
     # property of the page, and a fresh MAX+1 here would put the English
     # "Installation" last in the English sidebar while the German one sits
     # first -- the same page in two places depending on the language.
-    siblings = [get_page_by_slug(project_id, slug, code) for code in page_languages(project_id, slug)]
+    siblings = [get_page_by_slug(project_id, slug, code, version) for code in page_languages(project_id, slug, version)]
     existing_order = next((s["sort_order"] for s in siblings if s is not None), None)
     order = _next_order(category_id) if existing_order is None else existing_order
     paths = content_files.write_page(
-        project["slug"], category["slug"], slug, title, markdown_content, order, False, requested
+        project["slug"], category["slug"], slug, title, markdown_content, order, False, requested, version
     )
     git_content_repo.commit_and_push(paths, f"Add page: {title} [{requested or 'default'}]", author)
     content_sync.full_sync()
-    return get_page_by_slug(project_id, slug, requested)
+    return get_page_by_slug(project_id, slug, requested, version)
 
 
 def update_page(page_id: int, title: str, slug: str, markdown_content: str, category_id: int, author: str) -> dict | None:
@@ -317,19 +361,28 @@ def update_page(page_id: int, title: str, slug: str, markdown_content: str, cate
     new_category = categories_store.get_category(category_id)
     if project is None or old_category is None or new_category is None:
         return None
+    version = current["version"]
+    content_versions.ensure_writable(project["slug"], version)
+    if new_category["version"] != version:
+        # The category dropdown only ever offers the page's own version's
+        # categories, so this is a hand-built request: moving a page across
+        # versions is not an edit, it is rewriting what a release said.
+        return None
 
     # A slug change or a category change moves EVERY language variant of the
     # page (see content_files.relocate_page): the slug is what makes them one
     # page, so it can only change for all of them at once.
-    paths = content_files.relocate_page(project["slug"], old_category["slug"], current["slug"], new_category["slug"], slug)
+    paths = content_files.relocate_page(
+        project["slug"], old_category["slug"], current["slug"], new_category["slug"], slug, version
+    )
     order = current["sort_order"] if new_category["id"] == old_category["id"] else _next_order(category_id)
     paths += content_files.write_page(
         project["slug"], new_category["slug"], slug, title, markdown_content, order, current["published"],
-        current["language"],
+        current["language"], version,
     )
     git_content_repo.commit_and_push(paths, f"Update page: {title}", author)
     content_sync.full_sync()
-    return get_page_by_slug(current["project_id"], slug, current["language"])
+    return get_page_by_slug(current["project_id"], slug, current["language"], version)
 
 
 def set_published(page_id: int, published: bool, author: str) -> dict | None:
@@ -338,11 +391,12 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
         return None
     project = projects_store.get_project(current["project_id"])
     category = categories_store.get_category(current["category_id"])
+    content_versions.ensure_writable(project["slug"], current["version"])
     # Per language: a translation that isn't finished stays a draft while
     # the language it was translated from is published.
     paths = content_files.write_page(
         project["slug"], category["slug"], current["slug"], current["title"], current["markdown_content"],
-        current["sort_order"], published, current["language"],
+        current["sort_order"], published, current["language"], current["version"],
     )
     verb = "Publish" if published else "Unpublish"
     git_content_repo.commit_and_push(paths, f"{verb} page: {current['title']}", author)
@@ -350,20 +404,20 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
     return get_page(page_id)
 
 
-def _write_order(project_slug: str, category_slug: str, project_id: int, slug: str, order: int) -> list[str]:
+def _write_order(project_slug: str, category_slug: str, project_id: int, slug: str, order: int, version: str) -> list[str]:
     """Writes one page's new sort_order into EVERY language variant's file.
     Order is a property of the page, not of one translation: letting the
     German and English files drift apart would give a reader who switches
     language a differently ordered sidebar and a different next/previous
     page."""
     paths: list[str] = []
-    for language in page_languages(project_id, slug):
-        variant = get_page_by_slug(project_id, slug, language)
+    for language in page_languages(project_id, slug, version):
+        variant = get_page_by_slug(project_id, slug, language, version)
         if variant is None:
             continue
         paths += content_files.write_page(
             project_slug, category_slug, slug, variant["title"], variant["markdown_content"], order,
-            variant["published"], language,
+            variant["published"], language, version,
         )
     return paths
 
@@ -379,8 +433,10 @@ def reorder_page(category_id: int, page_id: int, direction: int, author: str) ->
     a, b = pages[index], pages[swap_index]
     project = projects_store.get_project(a["project_id"])
     category = categories_store.get_category(category_id)
-    paths = _write_order(project["slug"], category["slug"], a["project_id"], a["slug"], b["sort_order"])
-    paths += _write_order(project["slug"], category["slug"], b["project_id"], b["slug"], a["sort_order"])
+    version = category["version"]
+    content_versions.ensure_writable(project["slug"], version)
+    paths = _write_order(project["slug"], category["slug"], a["project_id"], a["slug"], b["sort_order"], version)
+    paths += _write_order(project["slug"], category["slug"], b["project_id"], b["slug"], a["sort_order"], version)
     git_content_repo.commit_and_push(paths, f"Reorder pages: {a['title']} / {b['title']}", author)
     content_sync.full_sync()
 
@@ -396,7 +452,8 @@ def delete_page(page_id: int, author: str) -> None:
         return
     project = projects_store.get_project(current["project_id"])
     category = categories_store.get_category(current["category_id"])
-    paths = content_files.delete_page(project["slug"], category["slug"], current["slug"])
+    content_versions.ensure_writable(project["slug"], current["version"])
+    paths = content_files.delete_page(project["slug"], category["slug"], current["slug"], current["version"])
     if paths:
         git_content_repo.commit_and_push(paths, f"Remove page: {current['title']}", author)
         content_sync.full_sync()
@@ -450,12 +507,50 @@ def _language_filter(priority: list[str], placeholder: str, true_literal: str) -
     )
 
 
-def search(query: str, limit: int = 20, language: str | None = None) -> list[dict]:
-    """Published pages only, across every project, in ONE language (see
-    _LANGUAGE_FILTER). Each result also carries its project/category
-    name+slug so the UI can show where a hit lives, and `language` +
-    `fallback` so it can link to the right URL and mark a hit that isn't in
-    the language the reader searched in.
+# Which (project, version) pairs a search may return rows from -- the whole
+# version scoping, in one WHERE clause.
+#
+# A reader inside a version is searching THAT version: the results they can
+# act on are the ones in the docs in front of them, and a hit in a release
+# they aren't reading would send them out of it without saying so. A reader
+# who is not inside any version (the home page, the search page itself)
+# searches each project's DEFAULT version -- one hit per page, rather than
+# the same paragraph three times because three releases documented it.
+#
+# Expressed as OR'd pairs rather than a row-value IN: a project's default
+# version comes from its own `_versions.yml`, so this is a handful of
+# literal pairs either way, and OR'd equalities work identically on both
+# backends. Like _LANGUAGE_FILTER, it has to be inside the query, because
+# ranking and LIMIT happen in the database.
+def _version_filter(pairs: list[tuple[int, str]], placeholder: str) -> str:
+    clauses = " OR ".join(f"(p.project_id = {placeholder} AND p.version = {placeholder})" for _ in pairs)
+    return f"              AND ({clauses})\n"
+
+
+def _default_version_pairs() -> list[tuple[int, str]]:
+    """(project id, that project's default version) for every project -- ''
+    for the unversioned ones, which is exactly the version their rows carry,
+    so an instance where nothing is versioned gets `p.version = ''` for
+    every project and searches precisely the set it always searched."""
+    with db.get_connection() as conn:
+        rows = conn.execute("SELECT id, slug FROM projects").fetchall()
+    return [(row[0], content_versions.default_version(row[1])) for row in rows]
+
+
+def search(
+    query: str,
+    limit: int = 20,
+    language: str | None = None,
+    project_id: int | None = None,
+    version: str | None = None,
+) -> list[dict]:
+    """Published pages only, in ONE language (see _LANGUAGE_FILTER) and in
+    ONE version per project (see _version_filter): the version being read
+    when `project_id`/`version` name one, each project's default version
+    otherwise. Each result also carries its project/category name+slug so
+    the UI can show where a hit lives, and `language` + `fallback` so it can
+    link to the right URL and mark a hit that isn't in the language the
+    reader searched in.
 
     The full-text index itself is not per-language and doesn't need to be:
     it indexes each row's own title and body, and each row IS one language's
@@ -472,39 +567,46 @@ def search(query: str, limit: int = 20, language: str | None = None) -> list[dic
     # the order they appear in the SQL text (t's, then p's).
     language_params = (*priority, *priority)
 
+    pairs = [(project_id, version or "")] if project_id is not None and version is not None else _default_version_pairs()
+    if not pairs:
+        return []  # no projects at all -- nothing could match anyway
+    version_params = tuple(value for pair in pairs for value in pair)
+
     if db.is_postgres():
         sql = f"""
             SELECT p.id, p.title, p.slug, p.markdown_content, pr.name, pr.slug, c.name, c.slug,
-                   p.language, pr.name_i18n, c.name_i18n
+                   p.language, pr.name_i18n, c.name_i18n, p.version
             FROM pages p
             JOIN projects pr ON pr.id = p.project_id
             JOIN categories c ON c.id = p.category_id
             WHERE p.published = TRUE
               AND to_tsvector('simple', p.title || ' ' || p.markdown_content) @@ plainto_tsquery('simple', %s)
               {_language_filter(priority, "%s", "TRUE")}
+{_version_filter(pairs, "%s")}
             ORDER BY ts_rank(to_tsvector('simple', p.title || ' ' || p.markdown_content), plainto_tsquery('simple', %s)) DESC
             LIMIT %s
         """
         with db.get_connection() as conn:
-            rows = conn.execute(sql, (query, *language_params, query, limit)).fetchall()
+            rows = conn.execute(sql, (query, *language_params, *version_params, query, limit)).fetchall()
     else:
         fts_query = _fts5_query(query)
         if fts_query is None:
             return []
         sql = f"""
             SELECT p.id, p.title, p.slug, p.markdown_content, pr.name, pr.slug, c.name, c.slug,
-                   p.language, pr.name_i18n, c.name_i18n
+                   p.language, pr.name_i18n, c.name_i18n, p.version
             FROM pages_fts
             JOIN pages p ON p.id = pages_fts.rowid
             JOIN projects pr ON pr.id = p.project_id
             JOIN categories c ON c.id = p.category_id
             WHERE pages_fts MATCH ? AND p.published = 1
               {_language_filter(priority, "?", "1")}
+{_version_filter(pairs, "?")}
             ORDER BY bm25(pages_fts)
             LIMIT ?
         """
         with db.get_connection() as conn:
-            rows = conn.execute(sql, (fts_query, *language_params, limit)).fetchall()
+            rows = conn.execute(sql, (fts_query, *language_params, *version_params, limit)).fetchall()
 
     results = []
     for r in rows:
@@ -526,6 +628,9 @@ def search(query: str, limit: int = 20, language: str | None = None) -> list[dic
                 "category_slug": r[7],
                 "language": r[8],
                 "fallback": r[8] != priority[0],
+                # Which version this hit is in, so the result link lands in
+                # the same docs the reader is standing in.
+                "version": r[11],
             }
         )
     return results

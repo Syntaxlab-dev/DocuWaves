@@ -32,7 +32,14 @@ save, so nobody has to touch `git` directly if they don't want to.
   page that isn't translated yet rather than a dead end (see
   "Multiple languages"). Off unless you ask for it: an instance that never
   sets `languages:` behaves exactly as it always has.
-- **Full-text search** across every published page in every project.
+- **Documentation versions, optionally** — freeze the docs at a release and
+  they stay frozen: `v2.0` becomes its own directory, readable at
+  `/de/p/cachepanel/v2.0/pages/installation`, while you keep editing the
+  current one (see "Documentation versions"). Off unless you ask for it: a
+  project that never freezes one keeps its files exactly where they are and
+  has no version in its URLs at all.
+- **Full-text search** across every published page in every project — in the
+  language and the version the reader is currently in.
 - **Single admin account** — password login, or single sign-on via any
   standard OIDC provider (Authentik, Keycloak, Authelia, Zitadel, ...).
 - **SQLite by default** (a single file, zero configuration), with
@@ -90,6 +97,10 @@ content/
   <another-project-slug>/
     ...
 ```
+
+A project that has frozen a documentation version has **one extra directory
+level** between itself and its categories — see "Documentation versions"
+below. Every project starts without it and keeps working without it forever.
 
 Names starting with an underscore directly inside `content/` are reserved
 for DocuWaves itself and are never read as a project — `_site/` can't turn
@@ -226,10 +237,124 @@ pick for themselves — but on a multi-language instance it follows whatever
 content language they're reading in, for the languages the interface has
 translations for.
 
+### Documentation versions
+
+Entirely optional, like languages, and off until you ask for it: **a project
+with no `_versions.yml` has its categories and `assets/` directly under the
+project directory and behaves exactly as it always has** — no `current/`, no
+version in its URLs, no switcher. Nothing below needs doing to keep an
+existing project working, and DocuWaves never creates the version level on
+its own.
+
+A version is a **frozen snapshot directory**, not a git branch:
+
+```
+content/
+  cachepanel/
+    _project.yml
+    _versions.yml         <- which versions exist, which one readers get by default
+    current/              <- the working version; this is what the editor writes
+      assets/
+      getting-started/
+        _category.yml
+        installation.de.md
+    v2.0/                 <- frozen at release; byte-identical copy of current/ at that moment
+      assets/
+      getting-started/
+        ...
+```
+
+**Why a copy and not a branch.** A released version of the docs has to keep
+saying what it said on release day while the current one is edited every
+week — and a branch says the opposite: it's a line of development you merge,
+rebase and eventually delete, and reading an old one means checking it out,
+which one working clone can only do for one version at a time. DocuWaves
+serves every version at once out of a single checkout, and a contributor's
+pull request has to be able to touch `v2.0` and `current` in the same diff.
+So duplication is the point: `v2.0/` is bytes nothing will ever rewrite. The
+cost is disk (Markdown files — next to nothing), and the payoff is that
+"what did 2.0 say?" is answered by looking in a directory.
+
+`_versions.yml`:
+
+```yaml
+current_label: Current      # what the working version is called in the switcher
+default: current            # which version an unprefixed URL shows
+versions:                   # frozen ones, newest first
+  - id: v2.0
+    label: "2.0"
+    released: 2026-08-01
+```
+
+**The first freeze moves your content for you, in one commit.** In the admin
+area, open a project, click **Versions**, give the version an id (`v2.0` —
+it becomes the directory name and the URL segment) and a label (`2.0` — what
+the switcher shows). The confirmation names exactly what is about to happen
+before it happens. On a project's *first* freeze that includes the
+migration: the project's categories and `assets/` move into `current/`, then
+`current/` is copied to `v2.0/`, then `_versions.yml` is written — all as a
+single commit, so the repo's history never has a state where the project is
+in neither shape. You never move a file by hand.
+
+**`assets/` moves with the version**, deliberately: a screenshot belongs to
+the version it documents, so 2.0's install page keeps showing 2.0's install
+screen. This does **not** rewrite any page: a page still sits exactly one
+directory above `assets/` afterwards
+(`<project>/<version>/<category>/<page>.md` next to
+`<project>/<version>/assets/`), so every `![](../assets/x.png)` in the repo
+keeps resolving — inside DocuWaves and in GitHub's own file preview alike.
+
+**The version is in the URL, and the default one isn't:**
+
+```
+/de/p/cachepanel/pages/installation          <- the default version (current)
+/de/p/cachepanel/v2.0/pages/installation     <- the frozen 2.0
+```
+
+Every link that was ever shared before the project was versioned still points
+at exactly the same page. A version switcher sits next to the language
+switcher; switching keeps the reader on the page they're on when the target
+version has it, and lands on that version's home when it doesn't — never a
+dead end. Reading a frozen version shows an unobtrusive line above the page
+("You are reading the documentation for 2.0. The current version is
+Current.") with a link across; it is not dismissible, because which version
+you're reading is a permanent property of the page rather than a
+notification. **Search covers only the version being read** — from inside
+`v2.0` you search `v2.0`; from the home page you search each project's
+default version, so one page never comes back once per release.
+
+**Frozen versions are read-only in the admin UI.** You can select one and
+read it, and every control that would change it is gone, with the reason
+said out loud. Frozen means frozen: someone who genuinely must correct an old
+page edits the file under `content/<project>/<version>/` in the content repo,
+where it's reviewable like any other contribution. The API refuses such a
+write with a `403` and the same explanation, so it can't be reached another
+way either.
+
+**Deleting a version** (the button next to it under **Versions**) removes
+that directory and its `_versions.yml` entry in one commit; the confirmation
+names the directory that will go. `current` can never be deleted — it isn't a
+snapshot, it's the project's content. Deleting the last frozen version leaves
+the project with just `current/`, which reads exactly like an unversioned
+project rather than moving every file back up a level and breaking every link
+a second time.
+
+Version ids are checked, not guessed at: lowercase letters, digits, dots,
+dashes and underscores, starting with a letter or digit (so `v2.0` keeps its
+dot — this is deliberately not the slugifier the rest of the app uses, which
+would turn it into `v2-0`). `current`, `assets`, `c` and `pages` are refused
+because they'd collide with a fixed part of a URL or with the version's own
+assets folder, an id starting with `_` or `.` is refused rather than
+repaired, and so is one the project already has.
+
+Versions and languages compose: a frozen version keeps whatever translations
+existed at the moment it was frozen.
+
 ### Images
 
 Images live in the content repo alongside the Markdown that uses them, in
-the project's own `assets/` folder, and are referenced with a **normal
+the project's own `assets/` folder (inside the version directory, once the
+project has versions — see above), and are referenced with a **normal
 relative Markdown path**:
 
 ```markdown
@@ -237,7 +362,8 @@ relative Markdown path**:
 ```
 
 One `..` because a page sits one directory deeper (`<category-slug>/`) than
-`assets/`. Relative rather than a rewritten absolute URL on purpose: the
+`assets/` — which stays true in a versioned project, where both moved down a
+level together. Relative rather than a rewritten absolute URL on purpose: the
 exact same `.md` file then renders its images correctly in GitHub's (or
 Gitea's/Forgejo's) own file preview, and in anyone's local Markdown editor,
 not just inside DocuWaves.
