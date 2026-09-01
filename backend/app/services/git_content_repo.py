@@ -83,10 +83,15 @@ def _configure_repo(repo: git.Repo) -> None:
 
 
 def ensure_clone() -> git.Repo:
-    """Idempotent: clones on first call, reuses the existing clone (after a
-    pull) on every call after -- the working directory persists across app
-    restarts via the same /data volume every other store's file lives under,
-    so a fresh clone only happens once per install, not once per request."""
+    """Idempotent: clones on first call, reuses the existing clone on every
+    call after -- the working directory persists across app restarts via the
+    same /data volume every other store's file lives under, so a fresh clone
+    only happens once per install, not once per request.
+
+    Reuse does NOT pull: callers that need the latest upstream state call
+    sync_pull() themselves (startup, the periodic task, "Sync now"). Pulling
+    from in here would have to happen while _lock is held, and sync_pull()
+    calls back into this function -- a plain Lock, so that deadlocks."""
     global _repo
     if not is_configured():
         raise GitContentError("No content repo configured (CONTENT_REPO_URL is not set).")

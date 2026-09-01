@@ -39,6 +39,13 @@ async def lifespan(_app: FastAPI):
     if git_content_repo.is_configured():
         try:
             git_content_repo.ensure_clone()
+            # Pull before indexing. ensure_clone() only clones when the
+            # working copy is missing; on every restart after the first it
+            # reuses what's already on disk, so without this the index was
+            # rebuilt from a checkout that could be days old and commits
+            # pushed while the container was down stayed invisible until
+            # the first periodic sync or a manual "Sync now".
+            git_content_repo.sync_pull()
             content_sync.full_sync()
         except git_content_repo.GitContentError as exc:
             # Doesn't prevent startup -- the admin UI's connection status
