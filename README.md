@@ -937,6 +937,7 @@ published-only, because it is the same index the public search box uses.
 | `search` | read | Full-text search across published pages, optionally scoped to one project |
 | `create_page` | write | A new page in a category, slug derived from the title exactly as the editor derives it |
 | `update_page` | write | Replaces a page's Markdown; optionally its title and published state |
+| `create_project` | write | Create a project -- the top level everything else hangs from |
 | `create_category` | write | A new category in a project |
 
 Writes obey every rule the admin UI obeys, because they go through the same

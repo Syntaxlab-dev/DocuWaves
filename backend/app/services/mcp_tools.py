@@ -430,6 +430,54 @@ def update_page(arguments: dict, token: dict) -> dict:
     }
 
 
+def create_project(arguments: dict, token: dict) -> dict:
+    """The top level, and the one an empty instance cannot do without.
+
+    Left out of the first version of this interface by oversight rather than
+    by decision. Withholding a DELETE tool is deliberate -- deleting is the
+    one operation the git history does not make painless to undo. But
+    creating a project is exactly as recoverable as creating a page: it is a
+    single commit adding one _project.yml, revertable like any other. The
+    asymmetry only showed up in practice, when an assistant was handed a
+    write token, pointed at a fresh instance, and could not begin: every
+    other tool resolves a project first, so with none present all seven were
+    unreachable.
+    """
+    _require_content_repo()
+    name = (arguments.get("name") or "").strip()
+    if not name:
+        raise ToolError("The 'name' parameter is required -- what the project is called, and where its slug comes from.")
+
+    existing = projects_store.list_projects()
+    slug = content_files.unique_slug(name, projects_store.slug_taken)
+    author = api_tokens_store.author_name(token["name"])
+    project = projects_store.create_project(
+        name,
+        slug,
+        str(arguments.get("icon") or "").strip(),
+        str(arguments.get("color") or "").strip(),
+        str(arguments.get("description") or "").strip(),
+        author,
+    )
+    if project is None:
+        raise ToolError("The project could not be created -- check the server log.")
+    return {
+        "created": True,
+        "project": {
+            "slug": project["slug"],
+            "name": project["name"],
+            "icon": project["icon"],
+            "description": project["description"],
+        },
+        # Named because a project is where every other tool starts, and an
+        # assistant that has just created the first one has nothing else to
+        # go on yet.
+        "next": "Add a category with create_category, then pages with create_page."
+        if not existing else "Use this slug as the 'project' argument to the other tools.",
+        "commit_author": author,
+    }
+
+
 def create_category(arguments: dict, token: dict) -> dict:
     project = _project(arguments.get("project", ""))
     _require_content_repo()
@@ -674,6 +722,42 @@ TOOLS: list[dict] = [
             "additionalProperties": False,
         },
         "handler": update_page,
+    },
+    {
+        "name": "create_project",
+        "write": True,
+        "description": (
+            "Create a new project, and commit it. REQUIRES a token with 'write' scope. A project is the top "
+            "level: it holds categories, which hold pages, and every other tool here takes a project slug as "
+            "its first argument -- so on an instance with no projects yet, this is where to start. Create one "
+            "per piece of software or product being documented, not per topic; topics are categories. The slug "
+            "is derived from the name and becomes part of every URL underneath it, so it is worth getting the "
+            "name right the first time."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The project's name, e.g. 'CachePanel'. Also what its slug is derived from.",
+                },
+                "icon": {
+                    "type": "string",
+                    "description": "Optional single emoji shown on the project's tile, e.g. '📦'.",
+                },
+                "color": {
+                    "type": "string",
+                    "description": "Optional accent colour as a hex value, e.g. '#00d4d5'.",
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Optional one-line description shown on the home page tile.",
+                },
+            },
+            "required": ["name"],
+            "additionalProperties": False,
+        },
+        "handler": create_project,
     },
     {
         "name": "create_category",
