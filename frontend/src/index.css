@@ -82,6 +82,26 @@ body {
    visible on its own, and it stays visible while showing its result. */
 @media (hover: none) { .code-block .code-copy { opacity: 0.7; } }
 .code-block .code-copy:hover { color: var(--ink); }
+/* A ```mermaid block, drawn as a diagram (see components/MermaidDiagram).
+   Deliberately NO background of its own: mermaid picks its node fills from
+   its own palette, and the two greys that would sit closest to them are
+   exactly --surface and --surface-2 -- on the page background the boxes stay
+   visibly boxes in both modes. overflow-x for the same reason a <pre> has it:
+   a wide diagram scrolls in its own frame instead of widening the page. */
+.markdown-body .mermaid-block { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
+/* Centred while it fits, flush left once it is wider than the frame and the
+   reader has to scroll it (margin: auto contributes nothing at that point). */
+.markdown-body .mermaid-block svg { display: block; margin: 0 auto; }
+/* The moment between "there is a diagram here" and the chunk having loaded
+   and drawn it. Same box as the diagram that replaces it, so the text below
+   doesn't jump when it does. */
+.markdown-body .mermaid-pending { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; color: var(--muted); font-size: 0.85rem; }
+/* A diagram that didn't parse: the source above (a plain <pre>, exactly as
+   the block would have rendered without diagram support at all) and this
+   underneath it. Not red-on-red -- --danger-soft is the wash behind a
+   destructive action, and this is a note, not a warning. */
+.markdown-body .mermaid-error { margin: -0.5rem 0 1rem; font-size: 0.8rem; color: var(--danger); }
+.markdown-body .mermaid-error-detail { display: block; margin-top: 0.25rem; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); white-space: pre-wrap; }
 .markdown-body blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; color: var(--muted); }
 .markdown-body table { border-collapse: collapse; margin: 1rem 0; width: 100%; }
 .markdown-body th, .markdown-body td { border: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }

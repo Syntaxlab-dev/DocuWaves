@@ -18,6 +18,10 @@ save, so nobody has to touch `git` directly if they don't want to.
 - **Markdown, with a live preview** — pages are written in Markdown (GFM:
   tables, checklists, fenced code blocks with syntax highlighting) and
   edited in a split editor/preview pane.
+- **Diagrams as text** — a ` ```mermaid ` block is drawn as a real diagram
+  (see "Diagrams"): an architecture sketch, a request flow or a state
+  machine stays in the `.md` file, diffs line by line in git, and needs no
+  binary asset anyone has to keep in sync with the prose around it.
 - **Content lives in Git, not a database** — every project/category/page is
   a plain file (see "Content repo structure" below). A community member can
   contribute via a normal pull request; DocuWaves picks up merged changes
@@ -403,6 +407,66 @@ index (see the top of this README) — its `updated_at` moves whenever the index
 is rebuilt, which would tell a reader the page changed on a day nothing about
 it did. A page with no committed file, or an instance with no content repo
 configured, simply has no such line.
+
+### Diagrams
+
+A fenced code block tagged `mermaid` is rendered as a diagram instead of as
+code:
+
+````markdown
+```mermaid
+graph TD
+  A[Browser] --> B[DocuWaves]
+  B --> C[(Git repo)]
+```
+````
+
+That is the whole of it — nothing to install, nothing to upload, no
+`image:` to keep pointing at the right file. The diagram is
+[Mermaid](https://mermaid.js.org) syntax, so flowcharts, sequence diagrams,
+state machines, ER diagrams, Gantt charts, class diagrams and the rest all
+work; Mermaid's own documentation is the reference for what you can write
+inside the block.
+
+**Why a diagram and not a screenshot of one.** It stays in the `.md` file, so
+it diffs line by line in a pull request the way the prose does, it can't drift
+out of date while the picture in `assets/` stays as it was, and it needs no
+binary in the repo. It also renders on GitHub, Gitea and Forgejo, which draw
+` ```mermaid ` blocks in their own file previews — the same file, readable in
+both places, which is the same reason images are written as relative paths.
+
+**It renders in the editor's Preview tab too**, exactly as it will on the
+published page — same component, no separate preview mode to fall out of
+step with the real thing.
+
+**When the syntax is wrong**, which is most of the time while you are still
+typing one, the page does not break. That block shows the Mermaid source as
+a plain code block, and underneath it:
+
+> This diagram could not be drawn -- check the Mermaid syntax.
+> `Parse error on line 2: ... Expecting 'SQE', 'DOUBLECIRCLEEND', ...`
+
+— Mermaid's own message, which names the line. Everything else on the page
+(other diagrams included) renders normally: one broken diagram is one broken
+diagram, never a blank page.
+
+**The copy button stays** on a diagram block, and copies the Mermaid *source*
+rather than the drawing. Copying the source is what someone actually wants
+from a diagram in someone else's docs — to paste it into their own page and
+change three lines — and there is no way to reach it otherwise, since the
+rendered diagram has replaced the code block it came from.
+
+**Light and dark** are both handled: the diagram is drawn in whichever
+palette the reader is on and is redrawn when they flip the switch, without a
+reload. A wide diagram keeps its natural size and scrolls inside its own
+frame, like a wide table or a long line of code — it never widens the page.
+
+**On page weight.** Mermaid is a large library, so it is loaded only when a
+page actually contains a diagram: it sits in separate bundle chunks that a
+reader on a page without one never downloads (the shared bundle grows by
+about 4 kB for the code that decides this). It is bundled with the app and
+never fetched from a CDN — a DocuWaves on a LAN with no route to the
+internet draws its diagrams exactly like one with.
 
 ### Images
 

@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useMemo, useRef, type HTMLAttributes, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
-import { Check, Copy } from "lucide-react";
+import type { Element, ElementContent } from "hast";
+import { CopyButton } from "@/components/CopyButton";
+import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
 
@@ -25,8 +27,9 @@ import { useI18n } from "@/lib/i18n";
  * way today, but a future caller might) relative images are simply left
  * alone rather than rewritten into a wrong URL.
  *
- * Heading anchors and code-block copy buttons need no props at all, so the
- * admin editor's preview pane gets them too without knowing about them.
+ * Heading anchors, code-block copy buttons and Mermaid diagrams need no props
+ * at all, so the admin editor's preview pane gets them too without knowing
+ * about them.
  */
 export function MarkdownView({
   content,
@@ -66,7 +69,14 @@ export function MarkdownView({
     <div className="markdown-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeHighlight]}
+        // plainText: "mermaid" is not a highlight.js language, it's a
+        // diagram. Told plainly, the highlighter leaves the block completely
+        // alone -- no `hljs` class, no spans -- which keeps its source in one
+        // piece for MermaidDiagram and makes the fallback shown when a
+        // diagram doesn't parse look like the plain block it is. Without it
+        // rehype-highlight instead emits a "not registered" warning per
+        // block, per render pass.
+        rehypePlugins={[[rehypeHighlight, { plainText: ["mermaid"] }]]}
         urlTransform={urlTransform}
         components={{
           // `node` is react-markdown's own hast node -- destructured out
@@ -103,7 +113,10 @@ export function MarkdownView({
             );
           },
           pre({ node, children, ...props }) {
-            void node;
+            // A ```mermaid block is a picture, not code -- everything else
+            // stays the fenced block it always was.
+            const diagram = mermaidSource(node);
+            if (diagram !== null) return <MermaidDiagram code={diagram} />;
             return <CodeBlock {...props}>{children}</CodeBlock>;
           },
         }}
@@ -137,78 +150,45 @@ function Heading({
 }
 
 function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
-  const { t } = useI18n();
   const preRef = useRef<HTMLPreElement>(null);
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-
-  useEffect(() => {
-    if (state === "idle") return;
-    const timer = window.setTimeout(() => setState("idle"), 2000);
-    return () => window.clearTimeout(timer);
-  }, [state]);
-
-  async function copy() {
-    // textContent of the rendered <pre>, not the Markdown source: by this
-    // point rehype-highlight has split the code into nested <span>s, and the
-    // DOM is where the block's plain text still exists in one piece.
-    setState((await writeToClipboard(preRef.current?.textContent ?? "")) ? "copied" : "failed");
-  }
 
   return (
     <div className="code-block">
       <pre ref={preRef} {...props}>
         {children}
       </pre>
-      <button
-        type="button"
-        onClick={copy}
-        data-state={state}
-        className="code-copy"
-        aria-label={t("page.copyCode")}
-        title={t("page.copyCode")}
-      >
-        {state === "copied" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-        {state !== "idle" && <span>{state === "copied" ? t("page.copied") : t("page.copyFailed")}</span>}
-      </button>
+      {/* textContent of the rendered <pre>, not the Markdown source: by this
+          point rehype-highlight has split the code into nested <span>s, and
+          the DOM is where the block's plain text still exists in one piece. */}
+      <CopyButton getText={() => preRef.current?.textContent ?? ""} />
     </div>
   );
 }
 
 /**
- * navigator.clipboard only exists in a secure context, and a self-hosted
- * DocuWaves is very often reached over plain http:// on a LAN (which is
- * exactly what the README's setup steps describe) -- there it is simply
- * undefined. execCommand("copy") is deprecated but is the only thing that
- * still copies on such an origin, so it's the fallback rather than the
- * primary path.
+ * The source of a ```mermaid fenced block, or null for every other `<pre>`.
+ *
+ * Read off the hast node rather than out of the rendered React children: by
+ * the time `pre` is called those are React elements, and digging the text
+ * back out of them would mean knowing how the highlighter nested its spans.
+ * The hast node is the Markdown as it was parsed, which is exactly the string
+ * mermaid has to be handed -- fence indentation, blank lines and all.
  */
-async function writeToClipboard(text: string): Promise<boolean> {
-  if (!text) return false;
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    // Blocked by permissions policy or refused -- try the legacy path.
-  }
+function mermaidSource(node?: Element): string | null {
+  const code = node?.children.find((child) => child.type === "element");
+  if (code?.type !== "element" || code.tagName !== "code") return null;
+  const className = code.properties?.className;
+  if (!Array.isArray(className) || !className.includes("language-mermaid")) return null;
+  return nodeText(code);
+}
 
-  const area = document.createElement("textarea");
-  area.value = text;
-  area.setAttribute("readonly", "");
-  // Off-screen but not display:none, which would make it unselectable.
-  area.style.position = "fixed";
-  area.style.top = "-1000px";
-  area.style.opacity = "0";
-  document.body.appendChild(area);
-  area.select();
-  try {
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    document.body.removeChild(area);
-  }
+/** All the text under a hast node, in order. Recursive rather than reading
+ *  the one child a fenced block normally has: nothing then depends on
+ *  whatever the rehype plugins ahead of this did or didn't wrap it in. */
+function nodeText(node: ElementContent): string {
+  if (node.type === "text") return node.value;
+  if (node.type === "element") return node.children.map(nodeText).join("");
+  return "";
 }
 
 /**

@@ -1,3 +1,5 @@
+import { useSyncExternalStore } from "react";
+
 export function getPreferredTheme(): "light" | "dark" {
   const stored = localStorage.getItem("docuwaves-theme");
   if (stored === "light" || stored === "dark") return stored;
@@ -7,6 +9,60 @@ export function getPreferredTheme(): "light" | "dark" {
 export function applyTheme(theme: "light" | "dark") {
   document.documentElement.classList.toggle("dark", theme === "dark");
   localStorage.setItem("docuwaves-theme", theme);
+}
+
+/**
+ * The current palette, as a value a component can re-render on.
+ *
+ * Everything else in this app themes itself in CSS -- `.dark` on <html>
+ * swaps the custom properties and the whole page follows without a single
+ * component knowing. A Mermaid diagram can't: it is an SVG whose colours are
+ * baked in at render time by a library that has to be told which palette to
+ * draw, so that one component genuinely needs to know, and needs to hear
+ * about it the moment the reader flips the switch.
+ *
+ * Watching the class attribute rather than exposing a React state from the
+ * two header toggles: applyTheme() is the single place the class is set, so
+ * the observer sees every change (public site, admin, and any future caller)
+ * with nothing to keep in sync. One observer is shared by all subscribers and
+ * disconnected again when the last one goes -- a page can hold a dozen
+ * diagrams, and a dozen observers on the same attribute would be a dozen
+ * times the work for the same answer.
+ */
+const themeListeners = new Set<() => void>();
+let themeObserver: MutationObserver | null = null;
+
+function subscribeToTheme(listener: () => void): () => void {
+  themeListeners.add(listener);
+  if (!themeObserver) {
+    themeObserver = new MutationObserver(() => {
+      for (const notify of themeListeners) notify();
+    });
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+  }
+  return () => {
+    themeListeners.delete(listener);
+    if (themeListeners.size === 0) {
+      themeObserver?.disconnect();
+      themeObserver = null;
+    }
+  };
+}
+
+export function useIsDarkTheme(): boolean {
+  return useSyncExternalStore(
+    subscribeToTheme,
+    () => document.documentElement.classList.contains("dark"),
+    // Server snapshot: nothing here is server-rendered, but useSyncExternalStore
+    // insists on the argument and "light" is what an unstyled document is.
+    () => false,
+  );
+}
+
+/** A CSS custom property's live value, or "" when it isn't set. Used to hand
+ *  the current palette to something that can't read CSS itself. */
+export function cssVariable(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 /** #rgb / #rrggbb only. The backend already rejects anything else before it
