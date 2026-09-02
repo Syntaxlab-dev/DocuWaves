@@ -156,11 +156,18 @@ def _category(project: dict, version: str, reference: str) -> dict:
 
 
 def _require_content_repo() -> None:
-    if not git_content_repo.is_configured():
+    """Every write here is a git commit, so the repository has to open first.
+    It practically always does -- an instance with no CONTENT_REPO_URL has a
+    local one rather than none at all -- but an unwritable volume or an
+    unreachable remote is still a real answer, and the assistant's own
+    retry-or-tell-the-operator decision depends on hearing it."""
+    try:
+        git_content_repo.ensure_clone()
+    except git_content_repo.GitContentError as exc:
         raise ToolError(
-            "This DocuWaves instance has no content repo configured (CONTENT_REPO_URL is not set), so nothing "
-            "can be written -- every write is a git commit. Reading still works. Tell the operator."
-        )
+            f"This DocuWaves instance's content repository could not be opened, so nothing can be written "
+            f"-- every write is a git commit. Reading still works. Tell the operator: {exc}"
+        ) from exc
 
 
 def _page_entry(page: dict) -> dict:

@@ -310,7 +310,20 @@ export interface CreatedApiToken extends ApiToken {
 }
 
 export interface ContentRepoStatus {
+  /** Always true -- there is always a content repository. Kept because the
+   *  API still answers it; nothing in the UI branches on it any more. */
   configured: boolean;
+  /** What kind of repository this is, and the only field the status bar
+   *  branches on. `local`: versioned inside the data volume with no remote
+   *  -- the default, and a complete state, not a half-configured one.
+   *  `remote`: a remote is configured and this instance pushes to it.
+   *  `unrelated`: a remote is configured whose history has nothing in
+   *  common with this instance's, so nothing is pushed to it and `error`
+   *  says what to do about it. */
+  mode: "local" | "remote" | "unrelated";
+  has_remote: boolean;
+  /** About the REMOTE being reachable, so false in local mode -- which is
+   *  not a failure. `mode` is what says which. */
   connected: boolean;
   branch: string | null;
   last_commit: { sha: string; message: string; date: string } | null;

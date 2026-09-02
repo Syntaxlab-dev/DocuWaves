@@ -30,12 +30,18 @@ class Settings:
     oidc_client_secret: str = os.environ.get("OIDC_CLIENT_SECRET", "")
     oidc_provider_name: str = os.environ.get("OIDC_PROVIDER_NAME", "authentik")
 
-    # Content repo -- the Markdown+YAML files under this clone are the
+    # Content repo -- the Markdown+YAML files under CONTENT_REPO_PATH are the
     # single source of truth for all content (see services/content_files.py
     # for the on-disk convention); the database above is only ever a
-    # rebuildable search/browse index over it. Blank CONTENT_REPO_URL =
-    # feature entirely off, same "blank = off" contract as OIDC above --
-    # the admin UI shows a clear "not connected" state instead of a crash.
+    # rebuildable search/browse index over it.
+    #
+    # Blank CONTENT_REPO_URL does NOT mean "feature off" (unlike OIDC above):
+    # the repository is always there, initialised locally inside the data
+    # volume, and every write commits into it with a full history. This
+    # setting adds a REMOTE to that repository -- somewhere to push, and
+    # somewhere a community can send pull requests from. It can be filled in
+    # later without losing anything: the local history is pushed to a new
+    # empty remote on the next start (see git_content_repo._reconcile_remote).
     content_repo_url: str = os.environ.get("CONTENT_REPO_URL", "")
     content_repo_branch: str = os.environ.get("CONTENT_REPO_BRANCH", "main")
     # Exactly one of these two is expected, matching the URL's own scheme
@@ -43,9 +49,11 @@ class Settings:
     # git_content_repo.py's _authenticated_url()/_env().
     content_repo_token: str = os.environ.get("CONTENT_REPO_TOKEN", "")
     content_repo_ssh_key: str = os.environ.get("CONTENT_REPO_SSH_KEY", "")
-    # Local working clone, under the same /data volume every other file
-    # this app writes already lives on -- survives container restarts, only
-    # cloned fresh once per install rather than on every startup.
+    # The repository itself, under the same /data volume every other file
+    # this app writes already lives on -- survives container restarts, and
+    # is created (cloned, or initialised) once per install rather than on
+    # every startup. On a local-only instance this directory IS the content:
+    # back up the volume and you have backed up the docs.
     content_repo_path: str = os.environ.get("CONTENT_REPO_PATH", "/data/content-repo")
     content_repo_sync_interval_seconds: int = int(os.environ.get("CONTENT_REPO_SYNC_INTERVAL_SECONDS", "300"))
 

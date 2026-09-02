@@ -2,12 +2,16 @@
 AuthGuardMiddleware, this router doesn't sit under /api/public/ or
 /api/auth/ so every route here already requires a valid session).
 
-Every mutating endpoint requires the content repo to be configured (see
-_require_content_repo()) -- checked BEFORE any file is written, so an
-unconfigured instance never leaves an orphan file on disk that never made
-it into a commit. GitContentError from a write's git_content_repo call
-(push rejected/conflicted after the file was already written+committed
-locally) surfaces as 409, everything else content-repo-related as 400.
+Every mutating endpoint requires the content repository to be OPENABLE (see
+_require_content_repo()) -- checked BEFORE any file is written, so a broken
+instance never leaves an orphan file on disk that never made it into a
+commit. That check used to be "is a remote configured", and refused every
+write on an instance with no CONTENT_REPO_URL; there is no such instance any
+more, because a repository with no remote is a repository (see
+services/git_content_repo.py). GitContentError from a write's
+git_content_repo call (push rejected/conflicted after the file was already
+written+committed locally) surfaces as 409, everything else
+content-repo-related as 400.
 
 Writes always target the project's WRITABLE documentation version -- the
 project directory itself while it has no versions, `current/` once it has
@@ -95,11 +99,17 @@ def _writable_version(project_slug: str) -> str:
 
 
 def _require_content_repo() -> None:
-    if not git_content_repo.is_configured():
-        raise HTTPException(
-            status_code=400,
-            detail="No content repo is configured (CONTENT_REPO_URL is not set) -- see the README for setup.",
-        )
+    """There is always a content repository -- but it still has to open. The
+    call is what creates it on a first ever write (a `git init` in the data
+    volume, or the clone of a configured remote), and the reasons it can
+    fail are real ones an operator can act on: an unwritable volume, an
+    unreachable remote, credentials that no longer work. Answering those
+    here, before a single file is written, is what keeps a failed write from
+    leaving a file on disk that no commit ever mentions."""
+    try:
+        git_content_repo.ensure_clone()
+    except git_content_repo.GitContentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 # The slug rule itself lives in content_files.unique_slug(), because the MCP
@@ -118,9 +128,13 @@ def _git_error_response(exc: git_content_repo.GitContentError) -> HTTPException:
 
 @router.get(
     "/content-repo/status",
-    summary="Content repo connection status",
-    description="Whether a content repo is configured, currently reachable, and its last synced commit -- "
-    "for the admin UI's connection banner. Never raises: a connection problem is shown here, not thrown.",
+    summary="Content repo status",
+    description="What kind of content repository this instance has and what state it is in, for the admin "
+    "UI's status bar. `mode` is `local` (versioned in the data volume, no remote -- the default, and a "
+    "complete state rather than a broken one), `remote`, or `unrelated` (a remote is configured whose "
+    "history has nothing in common with this instance's, so nothing is being pushed to it -- `error` says "
+    "what to do). `connected` is strictly about a remote being reachable and is therefore false in local "
+    "mode. Never raises: a problem is shown here, not thrown.",
 )
 def admin_content_repo_status():
     # Plus whatever the last index run had to skip. A page that simply never
@@ -135,7 +149,10 @@ def admin_content_repo_status():
     summary="Pull the content repo and reindex",
     description="Fetches the latest commits from the content repo's remote (e.g. a community pull request "
     "that just got merged) and rebuilds the projects/categories/pages database index from what's now on "
-    "disk. Safe to call any time; also runs automatically on a timer, see CONTENT_REPO_SYNC_INTERVAL_SECONDS.",
+    "disk. Safe to call any time; also runs automatically on a timer, see "
+    "CONTENT_REPO_SYNC_INTERVAL_SECONDS. On a local-only instance there is no remote to fetch from and "
+    "nowhere else the files could have changed, so this only reindexes -- which is why the admin UI hides "
+    "the button rather than offering an action with nothing behind it.",
 )
 def admin_content_repo_sync():
     _require_content_repo()

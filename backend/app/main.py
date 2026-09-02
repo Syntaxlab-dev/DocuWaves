@@ -37,40 +37,48 @@ async def _periodic_content_sync() -> None:
 async def lifespan(_app: FastAPI):
     db.init_schema()
     sync_task: asyncio.Task | None = None
-    if git_content_repo.is_configured():
-        try:
-            git_content_repo.ensure_clone()
-            # Pull before indexing. ensure_clone() only clones when the
-            # working copy is missing; on every restart after the first it
-            # reuses what's already on disk, so without this the index was
-            # rebuilt from a checkout that could be days old and commits
-            # pushed while the container was down stayed invisible until
-            # the first periodic sync or a manual "Sync now".
-            git_content_repo.sync_pull()
-        except git_content_repo.GitContentError as exc:
-            # Doesn't prevent startup -- the admin UI's connection status
-            # panel surfaces this instead of the app refusing to boot over
-            # what might just be a transient network issue.
-            log.warning("Initial content repo sync failed: %s", exc)
-        # Reindex from the working clone on disk whether or not the pull
-        # above got through: the clone lives on the same persistent volume
-        # as the index, so its files are there either way -- and after
-        # db.init_schema() has rebuilt the content tables for a new schema
-        # (see db.py) this is the call that fills them again, which must not
-        # hinge on the network being up at that moment. full_sync() itself
-        # no-ops when there is no checkout at all, so a failed FIRST clone
-        # still can't empty anything.
-        try:
-            content_sync.full_sync()
-        except Exception:
-            # Deliberately broad, and deliberately not fatal. Whatever the
-            # index makes of the files, one committed file must never be able
-            # to stop the application from starting -- a duplicate page slug
-            # used to raise straight out of here and the container exited,
-            # taking the public site down with no way in to see why. Coming
-            # up with a stale or partial index and a logged reason leaves the
-            # admin area reachable, which is where the operator fixes it.
-            log.exception("Initial content index failed; starting with whatever the index already holds")
+    try:
+        # Unconditional, because there is always a content repository: with
+        # no CONTENT_REPO_URL set this initialises a local one in the data
+        # volume, which is a complete content repo -- commits, history,
+        # diffs, restore -- minus a remote. See services/git_content_repo.py.
+        git_content_repo.ensure_clone()
+        # Pull before indexing. ensure_clone() only clones when the working
+        # copy is missing; on every restart after the first it reuses what's
+        # already on disk, so without this the index was rebuilt from a
+        # checkout that could be days old and commits pushed while the
+        # container was down stayed invisible until the first periodic sync
+        # or a manual "Sync now". Returns immediately with no remote
+        # configured -- there is no second copy of the content to pull from.
+        git_content_repo.sync_pull()
+    except git_content_repo.GitContentError as exc:
+        # Doesn't prevent startup -- the admin UI's content-repo status panel
+        # surfaces this instead of the app refusing to boot over what might
+        # just be a transient network issue.
+        log.warning("Initial content repo sync failed: %s", exc)
+    # Reindex from the working copy on disk whether or not the pull above got
+    # through: it lives on the same persistent volume as the index, so its
+    # files are there either way -- and after db.init_schema() has rebuilt the
+    # content tables for a new schema (see db.py) this is the call that fills
+    # them again, which must not hinge on the network being up at that moment.
+    # full_sync() itself no-ops when there is no checkout at all, so a failed
+    # FIRST clone still can't empty anything.
+    try:
+        content_sync.full_sync()
+    except Exception:
+        # Deliberately broad, and deliberately not fatal. Whatever the
+        # index makes of the files, one committed file must never be able
+        # to stop the application from starting -- a duplicate page slug
+        # used to raise straight out of here and the container exited,
+        # taking the public site down with no way in to see why. Coming
+        # up with a stale or partial index and a logged reason leaves the
+        # admin area reachable, which is where the operator fixes it.
+        log.exception("Initial content index failed; starting with whatever the index already holds")
+    if git_content_repo.has_remote():
+        # Only with a remote. The loop exists to pick up commits made
+        # somewhere ELSE (a merged pull request, another clone) -- on a
+        # local-only instance this process is the sole writer and every write
+        # reindexes itself, so there is nothing for it to find.
         sync_task = asyncio.create_task(_periodic_content_sync())
     yield
     if sync_task is not None:
@@ -80,9 +88,10 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="DocuWaves API",
     description="Self-hosted documentation CMS: multiple projects, each with categories and Markdown pages. "
-    "Content lives as Markdown+YAML files in a connected Git repo (so a community can contribute via pull "
-    "request too); edited through a browser UI that commits and pushes on save. The database (SQLite by "
-    "default, optional PostgreSQL) is just a rebuildable search/browse index over those files. "
+    "Content lives as Markdown+YAML files in a Git repo -- a local one inside the data volume by default, "
+    "needing no account or token, or a remote you connect so a community can contribute via pull request. "
+    "Edited through a browser UI that commits (and pushes, when there is a remote) on save. The database "
+    "(SQLite by default, optional PostgreSQL) is just a rebuildable search/browse index over those files. "
     "Interactive docs at /docs.",
     lifespan=lifespan,
 )

@@ -333,16 +333,9 @@ export function AdminApp() {
 
         <RepoStatusBar status={repoStatus} syncing={syncing} onSync={onSyncNow} />
 
-        {repoStatus && !repoStatus.configured ? (
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("admin.repoNotConfiguredTitle")}</CardTitle>
-            </CardHeader>
-            <CardContent className="whitespace-pre-line text-sm text-[var(--muted)]">
-              {t("admin.repoNotConfiguredBody")}
-            </CardContent>
-          </Card>
-        ) : (
+        {/* No "not connected" gate any more: there is always a content
+         *  repository (a local one in the data volume when no remote is
+         *  configured), so the editor is always the thing to show. */}
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
           <ProjectsPanel
             projects={projects}
@@ -433,12 +426,26 @@ export function AdminApp() {
             )}
           </div>
         </div>
-        )}
       </div>
     </div>
   );
 }
 
+/** What kind of content repository this instance has, and whether anything
+ *  is wrong with it.
+ *
+ *  Three states, and only one of them is a problem. **Local** is the default
+ *  and is reported as the plain fact it is -- content versioned here, no
+ *  remote -- never as an error and never as a nudge to go and configure one:
+ *  an instance with no remote is not a half-working instance. **Remote** is
+ *  the same connected/unreachable line it always was. **Unrelated** is the
+ *  one that needs the operator: a remote is configured that this instance
+ *  cannot safely push to, so the message says so and says what to do.
+ *
+ *  "Sync now" is shown for the two remote states only. In local mode there
+ *  is no remote to fetch from and nowhere else the files could have changed,
+ *  so the button would be an action with nothing behind it; in the unrelated
+ *  state it is exactly how an operator retries after fixing the remote. */
 function RepoStatusBar({
   status,
   syncing,
@@ -449,17 +456,27 @@ function RepoStatusBar({
   onSync: () => void;
 }) {
   const { t } = useI18n();
-  if (!status || !status.configured) return null;
+  if (!status) return null;
+  const local = status.mode === "local";
+  const commit = status.last_commit ? `${status.branch} · ${status.last_commit.sha} · ${status.last_commit.message}` : status.branch;
 
   return (
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm">
       <GitBranch className="h-4 w-4 text-[var(--muted)]" />
-      {status.connected ? (
+      {local ? (
         <>
-          <span className={status.connected ? "text-[var(--accent)]" : ""}>{t("admin.repoConnected")}</span>
-          <span className="text-[var(--muted)]">
-            {status.branch} · {status.last_commit?.sha} · {status.last_commit?.message}
-          </span>
+          <span>{t("admin.repoLocal")}</span>
+          <span className="text-[var(--muted)]">{commit}</span>
+        </>
+      ) : status.mode === "unrelated" ? (
+        <span className="text-red-500">
+          {t("admin.repoUnrelated")}
+          {status.error ? `: ${status.error}` : ""}
+        </span>
+      ) : status.connected ? (
+        <>
+          <span className="text-[var(--accent)]">{t("admin.repoConnected")}</span>
+          <span className="text-[var(--muted)]">{commit}</span>
         </>
       ) : (
         <span className="text-red-500">
@@ -467,10 +484,12 @@ function RepoStatusBar({
           {status.error ? `: ${status.error}` : ""}
         </span>
       )}
-      <Button variant="outline" size="sm" className="ml-auto" onClick={onSync} disabled={syncing}>
-        <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
-        {t("admin.repoSyncNow")}
-      </Button>
+      {!local && (
+        <Button variant="outline" size="sm" className="ml-auto" onClick={onSync} disabled={syncing}>
+          <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+          {t("admin.repoSyncNow")}
+        </Button>
+      )}
     </div>
   );
 }

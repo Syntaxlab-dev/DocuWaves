@@ -1,10 +1,17 @@
 # DocuWaves
 
 A self-hosted documentation CMS. Content is Markdown+YAML files in a Git
-repository you control — so a community can contribute the normal way (fork,
-edit a `.md` file, open a pull request) — but it's edited through a real
-browser UI too: the admin editor writes the file, commits, and pushes on
-save, so nobody has to touch `git` directly if they don't want to.
+repository you control — but it's edited through a real browser UI: the admin
+editor writes the file and commits on save, so nobody has to touch `git`
+directly if they don't want to.
+
+**It needs no Git hosting account to run.** Start it with no configuration at
+all and it creates its own repository inside its data volume; every page you
+write is a real commit with real history. Point it at a remote later — on
+GitHub, GitLab, your own Forgejo — and the history you already have is pushed
+there, which is when a community can start contributing the normal way (fork,
+edit a `.md` file, open a pull request). See "Setup" and "Adding a Git remote
+later".
 
 - **Multiple projects in one instance** — one DocuWaves deployment can
   host the docs for every app/tool you maintain, each with its own set of
@@ -27,10 +34,13 @@ save, so nobody has to touch `git` directly if they don't want to.
   machine stays in the `.md` file, diffs line by line in git, and needs no
   binary asset anyone has to keep in sync with the prose around it.
 - **Content lives in Git, not a database** — every project/category/page is
-  a plain file (see "Content repo structure" below). A community member can
-  contribute via a normal pull request; DocuWaves picks up merged changes
+  a plain file (see "Content repo structure" below) and every save is a
+  commit. That is true with no remote configured: history, diffs, page
+  restore and "who changed this" all come from the repository being *there*,
+  not from it being hosted anywhere. Connect a remote and a community member
+  can contribute via a normal pull request; DocuWaves picks up merged changes
   automatically (a background sync job, or a "Sync now" button in the admin
-  UI). Full commit history for free, no separate backup story for content.
+  UI).
 - **Branded per instance** — name, tagline, logo, favicon, accent colour and
   footer come from a `_site.yml` in the content repo (see "Site branding"),
   so two deployments look like two different products without either of them
@@ -77,27 +87,71 @@ save, so nobody has to touch `git` directly if they don't want to.
 
 ## Setup
 
-1. Create a separate Git repository to hold your documentation content (can
-   be private or public, on GitHub/GitLab/your own Forgejo/Gitea/anything —
-   DocuWaves only needs a normal Git remote URL). It can start completely
-   empty.
-2. Clone *this* repo (DocuWaves itself) and `cd` into it.
-3. `cp .env.example .env`, then set `CONTENT_REPO_URL` (and either
-   `CONTENT_REPO_TOKEN` for an HTTPS remote or `CONTENT_REPO_SSH_KEY` for an
-   SSH one) to point at the content repo from step 1 — see `.env.example`
-   for both forms with real examples.
-4. `docker compose up -d --build`
-5. Open `http://<your-server>:8091` — the first thing you'll see is the
+No account anywhere, no repository to create first, no token to mint:
+
+1. Clone this repo and `cd` into it.
+2. `docker compose up -d --build`
+3. Open `http://<your-server>:8091` — the first thing you'll see is the
    setup screen. Pick a username and password; this becomes the one admin
    account.
-6. In the admin area, add a project, add a category to it, add a page,
+4. In the admin area, add a project, add a category to it, add a page,
    write some Markdown, and hit "Published" to make it visible on the
-   public site. Each of those actions is a real commit, pushed to your
-   content repo immediately — check its history any time.
+   public site.
 
-Running without `CONTENT_REPO_URL` set is also fine: DocuWaves starts, the
-public site is just empty and the admin area shows a clear "not connected"
-message instead of the editor, until you set it and restart.
+That's it. There is no step where you configure a Git remote, because there
+doesn't have to be one: on first start DocuWaves initialises a Git repository
+at `CONTENT_REPO_PATH` (`/data/content-repo`, inside the volume
+`docker-compose.yml` already mounts) and every one of those actions is a real
+commit in it, authored by whoever made it. `cp .env.example .env` if you want
+to change anything at all — every setting in it is optional.
+
+**What you get with no remote:** everything except a copy somewhere else.
+Full page history, diffs, restoring an old version, attribution, the content
+being plain Markdown files you can read and edit outside the app, and a
+database that is only a rebuildable index over them.
+
+**What you don't get:** anywhere for a community to send a pull request from,
+and any copy of your documentation outside this server. **On a local-only
+instance the data volume is the backup** — `./data` holds the repository and
+nothing mirrors it. Back that directory up (or `git clone` it somewhere, or
+add a remote as below) the way you would any other data you'd miss.
+
+### Adding a Git remote later
+
+Nothing is lost by starting local. When you want the docs on GitHub/GitLab/
+Forgejo/Gitea/anything that speaks Git:
+
+1. Create an **empty** repository there.
+2. In `.env`, set `CONTENT_REPO_URL` to it, plus either `CONTENT_REPO_TOKEN`
+   (for an `https://` remote — e.g. a GitHub fine-grained PAT scoped to that
+   one repo, Contents: Read and write) or `CONTENT_REPO_SSH_KEY` (for a
+   `git@`/`ssh://` one — a deploy key with write access). See `.env.example`
+   for both forms.
+3. `docker compose up -d` to restart it.
+
+On that start, the history you already have is **pushed to the new remote in
+full** — every commit, from the first page you wrote. It is not squashed into
+an import and the local repository is not re-cloned over. From then on the
+instance behaves exactly as one that was configured with a remote on day one:
+saves push, merged pull requests are pulled back in on a timer, and the admin
+area's "Sync now" fetches immediately.
+
+Removing `CONTENT_REPO_URL` again is just as safe: the instance goes back to
+local mode with all of its history, and the `origin` entry is dropped from
+the repository's config (which also takes the stored push token with it).
+
+**If the remote is not empty and its history is unrelated to yours** — a
+different repo, or one somebody else already put content in — DocuWaves
+**does nothing** and says so. It won't merge them (merging unrelated
+histories invents a tree neither side wrote), won't force-push over the
+remote, and won't re-clone over your local content. The instance keeps
+running exactly as a local one, every save still commits, and the admin
+area's status bar carries the reason and the two ways out: point
+`CONTENT_REPO_URL` at an empty repository instead (your history is then
+pushed to it on the next restart), or — if the remote's content is the one
+you want to keep — delete `./data/content-repo` so it is cloned fresh, which
+discards what is in it. Whichever you choose, you choose it; nothing here
+decides it for you.
 
 ## Content repo structure
 
@@ -777,8 +831,8 @@ address. The search page and the 404 page are deliberately *not* disallowed
 there: they say `noindex` in their own head, and a crawler has to be allowed
 to fetch a page to find that out.
 
-Both work on an instance with no content, and on one with no content repo
-connected at all — you get a valid document with the home page in it.
+Both work on an instance with no content at all — you get a valid document
+with the home page in it.
 
 ### Getting the address right
 
@@ -863,8 +917,8 @@ pointed at your documentation and actually work on it: "what does the
 installation page say about Postgres?", "document the two new environment
 variables", "fix every broken link in the CachePanel docs". It reads the
 same pages the site serves, and — with a token that allows it — writes them
-back as real commits in your content repo, reviewable and revertable like
-any other contribution.
+back as real commits in your content repo (local or remote, it makes no
+difference here), reviewable and revertable like any other contribution.
 
 This is not a replacement for the admin UI and not a second login. It is one
 endpoint, reachable with one kind of credential, doing exactly the subset of
@@ -1025,12 +1079,12 @@ API), but within that it is real write access to what your readers see.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CONTENT_REPO_URL` | *(empty)* | Git remote holding your Markdown content — required for the admin editor to work |
+| `CONTENT_REPO_URL` | *(empty — local repo)* | Git remote to push the content repo to. Empty means the repository at `CONTENT_REPO_PATH` is local-only, which is a complete setup — see "Adding a Git remote later" |
 | `CONTENT_REPO_TOKEN` | *(empty)* | Push token, for an `https://` content repo URL |
 | `CONTENT_REPO_SSH_KEY` | *(empty)* | Private deploy key, for a `git@`/`ssh://` content repo URL |
-| `CONTENT_REPO_BRANCH` | `main` | Branch to track |
-| `CONTENT_REPO_SYNC_INTERVAL_SECONDS` | `300` | How often the background job pulls + reindexes on its own |
-| `CONTENT_REPO_PATH` | `/data/content-repo` | Where the local working clone lives (inside the container) |
+| `CONTENT_REPO_BRANCH` | `main` | Branch to track (and the branch a local repository is initialised on) |
+| `CONTENT_REPO_SYNC_INTERVAL_SECONDS` | `300` | How often the background job pulls + reindexes on its own (only runs with a remote configured) |
+| `CONTENT_REPO_PATH` | `/data/content-repo` | Where the repository lives (inside the container). With no remote, this **is** your content — back the volume up |
 | `DATABASE_URL` | *(empty — SQLite)* | Postgres connection string; switches the search-index backend |
 | `SQLITE_PATH` | `/data/docuwaves.db` | Where the SQLite index file lives (only used without `DATABASE_URL`) |
 | `OIDC_ISSUER_URL` | *(empty — SSO off)* | Your identity provider's base issuer URL |

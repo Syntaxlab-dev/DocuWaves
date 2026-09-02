@@ -4,6 +4,22 @@ content_sync.py, the *_store.py write paths) ever reads or writes; this module
 is the sole place that talks to the actual `git` process (via GitPython) to
 keep that clone in sync with its remote.
 
+LOCAL BY DEFAULT, and that is the whole shape of this module. Everything the
+rest of the app gets out of git -- a full history, diffs, attribution,
+restore, "the database is only a rebuildable index" -- comes from there
+BEING a repository, not from that repository being hosted somewhere. So an
+instance with no CONTENT_REPO_URL is not an unconfigured instance: it gets a
+real repository, initialised at CONTENT_REPO_PATH with a first commit, and
+every write commits into it exactly as it would with a remote. Nothing
+pushes, because there is nowhere to push. That is the only difference, and
+it is why nobody has to create a repository and mint a token before this
+application will do anything at all.
+
+CONTENT_REPO_URL is what gives that repository a remote -- on day one, or a
+year later. See _reconcile_remote() for what happens on the restart that
+adds one, removes one again, or points at a repository whose history has
+nothing to do with this instance's.
+
 Auth: either an HTTPS URL + CONTENT_REPO_TOKEN (embedded into the remote URL
 the same way CachePanel/DocuWaves' own CI embeds a token for a push, never
 logged) or an SSH URL + CONTENT_REPO_SSH_KEY (written to a private key file
@@ -32,6 +48,7 @@ through file_at() and then goes through the ordinary write path above, so a
 restore is a NEW commit on top and the history it came from stays intact.
 """
 
+import logging
 import os
 import re
 import shutil
@@ -43,15 +60,40 @@ import git
 
 from app.settings import settings
 
+log = logging.getLogger("docuwaves")
+
 _lock = threading.Lock()
 _repo: git.Repo | None = None
+
+# What this repository's remote turned out to be, as far as the last
+# reconciliation could work out (see _reconcile_remote). Read by status() for
+# the admin panel, by commit_and_push() to decide whether a push is even a
+# meaningful thing to attempt, and by sync_pull().
+LOCAL = "local"  # no CONTENT_REPO_URL: versioned here, pushed nowhere
+REMOTE = "remote"  # a remote is configured and this working copy belongs to it
+UNRELATED = "unrelated"  # a remote is configured whose history is not this one's
+
+_mode: str = LOCAL
+# Why the remote isn't usable right now, in the operator's words -- "" when
+# there is nothing wrong. Never a reason to stop writing: a commit is a local
+# act, and it is the commit that makes a write durable.
+_remote_error: str = ""
 
 
 class GitContentError(RuntimeError):
     pass
 
 
-def is_configured() -> bool:
+def has_remote() -> bool:
+    """Whether the repository has anywhere to push.
+
+    This replaces the module's old is_configured(), and the rename is the
+    whole change in one line: that function answered "is a CONTENT_REPO_URL
+    set", and every caller then used it to mean "is there a content repo at
+    all" -- which is why an instance without one refused every write. There
+    is now always a content repo, so the question worth asking is the
+    narrower one this asks, and only the three things that genuinely need a
+    remote ask it (pulling, the background sync job, the status panel)."""
     return bool(settings.content_repo_url)
 
 
@@ -92,83 +134,142 @@ def _configure_repo(repo: git.Repo) -> None:
         cw.set_value("user", "email", "docuwaves@local")
 
 
+def _set_mode(mode: str, error: str = "") -> None:
+    global _mode, _remote_error
+    _mode, _remote_error = mode, error
+
+
 def ensure_clone() -> git.Repo:
-    """Idempotent: clones on first call, reuses the existing clone on every
-    call after -- the working directory persists across app restarts via the
-    same /data volume every other store's file lives under, so a fresh clone
-    only happens once per install, not once per request.
+    """The content repository, made if it isn't there yet. Idempotent: the
+    first call creates it, every call after reuses it -- the working
+    directory persists across app restarts via the same /data volume every
+    other store's file lives under, so this happens once per install rather
+    than once per request.
+
+    "Made" is one of three things, and the caller never has to know which:
+    a clone of CONTENT_REPO_URL, a bootstrap of that remote if it is still
+    empty, or -- with no remote configured at all -- a plain `git init` right
+    here. All three hand back a repository whose working tree is
+    CONTENT_REPO_PATH, which is the only thing any caller ever wanted.
 
     Reuse does NOT pull: callers that need the latest upstream state call
     sync_pull() themselves (startup, the periodic task, "Sync now"). Pulling
     from in here would have to happen while _lock is held, and sync_pull()
     calls back into this function -- a plain Lock, so that deadlocks."""
     global _repo
-    if not is_configured():
-        raise GitContentError("No content repo configured (CONTENT_REPO_URL is not set).")
-
     with _lock:
-        path = Path(settings.content_repo_path)
-        env = _env()
         if _repo is not None:
             return _repo
 
-        if path.exists() and (path / ".git").exists():
-            try:
-                repo = git.Repo(path)
-                _ = repo.head.commit  # touch it -- raises if this is a half-finished/corrupt clone
-                _configure_repo(repo)
-                # The clone stores whatever remote URL it was created with --
-                # including the token that was embedded back then. Rotating
-                # CONTENT_REPO_TOKEN (or moving the repo) would otherwise never
-                # reach an existing clone, and every push would keep failing
-                # with the old, possibly revoked credentials while fetches on a
-                # public repo silently kept working. Re-point it on every start.
-                try:
-                    repo.remote("origin").set_url(_authenticated_url())
-                except (ValueError, git.GitCommandError):
-                    pass  # no origin (locally bootstrapped, never pushed) -- nothing to re-point
-                _repo = repo
-                return repo
-            except Exception:
-                # A previous clone attempt left a partial/broken directory
-                # behind (git creates the destination before it can fail,
-                # e.g. on the "branch doesn't exist yet" case below) --
-                # discard it and start over rather than getting stuck
-                # forever on the leftover.
-                shutil.rmtree(path, ignore_errors=True)
+        path = Path(settings.content_repo_path)
+        repo = _open_existing(path)
+        if repo is not None:
+            # Set BEFORE reconciling: the repository is usable from this
+            # point on, and a remote that can't be reached (or shouldn't be
+            # touched) must never be able to take the local content with it.
+            _repo = repo
+            # An existing working copy is the one case where the remote may
+            # have CHANGED since it was made -- newly added, removed again,
+            # re-pointed, or its token rotated.
+            _reconcile_remote(repo)
+            return repo
 
         path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            repo = git.Repo.clone_from(_authenticated_url(), path, branch=settings.content_repo_branch, env=env)
-        except git.GitCommandError as exc:
-            if "not found in upstream" in str(exc):
-                # The remote repo exists but has no commits yet (a brand
-                # new, genuinely empty content repo) -- clone_from can't
-                # check out a branch that doesn't exist, so bootstrap it
-                # instead: init locally on the configured branch, make an
-                # empty first commit, push that as the branch's first ever
-                # commit.
-                shutil.rmtree(path, ignore_errors=True)
-                _repo = _bootstrap_empty_remote(path, env)
-                return _repo
-            raise GitContentError(f"Could not clone the content repo: {exc}") from exc
+        if not has_remote():
+            _repo = _init_local(path)
+            _set_mode(LOCAL)
+            return _repo
+
+        _repo = _clone_remote(path)
+        _set_mode(REMOTE)
+        return _repo
+
+
+def _open_existing(path: Path) -> git.Repo | None:
+    """The working copy already on disk, or None when there is none to open.
+
+    A directory that is there but unusable is discarded ONLY when a remote
+    can supply it again -- that rmtree exists for the partial directory a
+    failed clone leaves behind (git creates the destination before it can
+    fail), and re-cloning costs nothing. Without a remote the very same call
+    would be deleting the only copy of the instance's content, so a
+    local-only working copy is never thrown away: a repository that holds no
+    commits yet is an interrupted first start and gets its first commit
+    here, and anything worse is reported instead of cleaned up."""
+    if not path.exists() or not (path / ".git").exists():
+        return None
+
+    try:
+        repo = git.Repo(path)
         _configure_repo(repo)
-        _repo = repo
-        return repo
+    except Exception as exc:
+        if has_remote():
+            shutil.rmtree(path, ignore_errors=True)
+            return None
+        raise GitContentError(
+            f"The content repository at {path} could not be opened ({exc}). No CONTENT_REPO_URL is set, so "
+            f"this is the only copy of this instance's content -- it was left exactly as it is rather than "
+            f"discarded. Check the volume."
+        ) from exc
+
+    try:
+        _ = repo.head.commit  # touch it -- raises on a half-finished clone or an empty repository
+    except Exception:
+        if has_remote():
+            shutil.rmtree(path, ignore_errors=True)
+            return None
+        _initial_commit(repo)
+    return repo
 
 
-def _bootstrap_empty_remote(path: Path, env: dict) -> git.Repo:
+def _init_local(path: Path) -> git.Repo:
+    """A brand new repository in the data volume: the configured branch, one
+    commit so that HEAD exists (every history read below asks for HEAD, and
+    a repository with no commits has none), and no remote. No account, no
+    token, no network."""
     path.mkdir(parents=True, exist_ok=True)
     repo = git.Repo.init(path, initial_branch=settings.content_repo_branch)
-    repo.create_remote("origin", _authenticated_url())
     _configure_repo(repo)
-    keep_file = path / ".gitkeep"
+    _initial_commit(repo)
+    return repo
+
+
+def _initial_commit(repo: git.Repo) -> None:
+    keep_file = Path(repo.working_tree_dir) / ".gitkeep"
     keep_file.write_text("")
     repo.index.add([".gitkeep"])
     repo.index.commit(
-        "Initial commit (DocuWaves content repo bootstrap)",
+        "Initial commit (DocuWaves content repository)",
         author=git.Actor("DocuWaves", "docuwaves@local"),
     )
+
+
+def _clone_remote(path: Path) -> git.Repo:
+    env = _env()
+    try:
+        repo = git.Repo.clone_from(_authenticated_url(), path, branch=settings.content_repo_branch, env=env)
+    except git.GitCommandError as exc:
+        if "not found in upstream" in str(exc):
+            # The remote repo exists but has no commits yet (a brand new,
+            # genuinely empty content repo) -- clone_from can't check out a
+            # branch that doesn't exist, so bootstrap it instead: init
+            # locally on the configured branch, make an empty first commit,
+            # push that as the branch's first ever commit.
+            shutil.rmtree(path, ignore_errors=True)
+            return _bootstrap_empty_remote(path, env)
+        raise GitContentError(f"Could not clone the content repo: {exc}") from exc
+    _configure_repo(repo)
+    return repo
+
+
+def _bootstrap_empty_remote(path: Path, env: dict) -> git.Repo:
+    """An empty remote, filled in from scratch. Exactly the local repository
+    _init_local() makes, plus an origin and the push that gives the remote
+    its first commit -- which is the same two steps _adopt() takes for a
+    local instance that gains a remote later, only with no history to carry
+    across yet."""
+    repo = _init_local(path)
+    repo.create_remote("origin", _authenticated_url())
     try:
         with repo.git.custom_environment(**env):
             # set_upstream=True: without it, this first push has nothing to
@@ -184,6 +285,181 @@ def _bootstrap_empty_remote(path: Path, env: dict) -> git.Repo:
     return repo
 
 
+# What the operator is told when the configured remote turns out to hold a
+# history that is not this instance's. Written out here rather than at the
+# one place it is raised because three different surfaces say it: the admin
+# panel (through status()), "Sync now" (as a 409), and the log.
+_UNRELATED_MESSAGE = (
+    "The configured content repo remote ({url}, branch '{branch}') holds a history with nothing in common "
+    "with this instance's -- not a single shared commit. Nothing was pushed, pulled or overwritten: merging "
+    "two unrelated histories produces a tree neither side wrote, and either side could only win by "
+    "destroying the other. This instance keeps working exactly as a local one and every change is still "
+    "committed to {path}; nothing reaches that remote until this is settled. Two ways out: point "
+    "CONTENT_REPO_URL at an EMPTY repository instead, and this instance's full history is pushed to it on "
+    "the next restart -- or, if the remote's content is the one you want to keep, delete this instance's "
+    "working copy at {path} so it is cloned fresh, which discards everything in it."
+)
+
+
+def _reconcile_remote(repo: git.Repo) -> None:
+    """Line an EXISTING working copy up with whatever CONTENT_REPO_URL says
+    now. Called on every start and, while it hasn't concluded cleanly, again
+    from sync_pull() -- because the remote is a setting, and settings change.
+
+    Four outcomes, and not one of them may cost the local work:
+
+    * No remote configured. Any leftover `origin` is removed: the operator
+      went back to local, and dropping it also takes the token that was
+      embedded in it back out of .git/config. Writes keep committing here.
+    * A remote whose branch does not exist yet -- the ordinary "ran locally
+      for months, just made an empty repository for it" case. THE LOCAL
+      HISTORY IS PUSHED TO IT, whole. Not re-cloned over, not discarded: the
+      commits that are here are the ones that belong there.
+    * A remote whose branch shares an ancestor with ours: business as usual.
+      Pulls merge and pushes push, exactly as on an instance that had the
+      remote from day one -- plus a fast-forward of anything the remote is
+      simply missing, so commits made during a spell without a working
+      remote don't have to wait for the next edit to travel.
+    * A remote whose branch shares NO ancestor with ours. Nothing automatic
+      can be right: merging needs --allow-unrelated-histories and invents a
+      tree neither side wrote, force-pushing destroys the remote, and
+      re-cloning destroys the local content. So this does none of the three.
+      The instance carries on as a local one, the remote is left untouched,
+      and the reason -- with both ways out -- goes where the operator will
+      actually meet it. See _UNRELATED_MESSAGE."""
+    if not has_remote():
+        try:
+            repo.delete_remote("origin")
+        except (ValueError, git.GitCommandError):
+            pass  # there was none: a repository that has only ever been local
+        _set_mode(LOCAL)
+        return
+
+    # The working copy stores whatever remote URL it was created with --
+    # including the token that was embedded back then. Rotating
+    # CONTENT_REPO_TOKEN (or moving the repo) would otherwise never reach an
+    # existing clone, and every push would keep failing with the old, possibly
+    # revoked credentials while fetches on a public repo silently kept
+    # working. Re-point it on every start.
+    try:
+        repo.remote("origin").set_url(_authenticated_url())
+    except (ValueError, git.GitCommandError):
+        repo.create_remote("origin", _authenticated_url())
+
+    branch = settings.content_repo_branch
+    origin = repo.remote("origin")
+    try:
+        with repo.git.custom_environment(**_env()):
+            # ls-remote rather than a fetch, because the two answers have to
+            # be told apart: a branch that isn't there yet exits 0 with empty
+            # output (which is the adopt case below), while `fetch <branch>`
+            # fails the same way for an absent branch as for an unreachable
+            # host.
+            listed = repo.git.ls_remote("--heads", "origin", branch)
+    except git.GitCommandError as exc:
+        _set_mode(REMOTE, f"Could not reach the content repo's remote: {exc}")
+        return
+
+    if not listed.strip():
+        # The branch isn't there at all -- the whole local history becomes
+        # the remote's, and that push is also what establishes tracking.
+        _push_local_history(repo, origin, branch, set_upstream=True)
+        return
+
+    try:
+        with repo.git.custom_environment(**_env()):
+            origin.fetch(branch)
+    except git.GitCommandError as exc:
+        _set_mode(REMOTE, f"Could not fetch from the content repo's remote: {exc}")
+        return
+
+    try:
+        # merge-base exits non-zero with no output when the two commits share
+        # no ancestor at all -- which is the entire question being asked here.
+        repo.git.merge_base(repo.head.commit.hexsha, "FETCH_HEAD")
+    except git.GitCommandError:
+        message = _UNRELATED_MESSAGE.format(
+            url=settings.content_repo_url, branch=branch, path=settings.content_repo_path
+        )
+        # Only on the way IN to this state: sync_pull() re-runs this whole
+        # function every time it is called while the remote hasn't settled,
+        # and repeating a paragraph every five minutes buries the log it is
+        # supposed to be findable in.
+        if _mode != UNRELATED:
+            log.warning("%s", message)
+        _set_mode(UNRELATED, message)
+        return
+
+    _set_tracking(repo, branch)
+    _set_mode(REMOTE)
+    if _is_behind(repo):
+        _push_local_history(repo, origin, branch, set_upstream=False)
+
+
+def _is_behind(repo: git.Repo) -> bool:
+    """Whether the remote's tip is an ANCESTOR of ours -- it is missing
+    commits we have, and handing them over would fast-forward it rather than
+    rewrite anything. False both for "in step" and for "diverged"."""
+    try:
+        remote_head = repo.git.rev_parse("FETCH_HEAD").strip()
+        if remote_head == repo.head.commit.hexsha:
+            return False
+        repo.git.merge_base("--is-ancestor", remote_head, repo.head.commit.hexsha)
+    except git.GitCommandError:
+        return False
+    return True
+
+
+def _push_local_history(repo: git.Repo, origin, branch: str, set_upstream: bool) -> None:
+    """Commits this instance holds and the remote does not, handed over.
+
+    Two callers, one act, and it is the point of the whole local-first
+    arrangement: months of local commits are what a newly configured remote
+    gets, in full, rather than being flattened into a single import commit
+    or lost to a fresh clone. A remote that does not have this branch at all
+    gets the entire history and the tracking relationship with it; a remote
+    that has the branch but sits strictly behind ours (the same instance one
+    restart later, or after a spell where the remote was unreachable) gets
+    the difference as a plain fast-forward.
+
+    Never a force, and never onto a diverged branch -- a remote that has
+    moved on independently is the ordinary pull-then-push case that
+    sync_pull() and _push_with_retry() already handle."""
+    try:
+        with repo.git.custom_environment(**_env()):
+            # An explicit `local:remote` refspec, not a bare branch name: the
+            # local branch was named by CONTENT_REPO_BRANCH as it stood when
+            # the repository was initialised, and the operator may well have
+            # changed that in the same edit that added the remote.
+            results = origin.push(f"{repo.head.ref.name}:{branch}", set_upstream=set_upstream)
+        if any(r.flags & r.ERROR for r in results):
+            raise git.GitCommandError("push", 1, str([r.summary for r in results]))
+    except git.GitCommandError as exc:
+        _set_mode(
+            REMOTE,
+            f"This instance's existing content history could not be pushed to the configured remote: {exc}. "
+            f"Nothing was lost -- it is all still committed in {settings.content_repo_path}; 'Sync now' or a "
+            f"restart tries again.",
+        )
+        log.warning("Could not push the existing content history to the configured remote: %s", exc)
+        return
+    log.info("Pushed this instance's content history to %s (branch %s).", settings.content_repo_url, branch)
+    _set_mode(REMOTE)
+
+
+def _set_tracking(repo: git.Repo, branch: str) -> None:
+    """`origin.push()` and `origin.pull()` with no refspec (which is how
+    _push_with_retry and sync_pull call them) need the checked-out branch to
+    have an upstream. A clone comes with one; a working copy that was local
+    until this restart does not, and _adopt()'s push is not the only way it
+    can gain a remote -- an operator can point one at a repository that
+    already holds this same history."""
+    try:
+        repo.git.branch("--set-upstream-to", f"origin/{branch}", repo.head.ref.name)
+    except git.GitCommandError as exc:
+        log.warning("Could not set the upstream branch for %s: %s", branch, exc)
+
+
 def sync_pull() -> None:
     """Fetch + merge the configured branch -- used by both the manual 'sync
     now' button and the periodic background job. Raises GitContentError on
@@ -192,9 +468,25 @@ def sync_pull() -> None:
     below commits+pushes immediately, but a conflict against the remote's
     own history is still possible if two DocuWaves instances somehow shared
     one repo -- not a supported setup, but fails loudly rather than
-    corrupting the clone if it happens)."""
+    corrupting the clone if it happens).
+
+    A local-only instance has nothing to fetch -- there is no second copy of
+    this content anywhere -- so this returns quietly instead of failing:
+    both callers run on every instance, and neither has anything useful to
+    do with an error that only means "you have no remote"."""
     repo = ensure_clone()
+    if not has_remote():
+        return
     with _lock:
+        if _mode != REMOTE or _remote_error:
+            # The last attempt didn't conclude cleanly (unreachable host, a
+            # push that didn't get through, an unrelated remote). Retry it:
+            # this is exactly the call an operator makes after fixing it.
+            _reconcile_remote(repo)
+        if _mode == UNRELATED:
+            # A pull here would need --allow-unrelated-histories, which is
+            # the one thing that must not happen silently.
+            raise GitContentError(_remote_error)
         try:
             with repo.git.custom_environment(**_env()):
                 repo.remote("origin").pull()
@@ -232,7 +524,13 @@ def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
     (the caller just deleted a page/category/project directory) is staged
     as a deletion via `index.remove` instead -- `index.add` on a path that
     no longer exists on disk raises, so the two cases are split here rather
-    than left to the caller to get right."""
+    than left to the caller to get right.
+
+    "...and push" only when there is a remote to push to and it is one this
+    working copy belongs to. On a local instance, and on one whose remote
+    turned out to be unrelated (see _reconcile_remote), the write is
+    COMPLETE at the commit: it is in the repository, in the history, in the
+    diff, and restorable. Nothing about it is pending."""
     repo = ensure_clone()
     with _lock:
         repo.index.add([p for p in paths if (Path(repo.working_tree_dir) / p).exists()])
@@ -245,13 +543,27 @@ def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
 
         repo.index.commit(message, author=_actor(author_name), committer=git.Actor("DocuWaves", "docuwaves@local"))
 
-        _push_with_retry(repo)
+        if _mode == REMOTE:
+            _push_with_retry(repo)
 
 
 def _push_with_retry(repo: git.Repo) -> None:
     with repo.git.custom_environment(**_env()):
         origin = repo.remote("origin")
-        results = origin.push()
+        try:
+            results = origin.push()
+        except git.GitCommandError as exc:
+            # A REJECTED push comes back as ERROR-flagged results, which the
+            # retry below handles. An UNREACHABLE remote raises instead --
+            # and nothing caught it, so a save answered 500 with a traceback
+            # while the commit had in fact succeeded locally. The operator
+            # saw a crash and had no way to tell whether their work was
+            # safe. It is: the commit is the durable act, the push is not.
+            raise GitContentError(
+                f"Your change was committed locally but could not be pushed to the content repo "
+                f"({exc}). Nothing is lost -- it will go out with the next successful push, or "
+                f"immediately when you use 'Sync now' once the remote is reachable again."
+            ) from exc
         if not any(r.flags & r.ERROR for r in results):
             return
 
@@ -280,22 +592,41 @@ def _push_with_retry(repo: git.Repo) -> None:
 
 
 def status() -> dict:
-    """For the admin 'content repo connection' panel -- never raises, a
-    connection problem is data to display, not an exception to propagate."""
-    if not is_configured():
-        return {"configured": False, "connected": False, "branch": None, "last_commit": None, "error": None}
+    """For the admin 'content repo' panel -- never raises, a problem here is
+    data to display, not an exception to propagate.
+
+    `mode` is what the panel actually reads: "local" (versioned here, no
+    remote -- a complete state, not a broken one), "remote", or "unrelated".
+    `connected` is kept, and is strictly about a REMOTE being reachable, so
+    it is false on a local instance; that is not a failure and `mode` is
+    what says so."""
     try:
         repo = ensure_clone()
         head = repo.head.commit
+        last_commit = {
+            "sha": head.hexsha[:8],
+            "message": head.message.strip().splitlines()[0],
+            "date": head.committed_datetime.isoformat(),
+        }
+    except (GitContentError, ValueError, git.GitError) as exc:
         return {
             "configured": True,
-            "connected": True,
+            "mode": _mode,
+            "has_remote": has_remote(),
+            "connected": False,
             "branch": settings.content_repo_branch,
-            "last_commit": {"sha": head.hexsha[:8], "message": head.message.strip().splitlines()[0], "date": head.committed_datetime.isoformat()},
-            "error": None,
+            "last_commit": None,
+            "error": str(exc),
         }
-    except GitContentError as exc:
-        return {"configured": True, "connected": False, "branch": settings.content_repo_branch, "last_commit": None, "error": str(exc)}
+    return {
+        "configured": True,
+        "mode": _mode,
+        "has_remote": has_remote(),
+        "connected": _mode == REMOTE and not _remote_error,
+        "branch": settings.content_repo_branch,
+        "last_commit": last_commit,
+        "error": _remote_error or None,
+    }
 
 
 # ---- History (read-only) ----
@@ -306,10 +637,11 @@ def status() -> dict:
 # else has to learn a second way of naming a file.
 #
 # None of them raises. A history panel with nothing in it and a page with no
-# "last updated" line are both perfectly good answers for an instance with no
-# content repo, a clone that hasn't happened yet, a repo with no commits, or a
-# file git has simply never seen -- and all four are ordinary states, not
-# failures worth a 500 on a public page view.
+# "last updated" line are both perfectly good answers for a clone that hasn't
+# happened yet, a repo with no commits, or a file git has simply never seen --
+# and all three are ordinary states, not failures worth a 500 on a public page
+# view. What is NOT one of those cases any more is "no content repo": a local
+# instance has a real repository, so its pages have real histories.
 
 # A page's history is a list a person reads, not a log to page through: past a
 # few dozen entries nobody is scrolling. `limit` reaches page_history() from a
@@ -352,11 +684,9 @@ _READ_CACHE_MAX = 2000
 
 
 def _read_repo() -> git.Repo | None:
-    """The clone, for a read that must never fail loudly -- None when there is
-    nothing to read: no content repo configured, no clone (or a clone that
-    can't be made right now), or a repo that holds no commits at all."""
-    if not is_configured():
-        return None
+    """The repository, for a read that must never fail loudly -- None when
+    there is nothing to read: no working copy (or one that can't be made
+    right now), or a repo that holds no commits at all."""
     try:
         repo = ensure_clone()
         _ = repo.head.commit  # an initialized but commit-less repo has no history to read
