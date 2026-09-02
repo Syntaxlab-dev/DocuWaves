@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -146,6 +147,19 @@ class _ImmutableStatic(StaticFiles):
 
 _IMMUTABLE_CACHE = "public, max-age=31536000, immutable"
 
+# A named set of extensions rather than "anything that looks like a file":
+# a documentation version is part of the URL and its id routinely contains a
+# dot (/p/cachepanel/v2.0), so a general rule would 404 a real page. These
+# are extensions a client-side route never ends in -- server languages and
+# config files nobody here serves (what the scanners ask for), plus the
+# static types a browser requests on its own and should be told plainly do
+# not exist instead of being handed HTML.
+_SCANNABLE_FILE = re.compile(
+    r"\.(php\d?|asp|aspx|jsp|cgi|pl|sh|bash|exe|dll|env|sql|bak|old|swp|ini|conf|cfg|log|"
+    r"git|zip|tar|gz|rar|7z|xml|png|jpe?g|gif|ico|svg|webp|avif|woff2?|ttf|map)$",
+    re.IGNORECASE,
+)
+
 if FRONTEND_DIST.exists():
     app.mount("/assets", _ImmutableStatic(directory=FRONTEND_DIST / "assets"), name="assets")
 
@@ -172,6 +186,17 @@ if FRONTEND_DIST.exists():
         index = FRONTEND_DIST / "index.html"
         if full_path and candidate.is_relative_to(FRONTEND_DIST) and candidate.is_file():
             return FileResponse(candidate)
+
+        # A reader's URL is a client-side route and has no file extension
+        # (/p/cachepanel/pages/installation). A request for a FILE that the
+        # bundle does not contain is either a browser asking for something
+        # optional (favicon.png) or a scanner walking a list -- wp-login.php,
+        # wlwmanifest.xml, and twenty variations. Answering those with the SPA
+        # shell and a 200 tells the scanner it found something, so it keeps
+        # going, and hands a browser HTML where it asked for an image.
+        if _SCANNABLE_FILE.search(full_path):
+            raise HTTPException(status_code=404, detail="Not found.")
+
         # Anything else is a client-side route (or an escape attempt): hand back
         # the SPA shell and let the router decide, exactly as before.
         #

@@ -30,4 +30,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # for the OIDC SSO redirect_uri (a strict provider-side match rejects a
 # wrong scheme outright). Baked in from the start here, unlike CachePanel
 # where this was found and fixed after the fact.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+# --no-access-log: this app is meant to sit behind a reverse proxy (see the
+# README), which already logs every request with the real client IP. Logging
+# each one a second time here buys nothing and costs a lot -- a public site
+# is scanned around the clock by bots probing for WordPress, and those lines
+# drown out the ones that matter (startup, sync failures, tracebacks). Panels
+# that mail container output turn that into a mailbox full of noise.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--no-access-log"]
