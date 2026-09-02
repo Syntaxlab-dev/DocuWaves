@@ -2,6 +2,17 @@ import os
 from dataclasses import dataclass
 
 
+def _base_url(raw: str) -> str:
+    """PUBLIC_BASE_URL, normalized -- scheme and host, no trailing slash, and
+    "" for anything that isn't an absolute http(s) URL (an operator who put a
+    bare hostname there gets the auto-detected address rather than a canonical
+    tag pointing at `docs.example.com/p/x`, which no crawler can fetch)."""
+    value = raw.strip().rstrip("/")
+    if value.startswith("http://") or value.startswith("https://"):
+        return value
+    return ""
+
+
 @dataclass
 class Settings:
     # SQLite is the zero-config default (a single file under /data) --
@@ -37,6 +48,17 @@ class Settings:
     # cloned fresh once per install rather than on every startup.
     content_repo_path: str = os.environ.get("CONTENT_REPO_PATH", "/data/content-repo")
     content_repo_sync_interval_seconds: int = int(os.environ.get("CONTENT_REPO_SYNC_INTERVAL_SECONDS", "300"))
+
+    # The address readers actually use, e.g. https://docs.example.com. Only
+    # needed to OVERRIDE what the app works out for itself: every absolute
+    # URL it publishes (canonical tags, Open Graph, sitemap.xml, robots.txt)
+    # is otherwise built from X-Forwarded-Proto/X-Forwarded-Host and the Host
+    # header, which is right for every ordinary reverse proxy -- see
+    # services/seo.py's public_base_url(). Set it when the proxy doesn't
+    # forward those, or when the site is reachable at several addresses and
+    # exactly one of them is the canonical one. Blank = auto-detect, the same
+    # "blank = default" contract as everything above.
+    public_base_url: str = _base_url(os.environ.get("PUBLIC_BASE_URL", ""))
 
 
 settings = Settings()

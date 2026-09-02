@@ -112,6 +112,17 @@ def _parse(path: Path) -> dict:
     return data
 
 
+# The derived list, memoized against the parsed document it came from.
+# load_site_document() hands back the SAME dict object for as long as the
+# file is unchanged, so an identity check is an exact cache key here: a
+# `git pull` that rewrites _site.yml parses a new dict and this misses on the
+# very next call. Worth having because languages() is on the hot path of
+# things that ask for it thousands of times in a row -- a full reindex asks
+# once per file (read_page has to know the list to split a filename), and the
+# sitemap asks once per page per language.
+_languages_cache: tuple[dict, list[str]] | None = None
+
+
 def languages() -> list[str]:
     """The configured content languages, in order, first one being the
     default. Empty list = this instance never configured any, which is the
@@ -119,7 +130,21 @@ def languages() -> list[str]:
 
     A malformed entry is dropped rather than failing the read, same
     degrade-don't-break contract the rest of `_site.yml` follows."""
-    raw = load_site_document().get("languages")
+    global _languages_cache
+    document = load_site_document()
+    if _languages_cache is not None and _languages_cache[0] is document:
+        # A copy, not the cached list itself: callers have always been handed
+        # a list of their own, and one that could be mutated from outside
+        # would be a cache nobody could trust. At twelve entries maximum this
+        # costs nothing next to re-validating them.
+        return list(_languages_cache[1])
+    result = _languages(document)
+    _languages_cache = (document, result)
+    return list(result)
+
+
+def _languages(document: dict) -> list[str]:
+    raw = document.get("languages")
     if not isinstance(raw, list):
         return []
     result: list[str] = []

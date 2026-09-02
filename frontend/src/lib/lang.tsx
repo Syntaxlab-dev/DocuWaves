@@ -103,6 +103,20 @@ export function ContentLangProvider({
     navigate(`${buildPath(pathname, defaultLanguage, true)}${search}${hash}`, { replace: true });
   }, [needsPrefix, pathname, search, hash, defaultLanguage, navigate]);
 
+  // <html lang> follows the content language too. The server already sets it
+  // on the first response (backend/app/services/seo.py, which knows the
+  // language the page was actually served in), and this is what keeps it
+  // right afterwards: a reader who switches from German to English navigates
+  // client-side, so without this the document would keep claiming to be in
+  // the language it was first loaded in -- which is what a screen reader
+  // pronounces it as and what a browser offers to translate it from.
+  // Untouched on a single-language instance, where `lang` is "" and the
+  // bundle's own value is the only statement there is.
+  useEffect(() => {
+    if (!lang) return;
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   // The interface follows the content language on a multilingual instance,
   // for the languages the interface actually has words for -- a reader who
   // switched the docs to English should not be left with German buttons

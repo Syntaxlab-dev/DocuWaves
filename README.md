@@ -51,6 +51,13 @@ save, so nobody has to touch `git` directly if they don't want to.
   has no version in its URLs at all.
 - **Full-text search** across every published page in every project — in the
   language and the version the reader is currently in.
+- **Findable, and shareable** — every public URL is answered with its own
+  `<title>`, description, Open Graph/Twitter card, canonical and structured
+  data, written by the server before the response leaves it. Search engines
+  and link-preview crawlers (Discord, Slack, WhatsApp, Signal, Mastodon) run
+  no JavaScript, so pasting a link to your installation guide shows *that
+  page*, not the app shell. Plus `/sitemap.xml` and `/robots.txt` (see
+  "Search engines and link previews").
 - **Single admin account** — password login, or single sign-on via any
   standard OIDC provider (Authentik, Keycloak, Authelia, Zitadel, ...).
 - **An AI assistant can read and write the docs** — generate an API token
@@ -688,6 +695,109 @@ a colour that isn't a colour, a `javascript:` footer link, a logo naming a
 file that isn't there — each one falls back to its default (and the bad
 value is logged), rather than erroring the public site over a typo.
 
+## Search engines and link previews
+
+The reader-facing site is a single-page app, which used to mean the server
+answered every URL with the same shell: one title for the whole site, no
+description anywhere. Search engines saw one page, and pasting a link into
+Discord or Slack produced a card that said only the site's name — those
+crawlers run no JavaScript at all, so whatever React would have filled in
+never existed for them.
+
+So the shell is no longer the same for every URL. When DocuWaves answers a
+public documentation URL it writes that page's metadata into the `<head>`
+first: `<title>`, a description taken from the page's own first paragraph of
+prose, Open Graph and Twitter card tags, `<link rel="canonical">`,
+`hreflang` alternates on a multilingual instance, and JSON-LD (`TechArticle`
+plus a breadcrumb trail). Nothing about the app changes — the SPA still
+renders and still updates the tab title as you click around; this is simply
+the correct first answer, which is the only answer a crawler ever gets.
+
+Three things it deliberately does **not** do:
+
+- **A draft is still invisible.** Every lookup goes through the same
+  published-only path the public API uses, so an unpublished page produces
+  the site's default metadata and nothing else — no title, no snippet of its
+  text, and no entry in the sitemap.
+- **It doesn't claim what it doesn't know.** The structured data carries a
+  `dateModified` (the content repo's own log, the same date the page's "last
+  updated" line shows, and a date without a time) and no author and no
+  publication date, because neither of those is a thing this app actually
+  knows.
+- **It costs nothing where there is nothing to say.** `/admin` is served
+  exactly as before and performs no lookup at all; the home page and unknown
+  URLs read only the already-cached `_site.yml`. Only a real reading URL
+  touches the database, and it runs the same handful of queries the page's
+  own API call is about to run anyway.
+
+### Old versions don't compete with the current one
+
+A frozen version's page is a near-duplicate of the current one: same title,
+same topic, mostly the same words. Left alone, they compete, and the winner
+is decided by age and inbound links — which is exactly how somebody
+searching for your install guide ends up reading the one for a release from
+two years ago.
+
+- A page in a frozen version whose **current version has the same page**
+  points its canonical there. One address, and every signal the old URL
+  earned is credited to the page a reader actually wants.
+- A page in a frozen version with **no equivalent** in the current one — a
+  section that no longer exists — has nothing to point at, so it is marked
+  `noindex, follow` instead: out of the index, still crawled, its links
+  still followed.
+- Never both. A canonical pointing elsewhere *and* a `noindex` is the one
+  combination that misfires, because the `noindex` can be taken to apply to
+  the page the canonical names, which would drop the current page from
+  search.
+
+Either way the old docs stay completely readable, linkable and switchable-to
+in the version switcher. They are just not what a search result should be.
+The same rule applies one level up: a frozen version's category and project
+pages point at the current version's, or are `noindex` when that version
+doesn't have them.
+
+### `/sitemap.xml` and `/robots.txt`
+
+`GET /sitemap.xml` lists every published page, in every configured content
+language, for each project's **default version only** (every other version
+was just told not to compete, so listing it would be inviting exactly what
+the canonical prevents) — plus the pages readers navigate through: the home
+page, each project's landing page and each category that has something
+published in it. Each entry carries a `lastmod` taken from the content
+repo's git log: the same source, and the same date-without-a-time, as the
+"last updated" line at the bottom of a page.
+
+`GET /robots.txt` allows the documentation, keeps crawlers out of `/admin`
+and `/api/`, and points at the sitemap at this instance's real public
+address. The search page and the 404 page are deliberately *not* disallowed
+there: they say `noindex` in their own head, and a crawler has to be allowed
+to fetch a page to find that out.
+
+Both work on an instance with no content, and on one with no content repo
+connected at all — you get a valid document with the home page in it.
+
+### Getting the address right
+
+Every absolute URL above (canonical, `og:url`, the sitemap, the `Sitemap:`
+line in `robots.txt`) has to be the address *readers* use, not the one the
+container sees. DocuWaves works it out from `X-Forwarded-Proto` and
+`X-Forwarded-Host` (the image already runs uvicorn with `--proxy-headers`),
+falling back to the request's own scheme and `Host` — which is right for an
+ordinary reverse proxy and right for a direct hit on a LAN.
+
+Set **`PUBLIC_BASE_URL`** (e.g. `https://docs.example.com`) if your proxy
+doesn't forward those headers, or if the site answers at several addresses
+and exactly one of them is the canonical one. It overrides the lot.
+
+If you're not sure it's right, ask it:
+
+```
+curl -s https://docs.example.com/robots.txt | tail -1
+```
+
+That last line is the same base URL every canonical tag on the site is built
+from. If it says `http://` or names an internal host, set `PUBLIC_BASE_URL`.
+
 ## Optional: PostgreSQL
 
 If you'd rather run a real database for the search/browse index (e.g. you
@@ -910,6 +1020,7 @@ API), but within that it is real write access to what your readers see.
 | `OIDC_CLIENT_ID` | *(empty)* | OIDC client ID |
 | `OIDC_CLIENT_SECRET` | *(empty)* | OIDC client secret |
 | `OIDC_PROVIDER_NAME` | `authentik` | Label shown on the SSO login button |
+| `PUBLIC_BASE_URL` | *(empty — auto-detected)* | The address readers use, e.g. `https://docs.example.com`. Only needed to override what the app works out from the proxy headers — see "Search engines and link previews" |
 
 ## Development
 

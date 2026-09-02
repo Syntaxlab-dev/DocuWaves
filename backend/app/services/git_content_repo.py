@@ -536,3 +536,64 @@ def _last_modified(repo: git.Repo, path: str) -> str:
         return repo.git.log("-1", "--format=%aI", "--", path).strip()
     except git.GitCommandError:
         return ""
+
+
+# The marker that tells a date line apart from a filename in the walk below.
+# \x01 can't begin a path (git would have to quote it, and quoting is turned
+# off), so the parse needs no heuristics.
+_LOG_MARKER = "\x01"
+
+
+def last_modified_map() -> dict[str, str]:
+    """`{repo-relative path: ISO timestamp}` for every file the history has
+    touched, in ONE git invocation.
+
+    This exists for the sitemap, which needs a date for every published page
+    at once. last_modified() above is a `git log -1` per file, which is right
+    on a page view (one file, and the answer is then cached) and wrong here:
+    an instance with a thousand pages would spawn a thousand git processes to
+    build one document, on a URL a crawler is free to request whenever it
+    likes.
+
+    One `git log --name-only` walks the whole history instead, newest commit
+    first, so the FIRST time a path appears is its newest change -- setdefault
+    is the entire algorithm. Cached by HEAD like every other read here, so the
+    walk happens once per commit rather than once per request, and an empty
+    dict is a perfectly ordinary answer (no repo, no commits, nothing
+    committed yet)."""
+    repo = _read_repo()
+    if repo is None:
+        return {}
+    return _cached(repo, ("last_modified_map",), lambda: _last_modified_map(repo))
+
+
+def _last_modified_map(repo: git.Repo) -> dict[str, str]:
+    try:
+        # core.quotePath=false: git otherwise C-quotes any path with a
+        # non-ASCII byte in it ("caf\303\251.md"), which would never match
+        # the real path and would silently cost those pages their lastmod.
+        # --no-renames: rename detection is pure cost here -- a renamed file
+        # is listed under the name it has now either way, which is the name
+        # being looked up.
+        output = repo.git.execute(
+            [
+                "git",
+                "-c",
+                "core.quotePath=false",
+                "log",
+                f"--pretty=format:{_LOG_MARKER}%aI",
+                "--name-only",
+                "--no-renames",
+            ],
+        )
+    except git.GitCommandError:
+        return {}
+
+    dates: dict[str, str] = {}
+    current = ""
+    for line in output.splitlines():
+        if line.startswith(_LOG_MARKER):
+            current = line[1:].strip()
+        elif line and current:
+            dates.setdefault(line, current)
+    return dates

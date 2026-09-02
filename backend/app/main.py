@@ -5,13 +5,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
-from app.routers import admin_content, api_tokens, auth, mcp, public_content
-from app.services import content_sync, content_versions, db, git_content_repo, session_secret
+from app.routers import admin_content, api_tokens, auth, mcp, public_content, sitemap
+from app.services import content_sync, content_versions, db, git_content_repo, seo, session_secret
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -123,9 +123,13 @@ app.include_router(api_tokens.router)
 # than by anything more general.
 app.include_router(mcp.router)
 app.include_router(public_content.router)
+# /sitemap.xml and /robots.txt: root paths, so they have to be registered
+# before the catch-all SPA route below (which would otherwise 404 the first
+# as a scanner path and hand the second the app shell).
+app.include_router(sitemap.router)
 
 
-@app.get("/health", summary="Health check", description="Confirms the database is reachable -- used by Docker's own HEALTHCHECK.")
+@app.api_route("/health", methods=["GET", "HEAD"], summary="Health check", description="Confirms the database is reachable -- used by Docker's own HEALTHCHECK.")
 def health():
     with db.get_connection() as conn:
         conn.execute("SELECT 1")
@@ -163,8 +167,8 @@ _SCANNABLE_FILE = re.compile(
 if FRONTEND_DIST.exists():
     app.mount("/assets", _ImmutableStatic(directory=FRONTEND_DIST / "assets"), name="assets")
 
-    @app.get("/{full_path:path}")
-    def serve_spa(full_path: str):
+    @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
+    def serve_spa(full_path: str, request: Request):
         # full_path is whatever the client asked for, so it has to be contained
         # to the bundle directory before it is ever handed to FileResponse.
         # Without this, `GET /../../data/content-repo/.git/config` walked
@@ -200,11 +204,27 @@ if FRONTEND_DIST.exists():
         # Anything else is a client-side route (or an escape attempt): hand back
         # the SPA shell and let the router decide, exactly as before.
         #
+        # ...with this URL's own <title>, description, Open Graph tags,
+        # canonical and JSON-LD spliced into its <head> first, when it is a
+        # public reading URL (see services/seo.py). Everything a crawler --
+        # a search engine's first pass, or a chat client building a link
+        # preview -- knows about a page has to be in this response, because
+        # neither of them runs the JavaScript that would fill the shell in.
+        # None means "nothing to add here": the admin area, which gets no
+        # metadata and pays for no lookup, or anything at all that went
+        # wrong; either way the plain shell below is served exactly as it
+        # was before, and the app is identical in the browser regardless.
+        #
         # no-cache (revalidate, not "never store"): index.html names the
         # content-hashed bundle, so a stale copy of THIS file pins a browser
         # to the previous release -- an operator who deploys an update keeps
         # seeing the old UI and reasonably concludes the deploy did nothing.
+        # The header is spelled out on both branches rather than set once
+        # afterwards, so neither can lose it.
         # FileResponse answers a revalidation with the whole file rather than
         # a 304 (only StaticFiles handles If-None-Match) -- fine at a few KB,
         # and the big hashed bundle it points at is cached forever anyway.
+        document = seo.render_index(index, full_path, request)
+        if document is not None:
+            return HTMLResponse(document, headers={"Cache-Control": "no-cache"})
         return FileResponse(index, headers={"Cache-Control": "no-cache"})

@@ -139,6 +139,22 @@ def _pick_one_per_slug(rows: list[dict], priority: list[str]) -> list[dict]:
     return sorted(by_slug.values(), key=lambda entry: (entry["sort_order"], entry["title"]))
 
 
+def served_language(available: list[str], language: str | None = None) -> str:
+    """Which of the languages a page EXISTS in a reader of `language` is
+    actually served -- their own when it is there, otherwise the best other
+    one (see _priority). "" when the list is empty.
+
+    The same decision resolve_page() makes row by row, exposed for callers
+    that already know which languages a page has and only need the answer:
+    the sitemap, which has to say which file backs each language's URL. Kept
+    here rather than re-derived there, so there is one definition of what a
+    reader gets."""
+    for code in _priority(language):
+        if code in available:
+            return code
+    return available[0] if available else ""
+
+
 def list_pages(category_id: int, published_only: bool = False, language: str | None = None) -> list[dict]:
     """No version parameter: a category id already belongs to exactly one
     version (categories are per version too), so its pages can only be that
@@ -191,6 +207,33 @@ def list_project_pages(
         for r in rows
     ]
     return _pick_one_per_slug(entries, _priority(language))
+
+
+def published_variants(project_id: int, version: str) -> list[dict]:
+    """Every published page of ONE version of a project, one entry per
+    LANGUAGE FILE rather than one per page, each carrying the slug of the
+    category it lives in.
+
+    Written for the sitemap, which needs the opposite of what every other
+    listing here needs. The reader-facing lists collapse a page's
+    translations to the one entry that reader gets (_pick_one_per_slug); a
+    sitemap has to name every language's URL, and to say which file each of
+    those URLs is actually served from, so it can give the right `lastmod`.
+
+    One query for a whole version, joined to categories, ordered so the
+    document comes out in the same order the site's own navigation does --
+    at one page per row, the alternative was a query per category and then
+    another per page."""
+    placeholder = "%s" if db.is_postgres() else "?"
+    with db.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT p.slug, p.language, c.slug FROM pages p JOIN categories c ON c.id = p.category_id "
+            f"WHERE p.project_id = {placeholder} AND p.version = {placeholder} "
+            "AND p.published = " + ("TRUE" if db.is_postgres() else "1") + " "
+            "ORDER BY c.sort_order, c.slug, p.sort_order, p.slug",
+            (project_id, version),
+        ).fetchall()
+    return [{"slug": r[0], "language": r[1], "category_slug": r[2]} for r in rows]
 
 
 def get_page(page_id: int) -> dict | None:

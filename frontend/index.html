@@ -4,9 +4,15 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Placeholder only: the real tab title is the configured site name
-         (content/_site.yml), applied at runtime by lib/site.tsx's
-         useDocumentTitle -- as is the favicon above, when one is set. -->
+    <!-- Placeholder only, and one that rarely survives: for a public
+         documentation URL the server replaces this element (and adds the
+         page's description, Open Graph tags, canonical and JSON-LD) before
+         the response leaves the process, so that crawlers which run no
+         JavaScript see the actual page -- see
+         backend/app/services/seo.py. In the browser the real tab title is
+         the configured site name (content/_site.yml) plus the page's own,
+         applied by lib/site.tsx's useDocumentTitle on every navigation --
+         as is the favicon above, when one is set. -->
     <title>DocuWaves</title>
   </head>
   <body>

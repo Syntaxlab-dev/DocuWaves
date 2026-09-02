@@ -37,11 +37,20 @@ export function MarkdownView({
   categorySlug,
   versionDir,
   title,
+  lang,
 }: {
   content: string;
   projectSlug?: string;
   categorySlug?: string;
   versionDir?: string;
+  /** The language this Markdown is written in, when it is NOT the document's
+   *  own -- which happens on a page that has no translation yet and is
+   *  served in another language (see PublicPage). Everything around the text
+   *  is in the reader's language and <html lang> says so; this is what says
+   *  the text itself isn't, which is what a screen reader pronounces from
+   *  and what a browser offers to translate. Undefined the rest of the time,
+   *  so the element carries no lang at all and inherits, exactly as before. */
+  lang?: string;
   /** The page's own title, already shown above the body. When the Markdown
    *  opens by repeating it as an `# H1`, that copy is dropped -- see
    *  stripRedundantTitle(). */
@@ -66,7 +75,7 @@ export function MarkdownView({
   }, [body]);
 
   return (
-    <div className="markdown-body">
+    <div className="markdown-body" lang={lang}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         // plainText: "mermaid" is not a highlight.js language, it's a

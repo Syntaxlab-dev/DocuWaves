@@ -149,12 +149,18 @@ export function PublicPage() {
           segment: `../assets/x.png` in the source resolves against
           content/<project>/<version>/<category>/, and "" (an unversioned
           project) makes that exactly the path it always was. */}
+      {/* lang only when the text is NOT in the language being read: the
+          notice above already says so in words, and this is the same
+          statement in the markup, for the readers who need it said there --
+          a screen reader switches voice on it, and a browser stops offering
+          to translate a page that is already in the reader's language. */}
       <MarkdownView
         content={data.page.markdown_content}
         title={data.page.title}
         projectSlug={data.project.slug}
         categorySlug={data.category.slug}
         versionDir={data.page.version}
+        lang={data.page.fallback ? data.page.language || undefined : undefined}
       />
       {/* One quiet line under the text. The date comes from the content
           repo's own log, not from the page's `updated_at` column -- that one
