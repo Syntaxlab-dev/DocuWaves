@@ -135,6 +135,57 @@ class _JsonRpcFault(Exception):
         self.code = code
 
 
+def _schema_fault(tool: dict, arguments: dict) -> str | None:
+    """Checks the arguments against the tool's OWN declared inputSchema, and
+    returns a sentence naming what is wrong, or None.
+
+    Nothing did this before, so the schema was documentation rather than a
+    contract: a call could omit a `required` parameter and pass an unknown
+    one instead, and the tool ran anyway with its default. That is not a
+    theoretical hole -- it produced 29 documentation pages created
+    successfully and entirely empty, because the caller sent
+    `markdown_content` (the name the store uses internally) instead of
+    `markdown`, and the endpoint answered "created".
+
+    A wrong name is the likeliest mistake at this interface: every caller is
+    a model reading the schema and writing JSON from it, and a silent success
+    is the one answer it cannot learn from. Validation only covers what the
+    schemas here actually use -- required keys, unknown keys, and the
+    declared type -- rather than pulling in a JSON Schema library for a
+    handful of flat objects."""
+    schema = tool.get("inputSchema") or {}
+    properties = schema.get("properties") or {}
+
+    missing = [key for key in schema.get("required", []) if arguments.get(key) in (None, "")]
+    if missing:
+        return (
+            f"Missing required parameter(s) for '{tool['name']}': {', '.join(missing)}. "
+            f"Nothing was written. Accepted parameters: {', '.join(properties)}."
+        )
+
+    if schema.get("additionalProperties") is False:
+        unknown = [key for key in arguments if key not in properties]
+        if unknown:
+            return (
+                f"Unknown parameter(s) for '{tool['name']}': {', '.join(unknown)}. "
+                f"Nothing was written. Accepted parameters: {', '.join(properties)}."
+            )
+
+    types = {"string": str, "integer": int, "boolean": bool, "object": dict, "array": list}
+    for key, value in arguments.items():
+        expected = types.get((properties.get(key) or {}).get("type"))
+        # bool is a subclass of int in Python, so an integer parameter would
+        # otherwise silently accept true.
+        if expected is None or value is None:
+            continue
+        if not isinstance(value, expected) or (expected is int and isinstance(value, bool)):
+            return (
+                f"Parameter '{key}' of '{tool['name']}' must be "
+                f"{(properties[key] or {}).get('type')}. Nothing was written."
+            )
+    return None
+
+
 def _call_tool(params: dict, token: dict) -> dict:
     """`tools/call`, answering with the tool RESULT payload. Raises
     _JsonRpcFault when the call itself was malformed."""
@@ -164,6 +215,13 @@ def _call_tool(params: dict, token: dict) -> dict:
             f"is needed, an existing one's scope cannot be changed. "
             f"Tools this token can use: {', '.join(mcp_tools.read_only_names())}."
         )
+
+    # After the scope check, not before it: a read-only token calling a
+    # write tool should be told that, whatever else is wrong with its
+    # arguments -- the scope is the thing it has to act on.
+    fault = _schema_fault(tool, arguments)
+    if fault is not None:
+        return _tool_error(fault)
 
     try:
         return _tool_text(tool["handler"](arguments, token))
