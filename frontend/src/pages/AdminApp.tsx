@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+} from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import {
@@ -8,6 +16,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  FileClock,
   GitBranch,
   ImagePlus,
   KeyRound,
@@ -46,6 +55,16 @@ import {
   type SiteBranding,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import {
+  clearDraft,
+  draftKey,
+  draftsAvailable,
+  fingerprint,
+  readDraft,
+  sweepDrafts,
+  writeDraft,
+  type PageDraft,
+} from "@/lib/drafts";
 import { useI18n } from "@/lib/i18n";
 import { languageName } from "@/lib/lang";
 import { normalizeVersionId } from "@/lib/version";
@@ -2013,6 +2032,56 @@ function PagesPanel({
   );
 }
 
+/** The extension an image pasted from the clipboard should get, by the MIME
+ *  type the clipboard hands it over as. Exactly the types the content repo
+ *  accepts (see the backend's content_assets.CONTENT_TYPES) -- anything else
+ *  keeps whatever the browser called it and is refused by the server, which
+ *  says so in its own words. */
+const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/gif": ".gif",
+  "image/webp": ".webp",
+  "image/avif": ".avif",
+  "image/svg+xml": ".svg",
+};
+
+/**
+ * What to call an image that arrived through the clipboard.
+ *
+ * A pasted screenshot has no filename worth keeping: browsers hand it over
+ * as "image.png", or as nothing at all. Taking that at face value would fill
+ * a project's assets/ folder with image.png, image-2.png, image-3.png -- a
+ * set of names that says nothing about anything, in a directory people
+ * browse in GitHub. A timestamp does say something: it reads as a date, it
+ * sorts chronologically in the folder listing, and it is derived from the
+ * moment of the paste rather than from a random id, so two screenshots taken
+ * minutes apart stay distinguishable afterwards.
+ *
+ *     pasted-2026-09-02-143205.png
+ *
+ * The stem is already slug-shaped, so the server's slugify leaves it alone;
+ * two pastes inside the same second get the server's -2, -3 suffix like any
+ * other collision. The extension comes from the clipboard's own MIME type
+ * rather than being assumed to be .png -- an image type this app doesn't
+ * accept then reaches the server as itself and gets the server's honest
+ * "unsupported type" answer instead of a .png that isn't one.
+ */
+function pastedImageName(file: File, now: Date): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp =
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}-` +
+    `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const dot = file.name.lastIndexOf(".");
+  const extension = PASTED_IMAGE_EXTENSIONS[file.type] ?? (dot > 0 ? file.name.slice(dot) : "");
+  return `pasted-${stamp}${extension}`;
+}
+
+/** How long typing has to stop before the draft is written. Long enough that
+ *  a burst of typing is one write rather than one per character, short
+ *  enough that a crash costs a few words rather than a paragraph. */
+const DRAFT_DEBOUNCE_MS = 800;
+
 /**
  * One page, in one language at a time, with a tab per configured language.
  *
@@ -2076,11 +2145,83 @@ function PageEditor({
    *  stale the moment it succeeds. */
   const [reloadKey, setReloadKey] = useState(0);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  /** A local draft of unsaved text found for this page, waiting to be
+   *  restored or discarded, and whether the page has changed on the server
+   *  since it was made. Held in state rather than re-read from storage on
+   *  use: the author may well keep typing with the banner open, which
+   *  overwrites the stored draft with their newer text -- the offer stays
+   *  the snapshot it was when the page opened. */
+  const [draftOffer, setDraftOffer] = useState<PageDraft | null>(null);
+  const [draftStale, setDraftStale] = useState(false);
+  /** Which upload of how many is in flight, or null when none is. The
+   *  editor stays fully usable throughout -- an upload is a round trip to a
+   *  git push, and blocking the textarea for it would interrupt exactly the
+   *  sentence the screenshot is being pasted into. */
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  /** dragenter/dragleave fire for every child element the pointer crosses,
+   *  so the drop target has to count them rather than believe the first
+   *  leave -- otherwise it flickers off the moment the pointer moves from
+   *  the textarea onto its own overlay. */
+  const dragDepth = useRef(0);
+  /** Bumped after an upload so the image panel below re-lists the project's
+   *  assets: a file pasted into the textarea belongs in its thumbnails too. */
+  const [assetsKey, setAssetsKey] = useState(0);
+  /** Fingerprint of the text the SERVER last handed us. A draft records the
+   *  one it was started from, and the two disagreeing is what says the page
+   *  moved underneath the draft -- see lib/drafts.ts. */
+  const serverBase = useRef("");
+
+  // What identifies the file being edited, as far as a local draft is
+  // concerned: project, page, language and documentation version, which is
+  // exactly the set of things that pick out one .md file in the content
+  // repo. A page that has never been saved has no slug to key on, so it is
+  // keyed by the category it is being written in instead.
+  const localDraftKey = draftKey({
+    project: projectSlug,
+    version,
+    page: slug || `new:${categoryId}`,
+    language,
+  });
 
   // The page's own category, not the one it was opened from: the dropdown
   // above can move it, and a `../assets/x.png` in the body has to resolve
   // against wherever the page will actually be saved.
   const targetCategorySlug = categories.find((c) => c.id === targetCategoryId)?.slug;
+
+  /**
+   * The local draft for the file just loaded, offered or quietly dropped.
+   *
+   * Never applied on its own: what the editor shows after a load is what the
+   * server has, and the draft sits above it as an offer with a date on it.
+   * Silently preferring the draft would mean an author who saved from
+   * another browser (or a colleague who edited the page in between) finding
+   * their work replaced by older text they never asked for.
+   */
+  function offerDraft(key: string, serverTitle: string, serverText: string) {
+    const base = fingerprint(serverText);
+    serverBase.current = base;
+    const draft = readOnly ? null : readDraft(key);
+    setDraftOffer(draft);
+    if (!draft) {
+      setDraftStale(false);
+      return;
+    }
+    if (draft.text === serverText && draft.title === serverTitle) {
+      // The draft says exactly what the server says -- it was saved from
+      // another tab, or restored and saved somewhere else. There is nothing
+      // to offer, so it is dropped rather than shown as a decision.
+      clearDraft(key);
+      setDraftOffer(null);
+      setDraftStale(false);
+      return;
+    }
+    // The server's text is no longer the text this draft was written on top
+    // of: someone else edited the page, or this author saved it from another
+    // browser. That makes the draft the OLDER of the two, which is said out
+    // loud rather than presented as a plain restore.
+    setDraftStale(draft.base !== base);
+  }
 
   useEffect(() => {
     let current = true;
@@ -2095,6 +2236,7 @@ function PageEditor({
       setPublished(false);
       setLoadedId(null);
       setExisting([]);
+      offerDraft(localDraftKey, "", "");
       return;
     }
     api.adminFindPage(projectSlug, slug, language, version || undefined).then((page) => {
@@ -2106,6 +2248,7 @@ function PageEditor({
         setTargetCategoryId(page.page.category_id);
         setPublished(page.page.published);
         setLoadedId(page.page.id);
+        offerDraft(localDraftKey, page.page.title, page.page.markdown_content);
       } else {
         // This language has no version yet: an empty editor, but on the
         // page's own slug and in its own category.
@@ -2113,22 +2256,102 @@ function PageEditor({
         setContent("");
         setPublished(false);
         setLoadedId(null);
+        offerDraft(localDraftKey, "", "");
       }
     });
     return () => {
       current = false;
     };
+    // offerDraft closes over nothing that outlives this render, and
+    // localDraftKey is derived from the identifiers already listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectSlug, slug, language, categoryId, version, reloadKey]);
 
+  /**
+   * The draft itself, written a short while after typing stops.
+   *
+   * Debounced rather than written on every keystroke: one storage write per
+   * burst of typing costs nothing, one per character on a long page is a
+   * JSON serialization of the whole document per key pressed. Nothing is
+   * written until something has actually been changed (`dirty`), so merely
+   * opening a page never stores a copy of it, and nothing at all is written
+   * for a frozen version, which cannot be saved anyway.
+   */
+  useEffect(() => {
+    if (readOnly || !dirty) return;
+    const handle = setTimeout(() => {
+      writeDraft(localDraftKey, { text: content, title, savedAt: Date.now(), base: serverBase.current });
+    }, DRAFT_DEBOUNCE_MS);
+    return () => clearTimeout(handle);
+  }, [content, title, dirty, readOnly, localDraftKey]);
+
+  /** Writes the pending draft *now*. The debounce above is a timer, and none
+   *  of the moments this editor stops existing wait for timers: a closed
+   *  tab, a language tab that reloads from the server, the editor being
+   *  closed. Kept in a ref so the listener below always calls the current
+   *  one without re-subscribing on every keystroke. */
+  const flushDraft = useRef(() => {});
+  flushDraft.current = () => {
+    if (readOnly || !dirty) return;
+    writeDraft(localDraftKey, { text: content, title, savedAt: Date.now(), base: serverBase.current });
+  };
+
+  useEffect(() => {
+    // Old drafts are swept when the editor opens: a browser tab has no
+    // background job, and this is the only moment anything here cares.
+    sweepDrafts();
+    const onHide = () => flushDraft.current();
+    // pagehide rather than beforeunload: it also fires for a tab going into
+    // the back/forward cache and for the way mobile browsers close one,
+    // neither of which beforeunload reliably sees.
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      // Unmounting is the editor being closed or navigated away from --
+      // precisely the case this whole thing exists for.
+      flushDraft.current();
+    };
+  }, []);
+
+  function onRestoreDraft() {
+    if (!draftOffer) return;
+    setTitle(draftOffer.title);
+    setContent(draftOffer.text);
+    setDirty(true);
+    setTab("edit");
+    setDraftOffer(null);
+    setDraftStale(false);
+    // Restored, not saved: the content repo still holds what it held, and
+    // the Save button is still the thing that changes that.
+    toast.success(t("admin.draftRestored"));
+  }
+
+  function onDiscardDraft() {
+    clearDraft(localDraftKey);
+    setDraftOffer(null);
+    setDraftStale(false);
+    toast.success(t("admin.draftDiscarded"));
+  }
+
   function switchLanguage(code: string) {
-    if (code === language) return;
-    // Switching tabs reloads from the server, so unsaved text would be
-    // gone without a word.
+    // Switching tabs reloads from the server, so unsaved text is about to
+    // leave the screen. Whether that means it is LOST depends on whether
+    // this browser can hold a draft -- so the warning says whichever of the
+    // two is actually true here, rather than threatening a loss that no
+    // longer happens (or promising a draft that will never be written).
+    //
     // Its own string, not admin.deleteConfirm: that one says "Really delete
     // this? This can't be undone." -- which describes deleting a page, not
     // dropping an unsaved draft, and reads as if the tab click were about to
     // destroy the translation.
-    if (dirty && !confirm(t("admin.discardDraftConfirm"))) return;
+    if (code === language) return;
+    if (dirty && !confirm(draftsAvailable() ? t("admin.switchLanguageDraftKept") : t("admin.discardDraftConfirm"))) {
+      return;
+    }
+    // Written before the reload, or the debounce still pending would be
+    // cancelled by it and the last few seconds of typing would be the one
+    // thing the draft didn't keep.
+    flushDraft.current();
     setLanguage(code);
   }
 
@@ -2165,6 +2388,16 @@ function PageEditor({
         setLoadedId(saved.id);
       }
       setDirty(false);
+      // The text is in the content repo now, so the local copy of it has
+      // nothing left to protect. Cleared under the key this render is using
+      // -- for a page that was just created, that is still the `new:<id>`
+      // key it was written under, not the slug it is about to get.
+      clearDraft(localDraftKey);
+      setDraftOffer(null);
+      setDraftStale(false);
+      // What was just saved is what the server now has, so a draft written
+      // from here on is written on top of THIS text.
+      serverBase.current = fingerprint(content);
       toast.success(t("admin.save"));
       // The list behind the editor is refreshed, but the editor stays open
       // on this page -- writing the other language is the very next thing
@@ -2177,26 +2410,179 @@ function PageEditor({
     }
   }
 
+  /** Replaces [from, to) with `snippet`. A functional update, not
+   *  `content.slice(...)`: a batch of uploads inserts several snippets in a
+   *  row with an await between them, and each one has to build on the last
+   *  rather than on the `content` its render closed over. */
+  function replaceRange(from: number, to: number, snippet: string) {
+    setContent((current) => {
+      const start = Math.min(from, current.length);
+      const end = Math.min(Math.max(to, start), current.length);
+      return current.slice(0, start) + snippet + current.slice(end);
+    });
+    setDirty(true);
+  }
+
+  /** Puts the caret back where the text just inserted ends -- after React
+   *  has re-rendered with the new value, or the controlled update would
+   *  immediately overwrite it. */
+  function focusAt(position: number) {
+    requestAnimationFrame(() => {
+      const el = editorRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(position, position);
+    });
+  }
+
+  /** Where an insert goes: the current selection, or the end of the text
+   *  when the textarea isn't mounted (the preview tab has no caret of its
+   *  own to speak of). */
+  function caretRange(): { from: number; to: number } {
+    const el = editorRef.current;
+    if (!el) return { from: content.length, to: content.length };
+    return { from: el.selectionStart, to: el.selectionEnd };
+  }
+
   function insertSnippet(snippet: string) {
     // Always land back on the Markdown tab first -- the textarea isn't
     // mounted while the preview is showing, so there'd be no cursor to
     // insert at and the snippet would silently go to the very end.
     setTab("edit");
-    const el = editorRef.current;
-    if (!el) {
-      setContent((current) => current + snippet);
-      return;
+    const { from, to } = caretRange();
+    replaceRange(from, to, snippet);
+    focusAt(from + snippet.length);
+  }
+
+  /**
+   * Every image from one paste or one drop: uploaded in order, inserted in
+   * order, at the caret the event happened at.
+   *
+   * The upload is the ordinary one -- the same endpoint, the same 10 MB
+   * limit, the same magic-number and SVG screening the Insert image button
+   * has always gone through, and the same commit-and-push into the content
+   * repo. Nothing here validates an image itself: a second copy of those
+   * rules in the browser would be one that quietly drifts from the one that
+   * matters, and it would rob the author of the server's own message, which
+   * is written for a person ("That image is 11264 KB; the limit is 10 MB.")
+   * rather than for a log.
+   *
+   * A rejected file is reported and the batch carries on with the next one:
+   * dropping four screenshots of which one is too big should still get three
+   * of them in. Anything that isn't about that one file -- a frozen version
+   * answering 403, an expired session, an unreachable content repo -- stops
+   * the batch, because it would only repeat itself once per file.
+   */
+  async function uploadImages(files: File[], at: { from: number; to: number }) {
+    if (readOnly || files.length === 0 || uploading) return;
+    setTab("edit");
+    let from = at.from;
+    let to = at.to;
+    let inserted = 0;
+    setUploading({ done: 0, total: files.length });
+    try {
+      for (const [index, file] of files.entries()) {
+        setUploading({ done: index, total: files.length });
+        try {
+          const asset = await api.adminUploadAsset(projectSlug, file, version || undefined);
+          // Each further image onto its own line -- two `![]()` run together
+          // are one paragraph of two images, which is nobody's intent when
+          // they drop a pair of screenshots.
+          const snippet = `${inserted > 0 ? "\n" : ""}![](${asset.markdown_path})`;
+          replaceRange(from, to, snippet);
+          from += snippet.length;
+          to = from;
+          inserted += 1;
+        } catch (err) {
+          toast.error(err instanceof ApiError ? err.message : t("common.error"));
+          const aboutThisFile = err instanceof ApiError && (err.status === 400 || err.status === 413);
+          if (!aboutThisFile) break;
+        }
+      }
+    } finally {
+      setUploading(null);
     }
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    setContent(content.slice(0, start) + snippet + content.slice(end));
-    setDirty(true);
-    // After React has re-rendered with the new value, or setting the
-    // caret would immediately be overwritten by the controlled update.
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(start + snippet.length, start + snippet.length);
-    });
+    if (inserted === 0) return;
+    toast.success(
+      inserted === 1 ? t("admin.imageUploaded") : t("admin.imagesUploaded").replace("{count}", String(inserted)),
+    );
+    // The panel below lists the project's images; the ones just uploaded
+    // belong in it without a round trip through another page.
+    setAssetsKey((key) => key + 1);
+    focusAt(from);
+  }
+
+  /**
+   * A screenshot straight into the page.
+   *
+   * This is the whole point of the feature for documentation: take the
+   * screenshot, put the cursor where it belongs, paste. The clipboard hands
+   * over a nameless blob, so the editor names it (see pastedImageName).
+   *
+   * Text pasting is left completely alone. The handler only takes over when
+   * the clipboard holds image files AND no plain text -- copying a
+   * paragraph, a URL or a code block has text/plain on it and falls through
+   * to the browser's own paste, as does a paste into a read-only frozen
+   * version.
+   */
+  function onPaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    if (readOnly) return;
+    const data = event.clipboardData;
+    if (!data) return;
+    const images = Array.from(data.files).filter((file) => file.type.startsWith("image/"));
+    if (images.length === 0 || data.getData("text/plain").trim()) return;
+    event.preventDefault();
+    const now = new Date();
+    const named = images.map(
+      (file) => new File([file], pastedImageName(file, now), { type: file.type }),
+    );
+    uploadImages(named, caretRange());
+  }
+
+  /** Whether a drag is carrying FILES. A text selection being dragged around
+   *  inside the textarea, or a link dragged in from another tab, carries
+   *  text/plain and no "Files" -- ignoring those is what leaves drag-to-move
+   *  text working exactly as the browser implements it, with no drop target
+   *  appearing over it. */
+  function isFileDrag(event: DragEvent) {
+    return Array.from(event.dataTransfer?.types ?? []).includes("Files");
+  }
+
+  /** A drop is only ours on the two tabs that have Markdown behind them, and
+   *  never on a frozen version -- there is nothing to upload into there, and
+   *  the server would refuse it. */
+  const dropTarget = !readOnly && tab !== "history";
+
+  function onDragEnter(event: DragEvent) {
+    if (!dropTarget || !isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current += 1;
+    setDragging(true);
+  }
+
+  function onDragOver(event: DragEvent) {
+    if (!dropTarget || !isFileDrag(event)) return;
+    // Without this the browser takes the drop itself and navigates the tab
+    // to the dropped file, losing everything unsaved in one gesture.
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+  }
+
+  function onDragLeave() {
+    if (dragDepth.current === 0) return;
+    dragDepth.current -= 1;
+    if (dragDepth.current === 0) setDragging(false);
+  }
+
+  function onDrop(event: DragEvent) {
+    if (!dropTarget || !isFileDrag(event)) return;
+    event.preventDefault();
+    dragDepth.current = 0;
+    setDragging(false);
+    // Dropped files keep their own names (the server slugifies the stem and
+    // de-duplicates it) -- unlike a paste, a file dragged out of a folder
+    // has a name its author chose.
+    uploadImages(Array.from(event.dataTransfer.files), caretRange());
   }
 
   return (
@@ -2239,6 +2625,15 @@ function PageEditor({
             {existing.includes(language) ? "" : t("admin.translationMissing")}
           </span>
         </div>
+      )}
+
+      {draftOffer && (
+        <DraftBanner
+          draft={draftOffer}
+          stale={draftStale}
+          onRestore={onRestoreDraft}
+          onDiscard={onDiscardDraft}
+        />
       )}
 
       <div className="flex items-center gap-2">
@@ -2311,16 +2706,42 @@ function PageEditor({
       {!readOnly && tab !== "history" && (
         <ImagesPanel
           projectSlug={projectSlug}
+          version={version}
+          reloadKey={assetsKey}
           onInsert={(asset) => insertSnippet(`![](${asset.markdown_path})`)}
         />
       )}
 
-      <div className="mt-3">
+      {/* Progress, not a blocker: an upload is a round trip that ends in a
+          git push, and freezing the textarea for it would interrupt the very
+          sentence the screenshot is being pasted into. */}
+      {uploading && (
+        <div className="mt-2 flex items-center gap-2 text-sm text-[var(--muted)]" role="status" aria-live="polite">
+          <Upload className="h-3.5 w-3.5 animate-pulse" aria-hidden="true" />
+          {t("admin.imageUploadProgress")
+            .replace("{n}", String(uploading.done + 1))
+            .replace("{total}", String(uploading.total))}
+        </div>
+      )}
+
+      {/* The drop target wraps the whole tab body rather than just the
+          textarea, so a file aimed at the preview lands too -- it is the
+          same page either way. The handlers ignore any drag that isn't
+          carrying files, which is what leaves dragging a text selection
+          around inside the textarea working as it always did. */}
+      <div
+        className="relative mt-3"
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
         {tab === "edit" && (
           <Textarea
             ref={editorRef}
             value={content}
             readOnly={readOnly}
+            onPaste={onPaste}
             onChange={(e) => {
               setContent(e.target.value);
               setDirty(true);
@@ -2353,6 +2774,20 @@ function PageEditor({
             }}
           />
         )}
+
+        {/* pointer-events-none on purpose: the overlay is a label, and a
+            drop has to reach the element underneath it that is listening. */}
+        {dragging && (
+          <div
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--accent)] bg-[var(--accent-soft)]"
+            data-testid="editor-drop-target"
+          >
+            <span className="flex items-center gap-2 rounded-lg bg-[var(--surface)] px-3 py-2 text-sm font-medium shadow">
+              <ImagePlus className="h-4 w-4" aria-hidden="true" />
+              {t("admin.imageDropHere")}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="mt-3 flex gap-2">
@@ -2366,6 +2801,72 @@ function PageEditor({
         )}
         <Button variant="outline" onClick={onDone}>
           {readOnly ? t("common.back") : t("admin.cancel")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The offer to bring back unsaved text this browser kept.
+ *
+ * An offer, never an action: the editor shows what the content repo has, and
+ * this sits above it saying that something else exists and when it was
+ * written. Restoring and discarding are the same size, next to each other,
+ * because neither is the obviously right answer -- only the author knows
+ * which of the two texts is the one they meant.
+ *
+ * The `stale` case is the one worth getting right. A draft is not
+ * automatically the newer text: the page may have been edited by someone
+ * else, or by this same author from another browser, since the draft was
+ * made. Then restoring is not "get my work back", it is "replace newer text
+ * with older text", and the banner says exactly that, in amber, with the
+ * button relabelled -- rather than offering a cheerful restore that quietly
+ * undoes a colleague's afternoon.
+ */
+function DraftBanner({
+  draft,
+  stale,
+  onRestore,
+  onDiscard,
+}: {
+  draft: PageDraft;
+  stale: boolean;
+  onRestore: () => void;
+  onDiscard: () => void;
+}) {
+  const { t, lang: uiLang } = useI18n();
+  const when = new Date(draft.savedAt).toLocaleString(uiLang, { dateStyle: "medium", timeStyle: "short" });
+
+  return (
+    <div
+      className={`mb-3 flex flex-col gap-2 rounded-lg border px-3 py-2.5 text-sm ${
+        stale ? "border-amber-500/60 bg-amber-500/10" : "border-[var(--border)] bg-[var(--surface-2)]"
+      }`}
+      data-testid={stale ? "draft-banner-stale" : "draft-banner"}
+    >
+      <span className="flex items-start gap-2 font-medium">
+        {stale ? (
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+        ) : (
+          <FileClock className="mt-0.5 h-4 w-4 shrink-0 text-[var(--muted)]" aria-hidden="true" />
+        )}
+        {stale ? t("admin.draftStaleTitle") : t("admin.draftFoundTitle")}
+      </span>
+      <span className="text-[var(--muted)]">
+        {(stale ? t("admin.draftStaleBody") : t("admin.draftFoundBody")).replace("{when}", when)}
+      </span>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" onClick={onRestore}>
+          <RotateCcw className="h-3.5 w-3.5" />
+          {stale ? t("admin.draftRestoreAnyway") : t("admin.draftRestore")}
+        </Button>
+        {/* Exactly as easy to reach as the restore, and it removes the
+            stored copy for good -- an offer that can only be accepted is a
+            banner that comes back on every visit. */}
+        <Button size="sm" variant="ghost" onClick={onDiscard}>
+          <Trash2 className="h-3.5 w-3.5" />
+          {t("admin.draftDiscard")}
         </Button>
       </div>
     </div>
@@ -2607,7 +3108,24 @@ function DiffView({ diff }: { diff: string }) {
  *  image belongs to the PROJECT, not to the page being edited -- that's the
  *  on-disk convention (content/<project>/assets/), and it's what makes the
  *  `../assets/x.png` a page pastes work from any of its categories. */
-function ImagesPanel({ projectSlug, onInsert }: { projectSlug: string; onInsert: (asset: Asset) => void }) {
+function ImagesPanel({
+  projectSlug,
+  version,
+  reloadKey,
+  onInsert,
+}: {
+  projectSlug: string;
+  /** The documentation version being edited -- images live inside it. Only
+   *  ever the writable one in practice (this panel isn't rendered on a
+   *  frozen version at all), but passed rather than left to the server's
+   *  default so an upload can never end up in a version other than the one
+   *  the editor is showing. */
+  version: string;
+  /** Bumped by the editor after it has uploaded something of its own (a
+   *  pasted screenshot, a dropped file), so those appear here too. */
+  reloadKey: number;
+  onInsert: (asset: Asset) => void;
+}) {
   const { t } = useI18n();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -2615,11 +3133,11 @@ function ImagesPanel({ projectSlug, onInsert }: { projectSlug: string; onInsert:
 
   function loadAssets() {
     api
-      .adminListAssets(projectSlug)
+      .adminListAssets(projectSlug, version || undefined)
       .then((r) => setAssets(r.assets))
       .catch(() => setAssets([]));
   }
-  useEffect(loadAssets, [projectSlug]);
+  useEffect(loadAssets, [projectSlug, version, reloadKey]);
 
   async function onPick(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -2628,7 +3146,7 @@ function ImagesPanel({ projectSlug, onInsert }: { projectSlug: string; onInsert:
     if (!file) return;
     setUploading(true);
     try {
-      const asset = await api.adminUploadAsset(projectSlug, file);
+      const asset = await api.adminUploadAsset(projectSlug, file, version || undefined);
       onInsert(asset);
       toast.success(t("admin.imageUploaded"));
       loadAssets();
@@ -2671,6 +3189,11 @@ function ImagesPanel({ projectSlug, onInsert }: { projectSlug: string; onInsert:
           onChange={onPick}
         />
       </div>
+
+      {/* The button is not the only way in, and the other two are invisible
+          until someone knows about them -- so this says so once, here, next
+          to the thing it is an alternative to. */}
+      <p className="mt-1.5 text-xs text-[var(--muted)]">{t("admin.imagePasteHint")}</p>
 
       {assets.length === 0 ? (
         <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.imagesEmpty")}</p>

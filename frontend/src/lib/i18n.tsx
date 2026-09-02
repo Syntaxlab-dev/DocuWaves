@@ -66,6 +66,8 @@ const de = {
   "admin.delete": "Löschen",
   "admin.deleteConfirm": "Wirklich löschen? Das kann nicht rückgängig gemacht werden.",
     "admin.discardDraftConfirm": "Ungespeicherte Änderungen an dieser Sprache gehen verloren. Wechseln?",
+  "admin.switchLanguageDraftKept":
+    "Ungespeicherte Änderungen an dieser Sprache werden als Entwurf in diesem Browser behalten und beim Zurückwechseln wieder angeboten — im Content-Repo steht weiter die zuletzt gespeicherte Fassung. Jetzt wechseln?",
   "admin.cover": "Titelbild (optional)",
   "admin.coverNone": "Keins",
   "admin.coverUpload": "Titelbild hochladen",
@@ -91,9 +93,25 @@ const de = {
   "admin.insertImage": "Bild einfügen",
   "admin.uploadingImage": "Wird hochgeladen…",
   "admin.imageUploaded": "Bild hochgeladen und eingefügt.",
+  "admin.imagesUploaded": "{count} Bilder hochgeladen und eingefügt.",
   "admin.imagesEmpty": "Noch keine Bilder in diesem Projekt.",
   "admin.imageInsert": "Einfügen",
   "admin.imageDeleteConfirm": "Bild wirklich löschen? Seiten, die es verwenden, zeigen es dann nicht mehr an.",
+  "admin.imagePasteHint":
+    "Screenshot einfügen (Strg+V) oder Bilddateien hierher ziehen — beides lädt sie ins Projekt hoch und setzt ![](…) an der Cursorposition ein.",
+  "admin.imageDropHere": "Bilder hier ablegen",
+  "admin.imageUploadProgress": "Bild {n} von {total} wird hochgeladen…",
+  "admin.draftFoundTitle": "Ungespeicherter Entwurf gefunden",
+  "admin.draftFoundBody":
+    "Zuletzt bearbeitet am {when}, aber nie gespeichert. Der Entwurf liegt nur in diesem Browser; angezeigt wird gerade die Fassung aus dem Content-Repo.",
+  "admin.draftStaleTitle": "Ungespeicherter Entwurf — aber die Seite hat sich geändert",
+  "admin.draftStaleBody":
+    "Der Entwurf ist vom {when}. Seitdem wurde diese Seite im Content-Repo geändert — von jemand anderem, oder von dir in einem anderen Browser. Der Entwurf ist also älter als das, was hier steht: Wiederherstellen ersetzt den neueren Text durch deinen älteren Entwurf.",
+  "admin.draftRestore": "Entwurf wiederherstellen",
+  "admin.draftRestoreAnyway": "Trotzdem wiederherstellen",
+  "admin.draftDiscard": "Entwurf verwerfen",
+  "admin.draftRestored": "Entwurf wiederhergestellt — noch nicht gespeichert.",
+  "admin.draftDiscarded": "Entwurf verworfen.",
   "admin.branding": "Branding",
   "admin.brandingIntro":
     "Name, Logo, Farbe und Fußzeile dieser Instanz. Wird als _site.yml im Content-Repo gespeichert — also versioniert, per Pull Request änderbar und pro Instanz eigenständig.",
@@ -289,6 +307,8 @@ const en: Dict = {
   "admin.delete": "Delete",
   "admin.deleteConfirm": "Really delete this? This can't be undone.",
     "admin.discardDraftConfirm": "Unsaved changes to this language will be lost. Switch anyway?",
+  "admin.switchLanguageDraftKept":
+    "Unsaved changes to this language are kept as a draft in this browser and offered again when you come back to it -- the content repo still holds the last saved version. Switch now?",
   "admin.cover": "Cover image (optional)",
   "admin.coverNone": "None",
   "admin.coverUpload": "Upload a cover",
@@ -314,9 +334,25 @@ const en: Dict = {
   "admin.insertImage": "Insert image",
   "admin.uploadingImage": "Uploading…",
   "admin.imageUploaded": "Image uploaded and inserted.",
+  "admin.imagesUploaded": "{count} images uploaded and inserted.",
   "admin.imagesEmpty": "No images in this project yet.",
   "admin.imageInsert": "Insert",
   "admin.imageDeleteConfirm": "Really delete this image? Pages using it will stop showing it.",
+  "admin.imagePasteHint":
+    "Paste a screenshot (Ctrl+V) or drag image files in here -- either uploads them into the project and inserts ![](…) at the cursor.",
+  "admin.imageDropHere": "Drop images here",
+  "admin.imageUploadProgress": "Uploading image {n} of {total}…",
+  "admin.draftFoundTitle": "Unsaved draft found",
+  "admin.draftFoundBody":
+    "Last edited {when} and never saved. The draft is only in this browser; what you are looking at is the version from the content repo.",
+  "admin.draftStaleTitle": "Unsaved draft -- but the page has changed since",
+  "admin.draftStaleBody":
+    "This draft is from {when}. The page has been changed in the content repo since then -- by someone else, or by you in another browser. So the draft is OLDER than what is shown here: restoring replaces the newer text with your older draft.",
+  "admin.draftRestore": "Restore the draft",
+  "admin.draftRestoreAnyway": "Restore it anyway",
+  "admin.draftDiscard": "Discard the draft",
+  "admin.draftRestored": "Draft restored -- not saved yet.",
+  "admin.draftDiscarded": "Draft discarded.",
   "admin.branding": "Branding",
   "admin.brandingIntro":
     "This instance's name, logo, colour and footer. Stored as _site.yml in the content repo -- versioned, changeable by pull request, and its own per instance.",
@@ -463,8 +499,18 @@ const I18nContext = createContext<{ lang: Lang; setLang: (l: Lang) => void; t: (
   t: (key) => key,
 });
 
+/** Remembering the interface language is a convenience, and every access to
+ *  browser storage has to be able to fail: the property access itself throws
+ *  in a browser configured to block site data, and setItem throws on a full
+ *  quota. Unguarded, the read below happens inside a useState initializer and
+ *  would take the whole app down over a preference. */
 function detectDefaultLang(): Lang {
-  const stored = localStorage.getItem("docuwaves-lang");
+  let stored: string | null = null;
+  try {
+    stored = window.localStorage.getItem("docuwaves-lang");
+  } catch {
+    stored = null;
+  }
   if (stored === "de" || stored === "en") return stored;
   return navigator.language.startsWith("de") ? "de" : "en";
 }
@@ -473,8 +519,14 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(detectDefaultLang());
 
   function setLang(l: Lang) {
+    // The switch itself always happens; only remembering it for next time
+    // is allowed to fail.
     setLangState(l);
-    localStorage.setItem("docuwaves-lang", l);
+    try {
+      window.localStorage.setItem("docuwaves-lang", l);
+    } catch {
+      // Not remembered for the next visit; the language is still switched.
+    }
   }
 
   function t(key: keyof Dict): string {

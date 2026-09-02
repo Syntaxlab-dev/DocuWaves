@@ -1,14 +1,41 @@
 import { useSyncExternalStore } from "react";
 
+/**
+ * Remembering the theme is a convenience, and it is not allowed to be more
+ * than that: `window.localStorage` THROWS on the property access in a
+ * browser told to block site data, and `setItem` throws when the quota is
+ * full. Unguarded, either one takes the whole app down -- main.tsx calls
+ * applyTheme() at module scope, before createRoot(), so the exception
+ * happens before anything is rendered and the reader gets a blank page
+ * rather than a site in the wrong colour scheme.
+ */
+function readStored(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string): void {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // The preference simply isn't remembered for the next visit.
+  }
+}
+
 export function getPreferredTheme(): "light" | "dark" {
-  const stored = localStorage.getItem("docuwaves-theme");
+  const stored = readStored("docuwaves-theme");
   if (stored === "light" || stored === "dark") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
 export function applyTheme(theme: "light" | "dark") {
+  // The class first, the remembering second: applying the theme is the part
+  // that must happen, storing it the part that is allowed to fail.
   document.documentElement.classList.toggle("dark", theme === "dark");
-  localStorage.setItem("docuwaves-theme", theme);
+  writeStored("docuwaves-theme", theme);
 }
 
 /**

@@ -17,7 +17,11 @@ save, so nobody has to touch `git` directly if they don't want to.
   that doesn't have one looks exactly as it always did.
 - **Markdown, with a live preview** — pages are written in Markdown (GFM:
   tables, checklists, fenced code blocks with syntax highlighting) and
-  edited in a split editor/preview pane.
+  edited in a split editor/preview pane. **Paste a screenshot straight in**
+  (or drag image files onto it) and it is uploaded, committed and referenced
+  at the cursor (see "Images"), and **unsaved text survives a closed tab** —
+  it is kept in the browser and offered back when you return (see "Unsaved
+  work").
 - **Diagrams as text** — a ` ```mermaid ` block is drawn as a real diagram
   (see "Diagrams"): an architecture sketch, a request flow or a state
   machine stays in the `.md` file, diffs line by line in git, and needs no
@@ -408,6 +412,37 @@ is rebuilt, which would tell a reader the page changed on a day nothing about
 it did. A page with no committed file, or an instance with no content repo
 configured, simply has no such line.
 
+### Unsaved work
+
+Text in the editor that has not been saved yet is kept in the browser, so
+closing the tab, reloading, navigating away by accident, a crash, or a
+session that expired halfway through a long page no longer costs the page.
+It is written a moment after you stop typing (not on every keystroke), and
+it is a **local scratch copy only**: nothing is uploaded, nothing is
+committed, and no reader ever sees it. The content repo stays the only place
+documentation is stored.
+
+Reopening a page that has one **offers** it, with the time it was made, next
+to an equally prominent way to throw it away — the editor still shows what
+the content repo has until you say otherwise. Silently preferring the local
+copy is exactly how a colleague's afternoon gets overwritten.
+
+Which brings up the case worth stating plainly: **a draft is not
+automatically the newer text.** Someone else may have edited the page since,
+or you may have saved it from another browser. DocuWaves notices (it records
+which server text the draft was written on top of) and says so, in those
+words — "restoring replaces the newer text with your older draft" — instead
+of offering a cheerful restore.
+
+A draft is kept per project, page, language and documentation version — the
+same four things that pick out one file in the content repo — so a page's
+German and English tabs keep their own, and switching language tabs with
+unsaved changes now keeps the text rather than discarding it. Saving clears
+it, discarding clears it, and anything left over expires after 14 days.
+Browsers that refuse storage entirely (a private window, a full quota, site
+data blocked) simply get no drafts; the editor works exactly as it did
+before this existed.
+
 ### Diagrams
 
 A fenced code block tagged `mermaid` is rendered as a diagram instead of as
@@ -492,6 +527,26 @@ at the cursor; the same panel lists the project's existing images so one can
 be re-used on another page without uploading it twice. Adding an image by
 pull request works just as well — drop the file in `assets/` and reference
 it the same way.
+
+**Or just paste it.** A screenshot on the clipboard, pasted into the Markdown
+editor (Ctrl+V), is uploaded into the same `assets/` folder, committed and
+pushed like any other image, and its `![](../assets/…)` appears at the cursor
+— take the screenshot, put the cursor where it belongs, paste, done.
+**Dragging image files onto the editor** does exactly the same, several at
+once if you like: they upload in the order you dropped them and their
+snippets go in in that order, each on its own line. Dragging text around
+inside the editor is untouched — only a drag actually carrying files lights
+up the drop target.
+
+A pasted image has no filename of its own (browsers hand it over as
+"image.png", if anything), so DocuWaves names it after the moment it was
+pasted: `pasted-2026-09-02-143205.png`. That reads as a date, sorts
+chronologically in `assets/`, and keeps two screenshots taken minutes apart
+apart — unlike `image.png`, `image-2.png`, `image-3.png`. Dropped files keep
+their own names. Both go through exactly the rules below, and a refusal is
+shown in the server's own words ("That image is 11264 KB; the limit is 10
+MB.") rather than as a generic failure. A frozen documentation version offers
+neither: there is nothing to upload into, and the API refuses it as well.
 
 Rules DocuWaves enforces, on upload *and* when serving:
 

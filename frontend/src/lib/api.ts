@@ -512,12 +512,29 @@ export const api = {
     ),
 
   // Admin: image assets -- keyed by project slug, not id (an asset is a
-  // plain file in the project's directory, it has no database row)
-  adminListAssets: (projectSlug: string) =>
-    request<{ assets: Asset[] }>(`/api/admin/projects/${encodeURIComponent(projectSlug)}/assets`),
-  adminUploadAsset: (projectSlug: string, file: File) =>
+  // plain file in the project's directory, it has no database row).
+  //
+  // `version` is which documentation version the images belong to -- assets/
+  // sits inside the version directory. Omitted means "the writable one",
+  // which is what an unversioned project and the ordinary editing case both
+  // want. The editor passes the version it is actually showing, so an upload
+  // aimed at a frozen one is refused with the endpoint's own 403 rather than
+  // landing in `current` and being reported as saved.
+  adminListAssets: (projectSlug: string, version?: string) =>
+    request<{ assets: Asset[] }>(
+      `/api/admin/projects/${encodeURIComponent(projectSlug)}/assets${
+        version ? `?version=${encodeURIComponent(version)}` : ""
+      }`,
+    ),
+  /** The file's own `name` is what it will be CALLED in the repo -- the
+   *  server slugifies the stem and de-duplicates it. A pasted screenshot has
+   *  no name of its own, so the editor gives it one before it gets here (see
+   *  pastedImageName in AdminApp). */
+  adminUploadAsset: (projectSlug: string, file: File, version?: string) =>
     upload<Asset>(
-      `/api/admin/projects/${encodeURIComponent(projectSlug)}/assets?filename=${encodeURIComponent(file.name)}`,
+      `/api/admin/projects/${encodeURIComponent(projectSlug)}/assets?filename=${encodeURIComponent(file.name)}${
+        version ? `&version=${encodeURIComponent(version)}` : ""
+      }`,
       file,
     ),
   adminDeleteAsset: (projectSlug: string, filename: string) =>
