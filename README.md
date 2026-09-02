@@ -35,6 +35,10 @@ save, so nobody has to touch `git` directly if they don't want to.
   footer come from a `_site.yml` in the content repo (see "Site branding"),
   so two deployments look like two different products without either of them
   needing its own build.
+- **A project with nothing published stays off the public site** -- there is
+  no separate switch for it: a project whose pages are all drafts has
+  nothing a reader could open, so it appears only in the admin area. That
+  is also how you keep a private set of notes in the same instance.
 - **Draft vs. published** — a page stays invisible to the public site
   until you explicitly publish it.
 - **Multiple languages, optionally** — a page can exist in several

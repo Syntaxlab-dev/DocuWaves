@@ -90,7 +90,7 @@ def _versions_payload(project_slug: str, selected: str, available: list[str] | N
 
 @router.get("/projects")
 def public_list_projects(lang: str | None = _LANG_QUERY):
-    return {"projects": projects_store.list_projects(_language(lang))}
+    return {"projects": projects_store.list_projects(_language(lang), published_only=True)}
 
 
 @router.get("/projects/{project_slug}")

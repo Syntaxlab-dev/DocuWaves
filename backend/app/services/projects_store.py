@@ -55,13 +55,33 @@ def _row_to_dict(row, language: str = "") -> dict:
 _COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order, image"
 
 
-def list_projects(language: str = "") -> list[dict]:
+def list_projects(language: str = "", published_only: bool = False) -> list[dict]:
     # Ordered by the DEFAULT language's name, not the reader's: the tile
     # order on the homepage is a property of the site, and a list that
     # reshuffles itself when a reader switches language would make the same
     # instance feel like two different ones.
+    #
+    # published_only is what the PUBLIC list passes. A project has no
+    # published flag of its own -- only pages do -- so a project with
+    # nothing published has nothing a reader could open, and was still
+    # getting a tile on the homepage that led to an empty page. That hits
+    # every new project between "created" and "first page written", and it
+    # is also the only way to keep a project (a private scratchpad, a draft
+    # set of docs) off the public site at all. The admin list is unfiltered,
+    # so nothing disappears from the place it is managed from.
+    p = "%s" if db.is_postgres() else "?"
+    where = ""
+    params: tuple = ()
+    if published_only:
+        published = "TRUE" if db.is_postgres() else "1"
+        where = (
+            f" WHERE EXISTS (SELECT 1 FROM pages WHERE pages.project_id = projects.id "
+            f"AND pages.published = {published})"
+        )
     with db.get_connection() as conn:
-        rows = conn.execute(f"SELECT {_COLUMNS} FROM projects ORDER BY sort_order, name").fetchall()
+        rows = conn.execute(
+            f"SELECT {_COLUMNS} FROM projects{where} ORDER BY sort_order, name", params
+        ).fetchall()
     return [_row_to_dict(r, language) for r in rows]
 
 

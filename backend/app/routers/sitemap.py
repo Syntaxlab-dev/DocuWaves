@@ -152,7 +152,10 @@ def _entries(base: str):
     # is touched. Empty on an instance with no content repo configured, in
     # which case the sitemap is a correct document with no lastmod in it.
     dates = git_content_repo.last_modified_map()
-    for project in projects_store.list_projects():
+    # published_only, matching the public project list: a project with
+    # nothing published has no page a crawler could reach, and listing its
+    # landing URL would offer a search engine an empty page.
+    for project in projects_store.list_projects(published_only=True):
         yield from _project_entries(base, project, dates, languages)
 
 
