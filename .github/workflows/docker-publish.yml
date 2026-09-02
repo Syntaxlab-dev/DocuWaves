@@ -4,6 +4,15 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # Weekly rebuild with no code change. The base image ships a Debian
+  # userland, and most of what a container scan reports lives there rather
+  # than in this project's own dependencies -- so those findings only clear
+  # when the image is built again after Debian publishes fixes. Without
+  # this, an image sits unchanged for as long as nobody pushes, quietly
+  # accumulating everything that was patched upstream in the meantime.
+  # Sunday 03:00 UTC, away from any working day.
+  schedule:
+    - cron: "0 3 * * 0"
   workflow_dispatch: {}
 
 env:

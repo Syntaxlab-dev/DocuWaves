@@ -1,0 +1,62 @@
+version: 2
+
+# Reports, never installs. Every ecosystem here opens a pull request that a
+# human reads and merges -- deliberately, because an unattended dependency
+# bump is how a working deployment breaks overnight with nobody watching.
+# The upgrade that prompted this file is the argument for it: bcrypt 5.0
+# started rejecting passwords that 4.x accepted, which would have locked the
+# operator out of their own instance with nothing in the log to explain it.
+# A scheduled auto-merge would have shipped exactly that.
+#
+# Operating system packages are the opposite case and are NOT handled here:
+# those carry the bulk of the scan findings, have no API surface to break,
+# and are picked up automatically by the weekly image rebuild (see
+# .github/workflows/docker-publish.yml).
+
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "03:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      # One pull request for the routine patch/minor traffic, so it can be
+      # read and merged in a minute; anything that changes a major version
+      # arrives on its own, because that is the one that needs the testing.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "03:00"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # The build's own actions pin to major tags (@v4), so these are rare --
+  # but a stale action is still code running with a token.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+
+  # The base image tag itself (python:3.12-slim, node:22-slim): a new minor
+  # of either shows up as a pull request rather than being noticed by nobody.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: deps

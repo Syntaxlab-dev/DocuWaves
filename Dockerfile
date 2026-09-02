@@ -11,7 +11,18 @@ WORKDIR /app
 # git: the content repo (Markdown+YAML files, the actual source of truth for
 # everything under /admin) is a real clone managed by GitPython, which shells
 # out to the system `git` binary -- it isn't vendored, so it has to be here.
-RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client && rm -rf /var/lib/apt/lists/*
+# `upgrade` as well as `install`: a container scan of this image reports far
+# more findings in the Debian userland than in anything this project pins,
+# and those only clear when the image is rebuilt against fixed packages.
+# Without the upgrade, a rebuild would faithfully reproduce whatever the base
+# image happened to ship -- which is exactly the state the scan is
+# complaining about. Paired with the weekly scheduled rebuild in
+# .github/workflows/docker-publish.yml; the Python side stays reproducible
+# because requirements.txt pins every version.
+RUN apt-get update \
+    && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
