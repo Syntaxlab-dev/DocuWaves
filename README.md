@@ -946,7 +946,19 @@ with the same message the admin API gives, rather than quietly redirecting
 the change into `current` and letting the assistant believe it corrected a
 released version.
 
-### There is deliberately no delete tool
+### ### What this costs
+
+Nothing, on DocuWaves' side. The MCP endpoint is a tool server: it answers an
+assistant's requests about your documentation and never calls a language model
+itself, so it needs no AI provider account and adds nothing to any AI bill.
+
+What the assistant costs is between you and whoever provides it. On a
+subscription plan that usage sits inside the plan; through a pay-as-you-go API
+the provider bills per request. That distinction is worth knowing before you
+hand out a token -- "it's free" would be true for this endpoint and wrong for
+the other half of the setup.
+
+There is deliberately no delete tool
 
 An assistant can create pages and rewrite them. It cannot delete a page, a
 category or a project, and that is a decision rather than an omission.

@@ -613,6 +613,13 @@ function ApiTokensCard({ onClose }: { onClose: () => void }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <p className="text-sm text-[var(--muted)]">{t("admin.tokensIntro")}</p>
+        {/* Said here rather than only in the README: this is the moment
+            someone is about to hand a token to an assistant, and "will this
+            cost me anything" is the question they actually have. Stating the
+            boundary plainly -- we charge nothing, your own AI access is
+            between you and your provider -- is worth more than a promise of
+            "free" that would be wrong for anyone billing per token. */}
+        <p className="text-sm text-[var(--muted)]">{t("admin.tokensCost")}</p>
 
         {revealed && (
           <div className="flex flex-col gap-2 rounded-lg border border-[var(--accent)] bg-[var(--accent-soft)] p-3">

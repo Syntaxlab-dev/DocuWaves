@@ -203,6 +203,8 @@ const de = {
   "admin.tokens": "API-Tokens",
   "admin.tokensIntro":
     "Ein API-Token gibt einem KI-Assistenten (z. B. Claude) Zugriff auf diese Doku über den MCP-Endpunkt. Du erstellst das Token hier und gibst es dem Assistenten — es ersetzt keine Anmeldung im Admin-Bereich und kann nichts löschen.",
+  "admin.tokensCost":
+    "Kosten: DocuWaves ruft selbst kein Sprachmodell auf — die Schnittstelle stellt deine Doku nur bereit und verursacht keine KI-Kosten. Was dein Assistent kostet, richtet sich nach deinem eigenen Zugang: mit einem Abo bleibt es im Rahmen des Abos, über die API rechnet der Anbieter nach Verbrauch ab.",
   "admin.tokensEmpty": "Noch keine API-Tokens angelegt.",
   "admin.tokenName": "Name (z. B. notes-bot)",
   "admin.tokenScope": "Berechtigung",
@@ -444,6 +446,8 @@ const en: Dict = {
   "admin.tokens": "API tokens",
   "admin.tokensIntro":
     "An API token gives an AI assistant (Claude, say) access to these docs through the MCP endpoint. You create the token here and hand it to the assistant -- it is not a replacement for an admin login, and it can't delete anything.",
+  "admin.tokensCost":
+    "Cost: DocuWaves never calls a language model itself -- the endpoint only serves your documentation, and adds nothing to any AI bill. What your assistant costs depends on your own access: on a subscription it stays within that subscription, through an API the provider bills by usage.",
   "admin.tokensEmpty": "No API tokens yet.",
   "admin.tokenName": "Name (e.g. notes-bot)",
   "admin.tokenScope": "Scope",
