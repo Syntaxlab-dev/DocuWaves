@@ -209,7 +209,11 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
-    return {"ok": True, "slug": updated["slug"] if updated else slug}
+    # `id` too: renaming moves the file, and the reindex that follows keys
+    # rows by slug -- so the row this call started from is gone and the
+    # caller's id is stale. The page endpoint already answers this way; a
+    # caller that keeps using the old id here silently addresses nothing.
+    return {"ok": True, "id": updated["id"] if updated else project_id, "slug": updated["slug"] if updated else slug}
 
 
 @router.post("/projects/{project_id}/move")
@@ -306,7 +310,11 @@ def admin_update_category(category_id: int, body: CategoryIn, request: Request):
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
-    return {"ok": True, "slug": updated["slug"] if updated else slug}
+    # `id` too: renaming moves the file, and the reindex that follows keys
+    # rows by slug -- so the row this call started from is gone and the
+    # caller's id is stale. The page endpoint already answers this way; a
+    # caller that keeps using the old id here silently addresses nothing.
+    return {"ok": True, "id": updated["id"] if updated else category_id, "slug": updated["slug"] if updated else slug}
 
 
 @router.post("/categories/{category_id}/move")

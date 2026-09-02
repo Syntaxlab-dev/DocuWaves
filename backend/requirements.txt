@@ -1,10 +1,15 @@
-fastapi==0.115.0
-uvicorn[standard]==0.30.6
-requests==2.32.3
-python-dotenv==1.0.1
-bcrypt==4.2.0
+fastapi==0.141.1
+# Pinned explicitly although FastAPI only requires starlette>=0.46.0 with no
+# upper bound: this file pins everything else, and leaving the one dependency
+# that carried the CVEs this upgrade was about free to float means a rebuild
+# months from now silently ships a version nobody tested. Bump it deliberately.
+starlette==1.6.0
+uvicorn[standard]==0.52.4
+requests==2.34.2
+python-dotenv==1.2.3
+bcrypt==5.0.0
 itsdangerous==2.2.0
-psycopg[binary]==3.2.3
+psycopg[binary]==3.3.5
 joserfc==1.7.5
 python-slugify==8.0.4
 GitPython==3.1.61
