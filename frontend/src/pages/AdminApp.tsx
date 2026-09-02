@@ -379,7 +379,13 @@ export function AdminApp() {
 
                 {frozen && <FrozenNotice projectSlug={selectedProject.slug} version={viewing} />}
 
-                <div className="grid gap-4 md:grid-cols-[220px_1fr]">
+                {/* min-w-0 on the right column: a grid track is sized by its
+                    content unless told otherwise, so a wide unified diff in the
+                    History tab stretched this column instead of scrolling inside
+                    it, and pushed the whole admin page into horizontal scroll.
+                    Same failure and same fix as the public shell -- see
+                    DocsShell.tsx, which already carried the comment. */}
+                <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
                   <CategoriesPanel
                     projectId={selectedProject.id}
                     projectSlug={selectedProject.slug}
