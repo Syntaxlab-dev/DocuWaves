@@ -67,7 +67,7 @@ _ASSETS_DIRNAME = "assets"
 # and nowhere else. mimetypes.guess_type() reads the system's mime.types,
 # which differs per base image and would make what gets served depend on the
 # container's OS packages rather than on this file.
-CONTENT_TYPES: dict[str, str] = {
+IMAGE_TYPES: dict[str, str] = {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
@@ -77,6 +77,32 @@ CONTENT_TYPES: dict[str, str] = {
     ".svg": "image/svg+xml",
 }
 
+# Audio and video a page can embed. Separate from IMAGE_TYPES rather than
+# merged into it, because the two answer different questions: everything here
+# can be SERVED, but only an image can be a project's or category's cover.
+# Merged, `image: assets/demo.mp4` in a _project.yml would resolve, and the
+# tile would try to paint a video as a picture.
+#
+# Formats every current browser plays without a plugin or a licence question:
+# no .mov, no .avi, no .wmv. An author with one of those converts it once,
+# rather than every reader discovering it does not play.
+MEDIA_TYPES: dict[str, str] = {
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".ogv": "video/ogg",
+    ".mp3": "audio/mpeg",
+    ".m4a": "audio/mp4",
+    ".oga": "audio/ogg",
+    ".wav": "audio/wav",
+}
+
+CONTENT_TYPES: dict[str, str] = {**IMAGE_TYPES, **MEDIA_TYPES}
+
+# Deliberately not raised for video. The content repository is a Git
+# repository, and Git is very bad at large binaries -- every clone pulls
+# every version of every file in it forever. A screen recording that fits
+# here is fine; a half-hour capture belongs on something built to stream it,
+# linked from the page.
 MAX_ASSET_BYTES = 10 * 1024 * 1024
 
 
@@ -101,7 +127,7 @@ def _project_dir(project_slug: str) -> Path | None:
     return candidate
 
 
-def resolve_asset(project_slug: str, relative_path: str) -> Path | None:
+def resolve_asset(project_slug: str, relative_path: str, allowed: dict[str, str] | None = None) -> Path | None:
     """Maps a project-relative asset path to a real file, or None if it
     doesn't exist, isn't an allowed image type, or escapes the project
     directory. None is deliberately the single answer for all three: the
@@ -118,7 +144,9 @@ def resolve_asset(project_slug: str, relative_path: str) -> Path | None:
     candidate = (project_dir / relative_path).resolve()
     if not candidate.is_relative_to(project_dir):
         return None
-    if candidate.suffix.lower() not in CONTENT_TYPES:
+    # `allowed` narrows what counts: everything servable by default, images
+    # only where the answer becomes a picture (see _cover_url).
+    if candidate.suffix.lower() not in (allowed or CONTENT_TYPES):
         return None
     if not candidate.is_file():
         return None
@@ -186,7 +214,10 @@ def _cover_url(project_slug: str, path_from_project: str, within: Path | None = 
     `within` narrows the containment by one more directory on top of the
     project boundary resolve_asset() already enforces -- see
     category_cover_url(), the only caller that needs it."""
-    path = resolve_asset(project_slug, path_from_project)
+    # IMAGE_TYPES, not everything servable: a cover is painted as a picture,
+    # so a path naming a video has to answer "no cover" rather than a URL the
+    # tile would then fail to render.
+    path = resolve_asset(project_slug, path_from_project, IMAGE_TYPES)
     if path is None:
         return None
     if within is not None and not path.is_relative_to(within):
@@ -388,15 +419,19 @@ def rejection_reason(filename: str, data: bytes) -> str | None:
     extension = Path(filename).suffix.lower()
     if extension not in CONTENT_TYPES:
         allowed = ", ".join(sorted(CONTENT_TYPES))
-        return f"Unsupported image type '{extension or filename}'. Allowed: {allowed}."
+        return f"Unsupported file type '{extension or filename}'. Allowed: {allowed}."
     if not data:
         return "The uploaded file is empty."
     if len(data) > MAX_ASSET_BYTES:
-        return f"That image is {len(data) // 1024} KB; the limit is {MAX_ASSET_BYTES // (1024 * 1024)} MB."
+        return f"That file is {len(data) // 1024} KB; the limit is {MAX_ASSET_BYTES // (1024 * 1024)} MB."
 
     if extension == ".svg":
         return _svg_rejection_reason(data)
 
+    # Every accepted extension needs an entry here. A missing one used to be
+    # a KeyError -- an unhandled 500 on an upload rather than a refusal --
+    # which is why this is a .get() with an explicit "no check for this yet"
+    # branch below rather than a subscript.
     magic_ok = {
         ".png": data.startswith(b"\x89PNG\r\n\x1a\n"),
         ".jpg": data.startswith(b"\xff\xd8\xff"),
@@ -404,7 +439,20 @@ def rejection_reason(filename: str, data: bytes) -> str | None:
         ".gif": data.startswith(b"GIF87a") or data.startswith(b"GIF89a"),
         ".webp": data.startswith(b"RIFF") and data[8:12] == b"WEBP",
         ".avif": _looks_like_avif(data),
-    }[extension]
+        # ISO base media (MPEG-4): a size field, then 'ftyp'.
+        ".mp4": data[4:8] == b"ftyp",
+        ".m4a": data[4:8] == b"ftyp",
+        # Matroska/WebM's EBML header.
+        ".webm": data.startswith(b"\x1a\x45\xdf\xa3"),
+        ".ogv": data.startswith(b"OggS"),
+        ".oga": data.startswith(b"OggS"),
+        # An ID3 tag, or a bare MPEG frame sync for a file without one.
+        ".mp3": data.startswith(b"ID3") or (data[:1] == b"\xff" and data[1:2] >= b"\xe0"),
+        ".wav": data.startswith(b"RIFF") and data[8:12] == b"WAVE",
+    }.get(extension)
+    if magic_ok is None:
+        return f"No content check is implemented for '{extension}', so it is refused."
     if not magic_ok:
-        return f"That file's contents aren't a real {extension.lstrip('.').upper()} image."
+        kind = "image" if extension in IMAGE_TYPES else "media file"
+        return f"That file's contents aren't a real {extension.lstrip('.').upper()} {kind}."
     return None

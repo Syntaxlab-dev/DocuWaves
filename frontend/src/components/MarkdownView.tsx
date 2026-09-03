@@ -1,7 +1,13 @@
 import { useMemo, useRef, type HTMLAttributes, type ReactNode } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
+// KaTeX's own stylesheet. Its web fonts are declared here but only fetched by
+// the browser when a formula actually renders, so a page without maths on it
+// costs nothing but the ~23 KB of CSS.
+import "katex/dist/katex.min.css";
 import type { Element, ElementContent } from "hast";
 import { CopyButton } from "@/components/CopyButton";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
@@ -77,7 +83,11 @@ export function MarkdownView({
   return (
     <div className="markdown-body" lang={lang}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        // remark-math finds $inline$ and $$display$$; rehype-katex turns
+        // what it found into markup. KaTeX rather than MathJax: it renders
+        // synchronously, in one pass, with no layout reflow afterwards --
+        // which matters because these pages are also printed.
+        remarkPlugins={[remarkGfm, remarkMath]}
         // plainText: "mermaid" is not a highlight.js language, it's a
         // diagram. Told plainly, the highlighter leaves the block completely
         // alone -- no `hljs` class, no spans -- which keeps its source in one
@@ -85,7 +95,10 @@ export function MarkdownView({
         // diagram doesn't parse look like the plain block it is. Without it
         // rehype-highlight instead emits a "not registered" warning per
         // block, per render pass.
-        rehypePlugins={[[rehypeHighlight, { plainText: ["mermaid"] }]]}
+        // throwOnError false: a malformed formula is shown in red, in place,
+        // rather than taking down the whole page render. An author's typo
+        // must never cost the reader the rest of the document.
+        rehypePlugins={[[rehypeHighlight, { plainText: ["mermaid"] }], [rehypeKatex, { throwOnError: false }]]}
         urlTransform={urlTransform}
         components={{
           // `node` is react-markdown's own hast node -- destructured out
@@ -93,7 +106,35 @@ export function MarkdownView({
           // the DOM element, which React would warn about.
           img({ node, src, alt, ...props }) {
             void node;
-            const resolved = resolveImageSrc(typeof src === "string" ? src : "", projectSlug, categorySlug, versionDir);
+            const raw = typeof src === "string" ? src : "";
+            const resolved = resolveImageSrc(raw, projectSlug, categorySlug, versionDir);
+
+            // A video or audio file written with image syntax -- `![A short
+            // tour](../assets/tour.mp4)`. Markdown has no element of its own
+            // for media, and the alternative would be raw HTML in pages,
+            // which means turning on rehype-raw and accepting arbitrary
+            // markup from the content repo. This asks for no new syntax an
+            // author has to learn, and renders as a plain link anywhere else
+            // the file is read.
+            const kind = mediaKind(raw);
+            if (kind && resolved) {
+              const Tag = kind;
+              return (
+                <Tag
+                  src={resolved}
+                  controls
+                  preload="metadata"
+                  className="my-4 w-full rounded-lg"
+                  // The alt text is the only description there is, so it
+                  // becomes the accessible name rather than being dropped.
+                  aria-label={alt || undefined}
+                >
+                  {/* Shown by browsers that cannot play the format at all. */}
+                  <a href={resolved}>{alt || resolved}</a>
+                </Tag>
+              );
+            }
+
             return (
               <img
                 {...props}
@@ -250,4 +291,16 @@ function resolveImageSrc(src: string, projectSlug?: string, categorySlug?: strin
   // leaves an already percent-encoded name (`my%20shot.png`, which is how
   // Markdown has to spell one) alone instead of double-encoding it.
   return `/api/public/assets/${encodeURIComponent(projectSlug)}/${encodeURI(segments.join("/"))}${suffix}`;
+}
+
+/** `video`, `audio`, or "" for anything that is a still image.
+ *
+ *  Extensions only, and the same list the server will actually serve (see
+ *  content_assets.MEDIA_TYPES). A query string or fragment is ignored, so
+ *  `tour.mp4?v=2` still reads as a video. */
+function mediaKind(src: string): "video" | "audio" | "" {
+  const path = src.split(/[?#]/)[0].toLowerCase();
+  if (/\.(mp4|webm|ogv)$/.test(path)) return "video";
+  if (/\.(mp3|m4a|oga|wav)$/.test(path)) return "audio";
+  return "";
 }

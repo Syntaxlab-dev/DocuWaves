@@ -92,6 +92,36 @@ class TestProjectCoverUrl:
         assert content_assets.project_cover_url("demo", "assets/gone.png") is None
 
 
+class TestMediaVersusImages:
+    """Everything servable can be embedded in a page; only an image can be a
+    cover. Merged into one list, `image: assets/demo.mp4` would resolve and a
+    tile would try to paint a video as a picture."""
+
+    def test_media_is_servable(self, content):
+        content.project("demo")
+        (content.content_dir("demo") / "assets").mkdir(parents=True, exist_ok=True)
+        (content.content_dir("demo") / "assets" / "tour.mp4").write_bytes(b"x")
+        assert content_assets.resolve_asset("demo", "assets/tour.mp4") is not None
+
+    def test_media_cannot_be_a_cover(self, content):
+        content.project("demo")
+        (content.content_dir("demo") / "assets").mkdir(parents=True, exist_ok=True)
+        (content.content_dir("demo") / "assets" / "tour.mp4").write_bytes(b"x")
+        assert content_assets.project_cover_url("demo", "assets/tour.mp4") is None
+
+    def test_the_two_lists_do_not_overlap(self):
+        assert not set(content_assets.IMAGE_TYPES) & set(content_assets.MEDIA_TYPES)
+
+    def test_every_servable_type_has_a_content_check(self):
+        """rejection_reason() indexes a table by extension. A type accepted by
+        the extension check but missing from that table used to be a KeyError
+        -- a 500 on upload rather than a refusal."""
+        for extension in content_assets.CONTENT_TYPES:
+            reason = content_assets.rejection_reason(f"f{extension}", b"definitely not that format")
+            assert reason is not None, extension
+            assert "No content check is implemented" not in reason, extension
+
+
 class TestCategoryCoverUrl:
     def test_resolves_the_same_relative_path_a_page_would_use(self, content):
         content.project("demo").category("demo", "guide")
