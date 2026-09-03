@@ -206,13 +206,37 @@ def _cover_url(project_slug: str, path_from_project: str, within: Path | None = 
 
 
 def project_cover_url(project_slug: str, image: str) -> str | None:
-    """A `_project.yml`'s `image:`. That file sits in the project directory
-    itself, so its path is already relative to the resolution root and needs
-    no prefix at all: `assets/cover.png` in the file is
-    content/<project>/assets/cover.png on disk."""
+    """A `_project.yml`'s `image:`, resolved against the project directory
+    and then, if that finds nothing, against the default version's content
+    directory.
+
+    The second attempt exists because the first freeze moves `assets/` down
+    into `current/` while `_project.yml` stays at the project level (see
+    content_versions._migrate_to_versioned). Page sources survive that move
+    because they travel WITH the assets and reach them by `../assets/x.png`;
+    `_project.yml` does not move, so the `assets/cover.png` in it stopped
+    resolving the moment a project was first versioned, and the tile lost
+    its cover with nothing in the file to explain why.
+
+    Resolving against the DEFAULT version rather than the writable one is
+    what makes the answer match the page a reader actually lands on: an
+    unprefixed URL shows the default version, and this tile links there.
+    """
     if not image:
         return None
-    return _cover_url(project_slug, image)
+    direct = _cover_url(project_slug, image)
+    if direct is not None:
+        return direct
+
+    project_dir = _project_dir(project_slug)
+    if project_dir is None:
+        return None
+    content = project_content_dir(project_slug, "").resolve()
+    # Equal while the project is unversioned -- there is no second place to
+    # look, and the first attempt was already the only one.
+    if content == project_dir or not content.is_relative_to(project_dir):
+        return None
+    return _cover_url(project_slug, f"{content.relative_to(project_dir).as_posix()}/{image}")
 
 
 def category_cover_url(project_slug: str, version: str, category_slug: str, image: str) -> str | None:
