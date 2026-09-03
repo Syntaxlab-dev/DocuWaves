@@ -96,8 +96,8 @@ export function ContentLangProvider({
   // the default language's address, so that a reader who then switches
   // language has somewhere to switch FROM. replace: true keeps the redirect
   // out of the back button's history.
-  const needsPrefix =
-    ready && multilingual && !urlLang && !looksLikeLanguage && !pathname.startsWith(ADMIN_PREFIX);
+  const inAdmin = pathname.startsWith(ADMIN_PREFIX);
+  const needsPrefix = ready && multilingual && !urlLang && !looksLikeLanguage && !inAdmin;
   useEffect(() => {
     if (!needsPrefix) return;
     navigate(`${buildPath(pathname, defaultLanguage, true)}${search}${hash}`, { replace: true });
@@ -122,10 +122,17 @@ export function ContentLangProvider({
   // switched the docs to English should not be left with German buttons
   // around them. Instances whose content language has no dictionary keep
   // whatever interface language the reader had.
+  //
+  // NOT in the admin area. Admin URLs carry no language prefix (see
+  // ADMIN_PREFIX above), so `lang` there is always the default -- and this
+  // effect would set the interface straight back to it after every click,
+  // leaving the admin header's own language button apparently dead. The
+  // admin interface is the operator's workspace, not a reading surface, and
+  // its language is their choice rather than the content's.
   useEffect(() => {
-    if (!multilingual || !isUiLang(lang) || lang === uiLang) return;
+    if (inAdmin || !multilingual || !isUiLang(lang) || lang === uiLang) return;
     setUiLang(lang);
-  }, [multilingual, lang, uiLang, setUiLang]);
+  }, [inAdmin, multilingual, lang, uiLang, setUiLang]);
 
   const value: ContentLang = {
     lang,
