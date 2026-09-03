@@ -268,13 +268,24 @@ body {
      stylesheet cannot read the address bar, and a printout with no address on
      it is a document nobody can get back to. */
   .print-source {
-    display: block !important;
+    display: flex !important;
+    align-items: flex-start;
+    gap: 0.75rem;
     margin-top: 1.5rem;
     padding-top: 0.5rem;
     border-top: 1px solid #a1a1aa;
     font-size: 9pt;
     color: #3f3f46;
     word-break: break-all;
+  }
+
+  /* The code sits beside the address, small: it is a way back to the page,
+     not a decoration. Never shrunk by the flex row -- a squeezed QR code is
+     an unreadable one. */
+  .print-qr {
+    flex: 0 0 auto;
+    width: 72px;
+    height: 72px;
   }
 }
 
