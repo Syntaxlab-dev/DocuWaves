@@ -175,6 +175,9 @@ body {
   nav,
   aside,
   .toc-inline,
+  /* The feedback prompt: its buttons are gone with every other button, and
+     a question on paper that cannot be answered is worse than no question. */
+  .page-feedback,
   button {
     display: none !important;
   }

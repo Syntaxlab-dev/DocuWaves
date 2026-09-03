@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { Languages } from "lucide-react";
 import { ApiError, api, type Category, type Page, type Project, type VersionInfo } from "@/lib/api";
 import { MarkdownView } from "@/components/MarkdownView";
+import { PageFeedback } from "@/components/PageFeedback";
 import { PrintSource } from "@/components/PrintSource";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
@@ -175,6 +176,12 @@ export function PublicPage() {
           {t("page.lastUpdated")} <time dateTime={data.last_updated}>{formatIsoDate(data.last_updated, uiLang)}</time>
         </p>
       )}
+      <PageFeedback
+        project={data.project.slug}
+        page={data.page.slug}
+        language={data.page.language}
+        version={data.page.version}
+      />
       <PageFooterNav nav={nav} pageSlug={data.page.slug} />
       {/* Screen-invisible; the address and date a printout would otherwise
           not carry. Last in the flow so it lands at the foot of the text. */}

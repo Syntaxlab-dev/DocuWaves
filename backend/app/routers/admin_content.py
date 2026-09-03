@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.services import (
+    page_feedback_store,
     categories_store,
     content_assets,
     content_files,
@@ -962,3 +963,19 @@ async def admin_upload_site_asset(filename: str, request: Request):
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"filename": stored_name, "size": len(data), "url": site_branding.asset_url(stored_name)}
+
+
+# ---- Reader feedback ----
+
+
+@router.get("/feedback", summary="Pages readers voted on, worst ratio first")
+def admin_feedback(project: str = ""):
+    return {"pages": page_feedback_store.summary(project)}
+
+
+@router.delete("/feedback/{project_slug}/{page_slug}", summary="Forget one page's votes")
+def admin_clear_feedback(project_slug: str, page_slug: str):
+    """Used after a page has been rewritten: the old votes are about text
+    nobody can read any more, and leaving them makes the new page look bad
+    for a fault it no longer has."""
+    return {"cleared": page_feedback_store.clear(project_slug, page_slug)}

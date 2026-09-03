@@ -22,13 +22,15 @@ and every response for it is the response it always was -- plus one key,
 
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
 
 from app.services import (
     categories_store,
     content_assets,
     content_versions,
+    page_feedback_store,
     pages_store,
     projects_store,
     site_branding,
@@ -348,3 +350,52 @@ def _asset_response(path: Path) -> FileResponse:
         headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
 
     return FileResponse(path, media_type=content_type, headers=headers)
+
+
+# ---- Reader feedback ----
+#
+# Anonymous by design: /api/public/ is exempt from the auth guard, and this
+# endpoint stores no identifier of any kind (see page_feedback_store). What
+# stops it being a write-anything endpoint is that the page has to exist and
+# be published -- votes for made-up slugs are refused rather than accumulated
+# -- plus a per-address counter that lives in memory and forgets by itself.
+
+
+class FeedbackIn(BaseModel):
+    project: str
+    page: str
+    helpful: bool
+    language: str = ""
+    version: str = ""
+
+
+def _client_key(request: Request) -> str:
+    """Whoever is calling, as well as this app can tell behind a proxy. Used
+    only to count votes per minute, never stored."""
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else ""
+
+
+@router.post("/feedback", summary="Record a 'was this page helpful?' answer")
+def public_feedback(body: FeedbackIn, request: Request):
+    if page_feedback_store.rate_limited(_client_key(request)):
+        raise HTTPException(status_code=429, detail="Too many votes just now. Try again in a minute.")
+
+    language = _language(body.language or None)
+    project = projects_store.get_project_by_slug(body.project, language)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    resolved = _version(body.project, body.version or None)
+    # published_only: a vote is a reader's vote, and a reader can only have
+    # been looking at a published page.
+    page = pages_store.resolve_page(project["id"], body.page, language, published_only=True, version=resolved)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+
+    page_feedback_store.record(project["slug"], page["slug"], body.helpful, language, resolved or "")
+    # No counts in the answer, on purpose: showing a reader the running score
+    # turns a question about the page into a poll, and the next reader's
+    # answer stops being their own.
+    return {"recorded": True}

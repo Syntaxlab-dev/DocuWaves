@@ -206,6 +206,38 @@ _SQLITE_SCHEMA = [
         INSERT INTO pages_fts(rowid, title, markdown_content) VALUES (new.id, new.title, new.markdown_content);
     END
     """,
+    # Reader feedback: one row per "was this helpful?" answer.
+    #
+    # NOT in _CONTENT_TABLES, for the same reason api_tokens is not: a schema
+    # rebuild reindexes the content repo, and this is not in the content repo.
+    # It cannot be -- an anonymous reader's vote must not become a commit, and
+    # a repo taking a write per click would be unusable. So it lives here with
+    # the credentials and the tokens: operational data the instance owns, and
+    # the one thing in this database that a backup of the volume is actually
+    # needed for.
+    #
+    # The page is named by SLUG rather than by a foreign key to pages.id,
+    # deliberately: those ids are reassigned on every full reindex, so a
+    # numeric reference would silently repoint a page's votes at a different
+    # page. The slug is what the URL says and what survives.
+    #
+    # `helpful` is 1/0 rather than a boolean, matching how the rest of this
+    # schema stores flags across both backends.
+    """
+    CREATE TABLE IF NOT EXISTS page_feedback (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_slug TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        helpful INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS page_feedback_page
+        ON page_feedback (project_slug, page_slug)
+    """,
 ]
 
 _POSTGRES_SCHEMA = [
@@ -292,6 +324,38 @@ _POSTGRES_SCHEMA = [
     # module's own docstring for why: simpler, and fast enough at the
     # scale a self-hosted docs tool actually runs at).
     "CREATE INDEX IF NOT EXISTS pages_project_idx ON pages(project_id)",
+    # Reader feedback: one row per "was this helpful?" answer.
+    #
+    # NOT in _CONTENT_TABLES, for the same reason api_tokens is not: a schema
+    # rebuild reindexes the content repo, and this is not in the content repo.
+    # It cannot be -- an anonymous reader's vote must not become a commit, and
+    # a repo taking a write per click would be unusable. So it lives here with
+    # the credentials and the tokens: operational data the instance owns, and
+    # the one thing in this database that a backup of the volume is actually
+    # needed for.
+    #
+    # The page is named by SLUG rather than by a foreign key to pages.id,
+    # deliberately: those ids are reassigned on every full reindex, so a
+    # numeric reference would silently repoint a page's votes at a different
+    # page. The slug is what the URL says and what survives.
+    #
+    # `helpful` is 1/0 rather than a boolean, matching how the rest of this
+    # schema stores flags across both backends.
+    """
+    CREATE TABLE IF NOT EXISTS page_feedback (
+        id SERIAL PRIMARY KEY,
+        project_slug TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        helpful INTEGER NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS page_feedback_page
+        ON page_feedback (project_slug, page_slug)
+    """,
 ]
 
 

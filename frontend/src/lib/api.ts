@@ -373,6 +373,17 @@ class ApiError extends Error {
   }
 }
 
+export type FeedbackSummary = {
+  project_slug: string;
+  page_slug: string;
+  language: string;
+  version: string;
+  helpful: number;
+  not_helpful: number;
+  total: number;
+  last_vote: string;
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -612,6 +623,25 @@ export const api = {
     request<{ project: Project; category: Category; pages: PageSummary[]; versions: VersionInfo | null }>(
       `/api/public/projects/${projectSlug}/categories/${categorySlug}${contentQuery(lang, version)}`,
     ),
+  /** Anonymous, and answered with nothing but {recorded:true} -- showing a
+   *  reader the running score would turn the question into a poll. */
+  publicFeedback: (body: {
+    project: string;
+    page: string;
+    helpful: boolean;
+    language?: string;
+    version?: string;
+  }) => request<{ recorded: boolean }>("/api/public/feedback", { method: "POST", body: JSON.stringify(body) }),
+
+  adminFeedback: (project?: string) =>
+    request<{ pages: FeedbackSummary[] }>(`/api/admin/feedback${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+
+  adminClearFeedback: (projectSlug: string, pageSlug: string) =>
+    request<{ cleared: number }>(
+      `/api/admin/feedback/${encodeURIComponent(projectSlug)}/${encodeURIComponent(pageSlug)}`,
+      { method: "DELETE" },
+    ),
+
   publicGetPage: (projectSlug: string, pageSlug: string, lang?: string, version?: string) =>
     request<{
       project: Project;
