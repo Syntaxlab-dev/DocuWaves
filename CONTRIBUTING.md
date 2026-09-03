@@ -22,8 +22,11 @@ cd DocuWaves
 cp .env.example .env
 ```
 
-For a content repo to develop against, you don't need GitHub or a token — a
-local bare repository works:
+You don't need a content repo to develop against, and you don't need GitHub or
+a token: started with `CONTENT_REPO_URL` blank — which is how `.env.example`
+ships — DocuWaves creates a Git repository inside its data directory and
+commits every save there. Set `CONTENT_REPO_URL` only when you want to test
+the push path; a local bare repository is enough for that:
 
 ```bash
 git init --bare /tmp/docuwaves-dev-content.git
@@ -37,6 +40,26 @@ Then either `docker compose up -d --build`, or run the two halves directly:
 cd backend  && pip install -r requirements.txt && uvicorn app.main:app --reload
 cd frontend && npm install && npm run dev    # proxies /api to localhost:8000
 ```
+
+## Tests
+
+```bash
+cd backend && pip install -r requirements-dev.txt && python -m pytest
+```
+
+They run against a content repo built in a temp directory, with no database
+and no server, so the whole suite finishes in under a second. What they cover
+is the set of rules that are easy to break without noticing: where an image
+path is allowed to resolve to, what a slug becomes when it collides, which
+language a reader falls back to, whether a frozen version refuses a write, and
+which passage a search result shows.
+
+They are not a complete suite, and a pull request doesn't need to add to them.
+But if you're changing one of those rules, changing its test alongside is the
+clearest way to say what you meant the new rule to be.
+
+`npm run build` in `frontend/` type-checks the whole app; there is no frontend
+test suite yet. CI runs both on every pull request.
 
 ## How the pieces fit together
 

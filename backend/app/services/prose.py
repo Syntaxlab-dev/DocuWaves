@@ -82,6 +82,11 @@ def first_paragraph(markdown: str, limit: int) -> str:
     """
     lines: list[str] = []
     in_fence = False
+    # Neither caller is handed frontmatter today -- content_files parses it
+    # off before a body reaches the index -- but to_prose() strips it, and
+    # one of the two quietly not doing so is the kind of difference that is
+    # only discovered by a description reading "title: Installing".
+    markdown = _FRONTMATTER_RE.sub("", markdown)
     for index, raw in enumerate(markdown.splitlines()):
         if index >= _MAX_SCAN_LINES:
             break

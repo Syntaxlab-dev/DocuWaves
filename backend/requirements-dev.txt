@@ -1,0 +1,4 @@
+# Test-only dependencies. The runtime image installs requirements.txt and
+# nothing from here -- see the Dockerfile.
+-r requirements.txt
+pytest==8.4.2
