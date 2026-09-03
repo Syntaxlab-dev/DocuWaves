@@ -6,6 +6,7 @@ import {
   type ClipboardEvent,
   type DragEvent,
   type FormEvent,
+  type KeyboardEvent,
 } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -37,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownView } from "@/components/MarkdownView";
+import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import {
   api,
   ApiError,
@@ -2486,6 +2488,62 @@ function PageEditor({
     focusAt(from + snippet.length);
   }
 
+  /** Wraps the selection in `before`/`after`, or -- with nothing selected --
+   *  inserts the pair and leaves the caret between them, which is what makes
+   *  Ctrl+B usable as "start typing bold" and not just "embolden this". */
+  function wrapSelection(before: string, after = before) {
+    const el = editorRef.current;
+    if (!el || readOnly) return;
+    const { from, to } = caretRange();
+    const selected = content.slice(from, to);
+    replaceRange(from, to, `${before}${selected}${after}`);
+    requestAnimationFrame(() => {
+      const target = editorRef.current;
+      if (!target) return;
+      target.focus();
+      // Selection kept selected so the shortcut can be pressed twice to
+      // undo itself; caret placed inside the markers when there was none.
+      if (selected) target.setSelectionRange(from + before.length, from + before.length + selected.length);
+      else target.setSelectionRange(from + before.length, from + before.length);
+    });
+  }
+
+  /** The editor's keyboard shortcuts.
+   *
+   *  The set is deliberately the one every text field on the machine already
+   *  uses -- bold, italic, link, and save. Anything more would be a second
+   *  vocabulary to learn for a box that is, after all, plain Markdown. */
+  function onEditorKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    // metaKey on a Mac, ctrlKey everywhere else. Both are checked rather
+    // than sniffing the platform, which gets an external keyboard wrong.
+    if (!event.metaKey && !event.ctrlKey) return;
+    const key = event.key.toLowerCase();
+    const handlers: Record<string, () => void> = {
+      b: () => wrapSelection("**"),
+      i: () => wrapSelection("*"),
+      e: () => wrapSelection("`"),
+      k: () => {
+        const { from, to } = caretRange();
+        const selected = content.slice(from, to);
+        replaceRange(from, to, `[${selected}](url)`);
+        // Straight onto "url", the part that always has to be replaced.
+        const start = from + selected.length + 3;
+        requestAnimationFrame(() => {
+          editorRef.current?.focus();
+          editorRef.current?.setSelectionRange(start, start + 3);
+        });
+      },
+      s: () => void onSave(),
+    };
+    const handler = handlers[key];
+    if (!handler) return;
+    // Before the handler: Ctrl+S otherwise opens the browser's own save
+    // dialog over the page, and Ctrl+B toggles a bookmark sidebar.
+    event.preventDefault();
+    if (key !== "s" && readOnly) return;
+    handler();
+  }
+
   /**
    * Every image from one paste or one drop: uploaded in order, inserted in
    * order, at the caret the event happened at.
@@ -2774,6 +2832,7 @@ function PageEditor({
             value={content}
             readOnly={readOnly}
             onPaste={onPaste}
+            onKeyDown={onEditorKeyDown}
             onChange={(e) => {
               setContent(e.target.value);
               setDirty(true);
@@ -2781,6 +2840,7 @@ function PageEditor({
             className="min-h-[420px] font-mono"
           />
         )}
+        {tab === "edit" && <MarkdownCheatSheet />}
         {tab === "preview" && (
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
             <MarkdownView
