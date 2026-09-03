@@ -125,3 +125,175 @@ body {
    content, just git telling you where you are. */
 .diff-line-hunk { color: var(--accent); }
 .diff-line-meta { color: var(--muted); }
+
+/* ---------------------------------------------------------------------------
+   Print, and therefore "save as PDF" -- which is how most people will produce
+   one. A browser's own print-to-PDF is already on every machine, so a print
+   stylesheet buys nearly all of what a PDF export would, without a rendering
+   service, a font pipeline, or a second layout to keep in step with this one.
+
+   The page IS the document here: everything that only exists to get you to
+   another page comes off, and what is left is the text, at a size and contrast
+   meant for paper.
+   --------------------------------------------------------------------------- */
+@media print {
+  @page {
+    margin: 18mm 16mm;
+  }
+
+  /* Ink. A reader printing from dark mode would otherwise get a black
+     rectangle per page, so the palette is forced back to paper regardless of
+     the theme in effect -- the tokens are redefined rather than overridden
+     one property at a time, so anything using them follows. */
+  :root,
+  .dark {
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f4f4f5;
+    --ink: #000000;
+    --muted: #3f3f46;
+    --border: #a1a1aa;
+    --accent: #000000;
+    --accent-soft: #ffffff;
+    --shadow: none;
+  }
+
+  body {
+    background: #fff;
+    color: #000;
+    font-size: 11pt;
+  }
+
+  /* Navigation, in every form it takes: the site header, the docs sidebar and
+     its mobile toggle, the "on this page" column and its collapsed twin, the
+     footer, and the previous/next pager. On paper none of them lead anywhere.
+
+     A <details> an author wrote inside a page is content and must print, so
+     only the contents list's own one is named here, by class. */
+  header,
+  footer,
+  nav,
+  aside,
+  .toc-inline,
+  button {
+    display: none !important;
+  }
+
+  /* ...but a collapsed <details> in the text prints closed, hiding what it
+     holds. On paper there is nothing to click, so they all open. */
+  .markdown-body details > *:not(summary) {
+    display: revert !important;
+  }
+
+  /* The heading anchor links are hover affordances; the copy buttons act on a
+     clipboard that paper does not have. */
+  .markdown-body .heading-anchor,
+  .code-copy {
+    display: none !important;
+  }
+
+  /* The reading frame collapses to one column: the flex row and its widths
+     were there to sit a sidebar next to the text, and both are gone. */
+  main,
+  main > div,
+  main > div > div,
+  main > div > div > div {
+    display: block !important;
+    max-width: none !important;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Code has to wrap. A block that scrolls sideways on screen is simply cut
+     off on paper, and the cut is silent -- the reader cannot tell that a
+     command continued. */
+  .markdown-body pre,
+  .markdown-body code {
+    white-space: pre-wrap !important;
+    word-break: break-word;
+    background: #f4f4f5 !important;
+    color: #000 !important;
+    border: 1px solid #d4d4d8;
+  }
+  .markdown-body pre {
+    overflow: visible !important;
+  }
+  /* Syntax highlighting off: on a mono printer the colours become greys of
+     roughly equal weight, which reads worse than plain black. */
+  .markdown-body pre * {
+    color: #000 !important;
+    background: transparent !important;
+  }
+
+  /* A link's text says nothing about where it went once the page is on paper,
+     so external targets are spelled out after it. Internal links are left
+     alone: "/p/docuwaves/pages/installing" printed after every cross-reference
+     is noise, and the page it names is usually in the same stack of paper. */
+  .markdown-body a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 0.85em;
+    word-break: break-all;
+    font-weight: normal;
+  }
+
+  /* Breaks. A heading stranded at the foot of a page, or a table split down
+     the middle, is the difference between a printout someone keeps and one
+     they throw away. */
+  .markdown-body h1,
+  .markdown-body h2,
+  .markdown-body h3 {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+  .markdown-body pre,
+  .markdown-body table,
+  .markdown-body blockquote,
+  .markdown-body img,
+  .markdown-body figure {
+    break-inside: avoid;
+  }
+  .markdown-body p,
+  .markdown-body li {
+    orphans: 3;
+    widows: 3;
+  }
+
+  .markdown-body img {
+    max-width: 100% !important;
+  }
+
+  /* Where this came from. Set from the DOM (see PrintSource) because a
+     stylesheet cannot read the address bar, and a printout with no address on
+     it is a document nobody can get back to. */
+  .print-source {
+    display: block !important;
+    margin-top: 1.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid #a1a1aa;
+    font-size: 9pt;
+    color: #3f3f46;
+    word-break: break-all;
+  }
+}
+
+/* Only ever on paper. */
+.print-source {
+  display: none;
+}
+
+/* Someone who has asked their system for less motion has usually asked for a
+   reason -- vestibular disorders and migraine among them. Transitions become
+   instant rather than being removed, so nothing depends on an animation
+   having run. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

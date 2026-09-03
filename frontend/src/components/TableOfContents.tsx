@@ -16,8 +16,11 @@ export function TableOfContents({ headings, variant }: { headings: Heading[]; va
   const { t } = useI18n();
 
   if (variant === "inline") {
+    // toc-inline so the print stylesheet can drop this one <details> without
+    // touching a collapsible an author wrote inside a page -- that is
+    // content, and it has to print.
     return (
-      <details className="mb-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 xl:hidden">
+      <details className="toc-inline mb-6 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 xl:hidden">
         <summary className="cursor-pointer text-sm font-medium">{t("page.onThisPage")}</summary>
         <List headings={headings} className="mt-2" />
       </details>

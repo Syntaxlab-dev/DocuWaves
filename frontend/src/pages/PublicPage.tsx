@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { Languages } from "lucide-react";
 import { ApiError, api, type Category, type Page, type Project, type VersionInfo } from "@/lib/api";
 import { MarkdownView } from "@/components/MarkdownView";
+import { PrintSource } from "@/components/PrintSource";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { PageFooterNav } from "@/components/PageFooterNav";
@@ -175,6 +176,9 @@ export function PublicPage() {
         </p>
       )}
       <PageFooterNav nav={nav} pageSlug={data.page.slug} />
+      {/* Screen-invisible; the address and date a printout would otherwise
+          not carry. Last in the flow so it lands at the foot of the text. */}
+      <PrintSource updated={data.last_updated ? formatIsoDate(data.last_updated, uiLang) : undefined} />
     </DocsShell>
   );
 }
