@@ -354,6 +354,134 @@ def create_page(arguments: dict, token: dict) -> dict:
     }
 
 
+def translate_page(arguments: dict, token: dict) -> dict:
+    """A second language's version of a page that already exists.
+
+    Deliberately its own tool rather than a mode of create_page or
+    update_page. create_page mints a slug from the title, and a translation
+    must NOT get its own slug -- `installation.en.md` and `installation.de.md`
+    are one page, and it is the shared slug that makes them one. update_page
+    replaces a body that is already there, which a translation is not. Two
+    different actions with two different consequences, so two names.
+    """
+    project = _project(arguments.get("project", ""))
+    version = _writable_version(project, arguments.get("version"))
+    _require_content_repo()
+    slug = (arguments.get("page") or "").strip()
+    if not slug:
+        raise ToolError(
+            "The 'page' parameter is required -- the slug of the page to translate, as list_pages reports it."
+        )
+
+    language = _language(arguments.get("language"))
+    if language == site_languages.default_language():
+        raise ToolError(
+            f"'{language}' is this site's default language, which is the language the page is already written "
+            f"in. A translation is a DIFFERENT language -- pass one of the others list_projects reports."
+        )
+
+    existing = pages_store.page_languages(project["id"], slug, version)
+    if not existing:
+        raise ToolError(
+            f"No page '{slug}' in project '{project['slug']}' (version '{version or 'the project itself'}'). "
+            f"A translation needs a page to translate; call list_pages to see what is there."
+        )
+    if language in existing:
+        raise ToolError(
+            f"Page '{slug}' already has a '{language}' version. Use update_page to change it -- this tool only "
+            f"adds a language that isn't there yet, so it can never overwrite a translation someone wrote."
+        )
+
+    title = (arguments.get("title") or "").strip()
+    if not title:
+        raise ToolError("The 'title' parameter is required -- the page's title IN the language being added.")
+    markdown = arguments.get("markdown")
+    if not isinstance(markdown, str):
+        raise ToolError("'markdown' is required and must be a string: the translated body, without frontmatter.")
+
+    source = next(
+        (p for p in (pages_store.get_page_by_slug(project["id"], slug, code, version) for code in existing) if p),
+        None,
+    )
+    if source is None:
+        raise ToolError(f"Page '{slug}' could not be read back to translate. Check the server log.")
+
+    author = api_tokens_store.author_name(token["name"])
+    # The SAME slug as the source, which is what create_page's `slug`
+    # parameter exists for -- and what makes the store treat this as another
+    # language of that page rather than a new one, position included.
+    page = pages_store.create_page(
+        project["id"], source["category_id"], title, slug, markdown, author, language
+    )
+    if page is None:
+        raise ToolError(
+            "The translation was written and committed but could not be read back. Check the server log."
+        )
+    published = _publish_flag(arguments)
+    if published:
+        pages_store.set_published(page["id"], True, author)
+    return {
+        "translated": True,
+        "project": project["slug"],
+        "page": _page_entry({**page, "published": bool(published)}),
+        "translated_from": source["language"] or site_languages.default_language(),
+        "commit_author": author,
+    }
+
+
+def move_page(arguments: dict, token: dict) -> dict:
+    """One step up or down among its siblings, which is exactly what the
+    admin sidebar's arrows do (pages_store.reorder_page swaps a pair).
+
+    A step rather than an absolute position, on purpose: absolute numbers
+    would be a second ordering model next to the one the admin UI and the
+    files already use, and two models for one property is how a sidebar ends
+    up in an order nobody chose. Pages created in sequence already come out
+    in that sequence -- this is for rearranging afterwards.
+    """
+    project = _project(arguments.get("project", ""))
+    version = _writable_version(project, arguments.get("version"))
+    _require_content_repo()
+    language = _language(arguments.get("language"))
+    slug = (arguments.get("page") or "").strip()
+    if not slug:
+        raise ToolError("The 'page' parameter is required -- the slug of the page to move.")
+
+    raw = (arguments.get("direction") or "").strip().lower()
+    if raw not in ("up", "down"):
+        raise ToolError("'direction' must be 'up' or 'down'.")
+
+    page = pages_store.get_page_by_slug(project["id"], slug, language, version)
+    if page is None:
+        raise ToolError(
+            f"No page '{slug}' in project '{project['slug']}' (version '{version or 'the project itself'}'). "
+            f"Call list_pages to see what is there."
+        )
+
+    siblings = pages_store.list_pages(page["category_id"])
+    index = next((i for i, p in enumerate(siblings) if p["id"] == page["id"]), None)
+    step = -1 if raw == "up" else 1
+    # Said rather than silently done: reorder_page returns without an error
+    # when the move is off the end, and an assistant told only "ok" would
+    # believe it had moved something.
+    if index is None or not (0 <= index + step < len(siblings)):
+        raise ToolError(
+            f"'{page['title']}' is already {'first' if raw == 'up' else 'last'} in its category -- there is "
+            f"nothing to swap it with."
+        )
+
+    author = api_tokens_store.author_name(token["name"])
+    pages_store.reorder_page(page["category_id"], page["id"], step, author)
+    return {
+        "moved": True,
+        "project": project["slug"],
+        "page": _page_entry(page),
+        "direction": raw,
+        "swapped_with": siblings[index + step]["title"],
+        "commit_author": author,
+    }
+
+
 def update_page(arguments: dict, token: dict) -> dict:
     project = _project(arguments.get("project", ""))
     version = _writable_version(project, arguments.get("version"))
@@ -379,7 +507,7 @@ def update_page(arguments: dict, token: dict) -> dict:
             raise ToolError(
                 f"Page '{slug}' exists in project '{project['slug']}' but has no version in language "
                 f"'{language}' yet -- it exists in: {', '.join(existing)}. This tool only updates a "
-                f"translation that already exists; creating one is a content-repo edit."
+                f"translation that already exists; call translate_page to add one."
             )
         raise ToolError(
             f"No page '{slug}' in project '{project['slug']}' (version '{version or 'the project itself'}'). "
@@ -688,6 +816,80 @@ TOOLS: list[dict] = [
             "additionalProperties": False,
         },
         "handler": create_page,
+    },
+    {
+        "name": "translate_page",
+        "write": True,
+        "description": (
+            "Add a SECOND LANGUAGE'S version of a page that already exists, and commit it. REQUIRES a token with "
+            "'write' scope. The translation keeps the original page's slug (its URL) and its position in the "
+            "sidebar -- they are one page in two languages, not two pages. Refuses a language the page already "
+            "has, so it can never overwrite an existing translation: use update_page for that. Only useful on a "
+            "multilingual instance; list_projects reports which languages are configured."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project": _PROJECT_PROPERTY,
+                "page": {
+                    "type": "string",
+                    "description": "The slug of the existing page to translate, as list_pages reports it.",
+                },
+                "language": {
+                    "type": "string",
+                    "description": "Two-letter code of the language being ADDED, e.g. 'de'. Must be a configured "
+                    "language, and must not be the site's default -- that is the language the page is already in.",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "The page's title in the new language. Unlike create_page this does NOT change "
+                    "the slug: translations share the original's URL.",
+                },
+                "markdown": {
+                    "type": "string",
+                    "description": "The translated body as GitHub-flavored Markdown, without YAML frontmatter.",
+                },
+                "published": {
+                    "type": "boolean",
+                    "description": "true to publish the translation immediately. Defaults to false (a draft).",
+                },
+                "version": _VERSION_PROPERTY,
+            },
+            "required": ["project", "page", "language", "title", "markdown"],
+            "additionalProperties": False,
+        },
+        "handler": translate_page,
+    },
+    {
+        "name": "move_page",
+        "write": True,
+        "description": (
+            "Move a page one position up or down within its category, and commit the new order. REQUIRES a token "
+            "with 'write' scope. This is a single SWAP with the neighbouring page, the same thing the admin "
+            "sidebar's arrows do -- call it repeatedly to move further. Pages created one after another are "
+            "already in that order, so this is for rearranging afterwards. Moving past the first or last "
+            "position is refused rather than ignored."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "project": _PROJECT_PROPERTY,
+                "page": {
+                    "type": "string",
+                    "description": "The slug of the page to move, as list_pages reports it.",
+                },
+                "direction": {
+                    "type": "string",
+                    "enum": ["up", "down"],
+                    "description": "'up' moves the page one place earlier in the sidebar, 'down' one place later.",
+                },
+                "language": _LANGUAGE_PROPERTY,
+                "version": _VERSION_PROPERTY,
+            },
+            "required": ["project", "page", "direction"],
+            "additionalProperties": False,
+        },
+        "handler": move_page,
     },
     {
         "name": "update_page",
