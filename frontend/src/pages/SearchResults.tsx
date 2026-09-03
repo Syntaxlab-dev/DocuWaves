@@ -1,10 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, type SearchResult } from "@/lib/api";
 import { FallbackBadge } from "@/components/FallbackBadge";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
 import { useDocumentTitle } from "@/lib/site";
+
+/** The words to mark in a snippet. Mirrors prose.terms_of() on the server,
+ *  which is what chose the snippet's window -- if the two disagreed, the
+ *  window would be built around one set of words and highlight another. */
+function termsOf(query: string): string[] {
+  const found = query.toLowerCase().match(/[\w./-]{2,}/g) || [];
+  return [...new Set(found)].sort((a, b) => b.length - a.length);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
+}
+
+/** The snippet with the searched words marked. Rendered as elements, never
+ *  as HTML: the text is author-controlled content from the repo, and the
+ *  terms come straight out of the query string. */
+function Highlighted({ text, terms }: { text: string; terms: string[] }) {
+  if (!terms.length || !text) return <>{text}</>;
+  // One capturing group, so split() hands back the matches at the odd
+  // indices and the text between them at the even ones.
+  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
+  return (
+    <>
+      {text.split(pattern).map((part, index) =>
+        index % 2 === 1 ? (
+          <mark key={index} className="rounded bg-[var(--accent-soft)] px-0.5 text-[var(--ink)]">
+            {part}
+          </mark>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  );
+}
 
 export function SearchResults() {
   const [params] = useSearchParams();
@@ -20,6 +55,7 @@ export function SearchResults() {
   const { t } = useI18n();
   const { lang, path } = useContentLang();
   const [results, setResults] = useState<SearchResult[] | null>(null);
+  const terms = useMemo(() => termsOf(q), [q]);
 
   useDocumentTitle(t("search.title"));
 
@@ -78,7 +114,9 @@ export function SearchResults() {
               {r.title}
               {r.fallback && <FallbackBadge language={r.language} />}
             </div>
-            <div className="mt-1 text-sm text-[var(--muted)]">{r.snippet}</div>
+            <div className="mt-1 text-sm text-[var(--muted)]">
+              <Highlighted text={r.snippet} terms={terms} />
+            </div>
           </Link>
         ))}
       </div>

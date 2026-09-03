@@ -59,6 +59,7 @@ from app.services import (
     content_versions,
     pages_store,
     projects_store,
+    prose,
     site_branding,
     site_languages,
 )
@@ -68,16 +69,9 @@ log = logging.getLogger("docuwaves")
 
 # A meta description longer than this is cut by every search engine that
 # shows one, and a link-preview card clips it sooner than that. Trimmed on a
-# word boundary (see _clip) -- a description ending mid-word reads like the
-# page is broken.
+# word boundary (see prose.clip) -- a description ending mid-word reads like
+# the page is broken.
 _DESCRIPTION_LIMIT = 160
-
-# How far into a page's Markdown to look for its first line of prose. A page
-# that opens with several screens of front matter, badges and a table of
-# contents has no summary worth extracting anyway, and this keeps the work
-# per request bounded by a constant rather than by the size of the longest
-# page in the repo.
-_MAX_SCAN_LINES = 400
 
 # A URL segment longer than any real slug is not a slug. Bailing here keeps a
 # crafted 4 KB path from reaching a LIKE-free but still pointless query.
@@ -421,7 +415,7 @@ def _category_meta(base: str, route: Route, lang: str, branding: dict) -> Meta |
     # sentence for it would be writing documentation. What it does have is
     # its contents, which is also what the page itself shows -- so the
     # description is the list of pages, in the order the reader sees them.
-    meta.description = _clip(" · ".join(p["title"] for p in pages), _DESCRIPTION_LIMIT)
+    meta.description = prose.clip(" · ".join(p["title"] for p in pages), _DESCRIPTION_LIMIT)
     meta.image = _absolute(base, category["image_url"]) or _absolute(base, project["image_url"]) or meta.image
 
     canonical_version = version
@@ -573,84 +567,11 @@ def build_meta(route: Route, base: str) -> Meta:
 # ---- Turning a page's Markdown into a description ----
 
 
-_FENCE_RE = re.compile(r"^\s{0,3}(?:```|~~~)")
-_SKIP_RE = re.compile(
-    r"^\s{0,3}(?:"
-    r"#"  # heading
-    r"|\|"  # table row
-    r"|(?:[-*_]\s*){3,}$"  # thematic break
-    r"|<"  # raw HTML, an HTML comment, a badge block
-    r"|!\["  # an image (or a row of shield badges) on its own line
-    r"|={2,}$"  # a setext underline that outran its heading
-    r")"
-)
-_LIST_MARKER_RE = re.compile(r"^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+|>\s?)+")
-_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
-_LINK_RE = re.compile(r"\[([^\]]*)\]\([^)]*\)")
-_TAG_RE = re.compile(r"<[^>]{0,200}>")
-_NOISE_RE = re.compile(r"[`*~]+")
-_SPACE_RE = re.compile(r"\s+")
-
-
-def _clip(text: str, limit: int) -> str:
-    """Cut to `limit` on a word boundary, with an ellipsis. A single word
-    longer than the limit is cut where it is -- better a hard cut than a
-    description that is empty."""
-    text = text.strip()
-    if len(text) <= limit:
-        return text
-    head = text[: limit + 1]
-    cut = head.rsplit(" ", 1)[0] if " " in head else text[:limit]
-    return cut.rstrip(" ,;:.-–—") + "…"
-
-
 def _summarize(markdown: str) -> str:
-    """A page's first paragraph of actual PROSE, as a plain sentence.
-
-    "Prose" is defined by what it is not: not the title, not a heading, not
-    inside a fenced code block (or a mermaid diagram, which is one), not a
-    table, not a horizontal rule, not a row of badge images, not raw HTML.
-    Those are what documentation pages open with, and any of them as a
-    description would describe nothing.
-
-    Blockquotes and list items DO count, with their markers stripped: plenty
-    of good pages open with a callout or a list, and the first item of one
-    still says more about the page than the site's tagline does."""
-    lines: list[str] = []
-    in_fence = False
-    for index, raw in enumerate(markdown.splitlines()):
-        if index >= _MAX_SCAN_LINES:
-            break
-        if _FENCE_RE.match(raw):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        line = raw.strip()
-        if not line:
-            # A blank line ends the paragraph once one has started, and is
-            # simply skipped before that.
-            if lines:
-                break
-            continue
-        if _SKIP_RE.match(line):
-            if lines:
-                break
-            continue
-        lines.append(_LIST_MARKER_RE.sub("", line))
-
-    if not lines:
-        return ""
-    text = " ".join(lines)
-    text = _IMAGE_RE.sub("", text)
-    text = _LINK_RE.sub(r"\1", text)  # link text, without the URL
-    text = _TAG_RE.sub("", text)
-    # Backticks, ** and ~~ removed; `_` deliberately left alone, because it
-    # is far more often part of an identifier (snake_case, a CLI flag) than
-    # an emphasis marker, and eating it would corrupt the very words a
-    # technical description exists to carry.
-    text = _NOISE_RE.sub("", text)
-    return _clip(_SPACE_RE.sub(" ", text), _DESCRIPTION_LIMIT)
+    """A page's opening prose, for its meta description. The extraction
+    itself lives in `prose` -- search needs the same rules (see
+    prose.to_prose), and two copies of them would drift."""
+    return prose.first_paragraph(markdown, _DESCRIPTION_LIMIT)
 
 
 # ---- Rendering ----

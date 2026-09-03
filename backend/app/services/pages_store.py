@@ -55,6 +55,7 @@ from app.services import (
     db,
     git_content_repo,
     projects_store,
+    prose,
     site_languages,
 )
 
@@ -839,16 +840,23 @@ def search(
         with db.get_connection() as conn:
             rows = conn.execute(sql, (fts_query, *language_params, *version_params, limit)).fetchall()
 
+    # The words to build each snippet around, worked out once for the whole
+    # result set rather than per row.
+    terms = prose.terms_of(query)
+
     results = []
     for r in rows:
-        snippet_source = r[3] or ""
-        snippet = snippet_source[:220] + ("..." if len(snippet_source) > 220 else "")
         results.append(
             {
                 "page_id": r[0],
                 "title": r[1],
                 "page_slug": r[2],
-                "snippet": snippet,
+                # A window around where the reader's words actually appear,
+                # as prose. It used to be the page's first 220 characters,
+                # which for a documentation page is its opening sentence --
+                # the same text for every hit in that page, and no evidence
+                # of why it matched.
+                "snippet": prose.snippet(prose.to_prose(r[3] or ""), terms),
                 # The project/category names come out of the same rows the
                 # tiles and the sidebar use, so a hit is labelled with the
                 # names the reader has been seeing, not the default
