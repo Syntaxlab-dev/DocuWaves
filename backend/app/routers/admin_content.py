@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from app.services import (
+    link_check,
     page_feedback_store,
     categories_store,
     content_assets,
@@ -979,3 +980,10 @@ def admin_clear_feedback(project_slug: str, page_slug: str):
     nobody can read any more, and leaving them makes the new page look bad
     for a fault it no longer has."""
     return {"cleared": page_feedback_store.clear(project_slug, page_slug)}
+
+
+@router.get("/link-check", summary="Links in published pages that no longer resolve")
+def admin_link_check(project: str = ""):
+    """External URLs are deliberately not fetched -- see link_check's module
+    docstring for why."""
+    return {"broken": link_check.broken_links(project)}

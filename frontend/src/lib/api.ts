@@ -636,6 +636,14 @@ export const api = {
   adminFeedback: (project?: string) =>
     request<{ pages: FeedbackSummary[] }>(`/api/admin/feedback${project ? `?project=${encodeURIComponent(project)}` : ""}`),
 
+  adminLinkCheck: (project?: string) =>
+    request<{
+      broken: {
+        project_slug: string; page_slug: string; page_title: string;
+        version: string; target: string; reason: string;
+      }[];
+    }>(`/api/admin/link-check${project ? `?project=${encodeURIComponent(project)}` : ""}`),
+
   adminClearFeedback: (projectSlug: string, pageSlug: string) =>
     request<{ cleared: number }>(
       `/api/admin/feedback/${encodeURIComponent(projectSlug)}/${encodeURIComponent(pageSlug)}`,

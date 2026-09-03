@@ -39,6 +39,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownView } from "@/components/MarkdownView";
 import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
+import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import {
   api,
   ApiError,
@@ -179,6 +180,7 @@ export function AdminApp() {
   const [editing, setEditing] = useState<EditorTarget | null>(null);
   const [showAccount, setShowAccount] = useState(false);
   const [showBranding, setShowBranding] = useState(false);
+  const [showInsights, setShowInsights] = useState(false);
   const [showTokens, setShowTokens] = useState(false);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -310,13 +312,16 @@ export function AdminApp() {
           <Button variant="ghost" size="sm" onClick={() => setShowBranding((v) => !v)}>
             {t("admin.branding")}
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowInsights((v) => !v)}>
+            {t("admin.insights")}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowTokens((v) => !v)}>
             {t("admin.tokens")}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowAccount((v) => !v)}>
             {t("admin.account")}
           </Button>
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="theme">
+          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setLang(lang === "de" ? "en" : "de")}>
@@ -332,6 +337,7 @@ export function AdminApp() {
         {showAccount && <AccountCard onClose={() => setShowAccount(false)} />}
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
         {showTokens && <ApiTokensCard onClose={() => setShowTokens(false)} />}
+        {showInsights && <AdminInsightsCard onClose={() => setShowInsights(false)} />}
 
         <RepoStatusBar status={repoStatus} syncing={syncing} onSync={onSyncNow} />
 
