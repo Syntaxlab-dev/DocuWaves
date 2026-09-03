@@ -50,6 +50,20 @@ export function PublicLayout() {
     // flex column so the footer sits at the bottom of a short page instead
     // of floating halfway up it.
     <div className="flex min-h-screen flex-col">
+      {/* The first thing a keyboard reaches, and invisible until it does.
+          Without it, getting to the text on a documentation page means
+          tabbing through the whole sidebar tree -- every category, every page
+          in it -- on every single page of the site. */}
+      <a
+        href="#main"
+        // Every visual property sits behind focus:. Applied unconditionally,
+        // the padding utilities override sr-only's own `padding: 0` and the
+        // link stays on the page as a small coloured sliver -- hidden enough
+        // to look like a rendering fault, not hidden enough to be gone.
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-0 focus:z-50 focus:rounded-b-lg focus:bg-[var(--accent)] focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-[var(--accent-ink)]"
+      >
+        {t("nav.skipToContent")}
+      </a>
       <header className="border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
           <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">
@@ -69,7 +83,7 @@ export function PublicLayout() {
               />
             </div>
           </form>
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="theme">
+          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
           {/* Two different questions, so two different controls -- and only
@@ -93,7 +107,7 @@ export function PublicLayout() {
       {/* No container of its own: the docs views need a wider one than the
           home and search views (a sidebar and a contents column live beside
           the text there), so each view owns its width. */}
-      <main className="flex-1">
+      <main id="main" className="flex-1">
         <Outlet />
       </main>
       {/* Nothing configured, no footer at all -- an empty bar would be a
