@@ -195,6 +195,14 @@ const de = {
   "admin.brandingTagline": "Untertitel (Startseite)",
   "admin.brandingAccent": "Akzentfarbe",
   "admin.brandingAccentReset": "Standardfarbe",
+  "admin.analytics": "Zugriffszahlen (Umami)",
+  "admin.analyticsHint":
+    "Optional. Trägst du beides ein, lädt jede öffentliche Seite das Umami-Skript — die Verwaltung und Entwurfs-Vorschaulinks bewusst nicht.",
+  "admin.analyticsUrl": "Skript-Adresse",
+  "admin.analyticsWebsiteId": "Website-ID",
+  "admin.analyticsPrivacy":
+    "Nur Umami, kein freies Einfügen von Skripten. Das Skript wird mit „Do Not Track respektieren“ eingebunden; Umami selbst setzt keine Cookies und keine seitenübergreifende Kennung.",
+  "admin.analyticsOff": "Zugriffszahlen abschalten",
   "admin.brandingLogo": "Logo",
   "admin.brandingLogoDark": "Logo (Dark Mode)",
   "admin.brandingFavicon": "Favicon",
@@ -513,6 +521,14 @@ const en: Dict = {
   "admin.brandingTagline": "Tagline (home page)",
   "admin.brandingAccent": "Accent colour",
   "admin.brandingAccentReset": "Default colour",
+  "admin.analytics": "Analytics (Umami)",
+  "admin.analyticsHint":
+    "Optional. Fill in both and every public page loads the Umami script -- deliberately not the admin area and not draft preview links.",
+  "admin.analyticsUrl": "Script URL",
+  "admin.analyticsWebsiteId": "Website ID",
+  "admin.analyticsPrivacy":
+    "Umami only -- there is no paste-a-script box. The tag is written with do-not-track respected; Umami itself sets no cookies and no cross-site identifier.",
+  "admin.analyticsOff": "Turn analytics off",
   "admin.brandingLogo": "Logo",
   "admin.brandingLogoDark": "Logo (dark mode)",
   "admin.brandingFavicon": "Favicon",

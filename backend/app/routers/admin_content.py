@@ -1046,6 +1046,13 @@ class SiteBrandingIn(BaseModel):
     accent: str = ""
     footer_text: str = ""
     footer_links: list[FooterLinkIn] = []
+    # {"umami_url": ..., "umami_website_id": ...}, or absent for an instance
+    # that measures nothing. A free-form mapping here rather than a model,
+    # because site_branding._analytics is the validator either way and a
+    # second declaration of the same two fields is a second thing to keep in
+    # step -- anything it doesn't recognize is dropped before it reaches the
+    # file, not stored and filtered later.
+    analytics: dict[str, str] = {}
 
 
 @router.get(
@@ -1062,8 +1069,9 @@ def admin_get_site():
     "/site",
     summary="Save this instance's branding",
     description="Writes content/_site.yml, then commits and pushes it. Values are normalized on the way in "
-    "with the same validators reading uses: a colour that isn't #rgb/#rrggbb and a footer link that isn't "
-    "http(s)/mailto/site-relative are dropped rather than stored. Returns the branding as it now reads back.",
+    "with the same validators reading uses: a colour that isn't #rgb/#rrggbb, a footer link that isn't "
+    "http(s)/mailto/site-relative, and an analytics pair that isn't an http(s) `.js` URL plus a plain website "
+    "id are dropped rather than stored. Returns the branding as it now reads back.",
 )
 def admin_update_site(body: SiteBrandingIn, request: Request):
     _require_content_repo()

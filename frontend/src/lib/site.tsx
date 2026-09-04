@@ -27,6 +27,10 @@ const DEFAULT_SITE: SiteBranding = {
   accent: "",
   footer_text: "",
   footer_links: [],
+  // Nothing measured until the real branding says otherwise. Nothing in the
+  // browser acts on this anyway -- the tag is written server-side (the
+  // backend's seo.render_analytics); the admin form is its only reader here.
+  analytics: {},
 };
 
 /** `ready` is false until the first branding response has landed (either

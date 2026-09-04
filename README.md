@@ -739,6 +739,9 @@ footer_text: © 2026 SyntaxLab         # optional
 footer_links:                         # optional
   - label: Imprint
     url: https://example.com/imprint
+analytics:                            # optional; see "Analytics" below
+  umami_url: https://umami.example.com/script.js
+  umami_website_id: 2f4a1b0c-1111-2222-3333-444455556666
 ```
 
 What each field does:
@@ -752,6 +755,7 @@ What each field does:
 | `favicon` | The shipped DocuWaves icon |
 | `accent` | The built-in accent (which is deliberately a different value in light and dark mode) |
 | `footer_text` / `footer_links` | No footer at all |
+| `analytics` | Nothing is measured, and no third-party script is loaded |
 
 Edit it in the admin area under **Branding** — name, tagline, a colour
 picker, footer text, footer link rows and upload buttons for the three
@@ -772,6 +776,42 @@ broken YAML, a field holding the wrong type, a key DocuWaves doesn't know,
 a colour that isn't a colour, a `javascript:` footer link, a logo naming a
 file that isn't there — each one falls back to its default (and the bad
 value is logged), rather than erroring the public site over a typo.
+
+### Analytics
+
+Optional, off by default, and **Umami only**:
+
+```yaml
+analytics:
+  umami_url: https://umami.example.com/script.js
+  umami_website_id: 2f4a1b0c-1111-2222-3333-444455556666
+```
+
+Fill both in (in the file, or under **Branding** in the admin area) and every
+public page gets one tag in its head:
+
+```html
+<script defer src="…/script.js" data-website-id="…" data-do-not-track="true"></script>
+```
+
+**Not measured:** the admin area, and draft preview links. A preview link is
+an unfinished page somebody was sent personally; counting the view would put
+its address, and the fact that it was read, into a dashboard.
+
+**Why one named tool and not a "paste your snippet here" box.** That box is
+a script tag in the head of every public page, writable by anyone with the
+admin password *and* by anyone whose pull request to `_site.yml` gets
+merged. Two fields with two narrow validators can only ever produce the one
+tag above: the URL must be an absolute `http(s)` address ending in `.js`,
+and the website id must be a plain token. Anything else is dropped on the
+way in — a half-filled pair included, since a script URL with no id loads a
+counter that reports to nowhere while looking, on the settings page, exactly
+like a working one.
+
+Umami is the tool because it is self-hostable, sets no cookies and keeps no
+cross-site identifier. The tag is written with do-not-track respected.
+Nothing here stops another tool being added later; what it stops is
+arbitrary script.
 
 ## Search engines and link previews
 

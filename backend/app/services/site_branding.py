@@ -70,6 +70,31 @@ _SAFE_LINK_RE = re.compile(r"^(?:https?://|mailto:|/)", re.IGNORECASE)
 
 _ASSET_URL_PREFIX = "/api/public/site/assets"
 
+# ---- Analytics (Umami, and only Umami) ----
+#
+# WHY A NAMED TOOL AND NOT A "PASTE YOUR SNIPPET HERE" BOX. A free-form HTML
+# field in the branding form would be a script tag that anyone with the admin
+# password writes into the head of every public page -- and `_site.yml` is a
+# file in a repo that takes pull requests, so it would also be a script tag a
+# merged contribution could introduce. Two fields with two narrow validators
+# can only ever produce one shape of tag, and the shape is on screen right
+# here rather than in whatever a vendor's copy-paste box happened to contain.
+#
+# WHY UMAMI. It is the analytics this project would recommend if asked: self-
+# hostable, no cookies, no cross-site identifiers, nothing to consent to in
+# most readings. Nothing here stops another tool being added later; what it
+# stops is arbitrary script.
+#
+# The script URL: absolute http(s), and its path must end in `.js`. Not
+# security theatre -- the value is interpolated into a `src`, and "must be a
+# URL to a script file" is exactly the promise this field makes.
+_UMAMI_URL_RE = re.compile(r"^https?://[A-Za-z0-9.\-]+(?::\d{1,5})?(?:/[A-Za-z0-9._~\-/]*)?\.js$")
+# Umami's own website ids are UUIDs. Accepted a little wider than that (an
+# id from a fork, or a future format), and no wider: this goes into an
+# attribute, so it is letters, digits, dash and underscore or it is nothing.
+_UMAMI_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
+_MAX_URL = 300
+
 
 def site_dir() -> Path:
     return content_root() / SITE_DIRNAME
@@ -189,6 +214,34 @@ def _footer_links(data: dict) -> list[dict]:
     return links
 
 
+def _analytics(data: dict) -> dict:
+    """`{"umami_url": ..., "umami_website_id": ...}`, or `{}` for an instance
+    that measures nothing -- which is the default and stays the default.
+
+    BOTH halves or neither, like the review note next door: a script URL with
+    no website id loads Umami and reports to nowhere, and an id with no URL
+    loads nothing at all. Half a configuration is a configuration that looks
+    set up and isn't, which is worse than an empty form.
+
+    A value that fails its pattern is dropped rather than raising -- this
+    file degrades, it never breaks the site (see the module docstring). The
+    admin form validates the same two patterns before saving, so the only way
+    to reach this branch is a hand-edited file, and the honest outcome there
+    is a site with no analytics rather than a site that won't load."""
+    raw = data.get("analytics")
+    if not isinstance(raw, dict):
+        return {}
+    url = raw.get("umami_url")
+    website_id = raw.get("umami_website_id")
+    if not isinstance(url, str) or not isinstance(website_id, str):
+        return {}
+    url = url.strip()[:_MAX_URL]
+    website_id = website_id.strip()
+    if not _UMAMI_URL_RE.match(url) or not _UMAMI_ID_RE.match(website_id):
+        return {}
+    return {"umami_url": url, "umami_website_id": website_id}
+
+
 def _asset_field(data: dict, key: str) -> tuple[str, str | None]:
     """(configured filename, servable URL). The URL is None whenever the name
     doesn't resolve to a real allowed image inside `_site/` -- a typo'd or
@@ -244,6 +297,11 @@ def read_branding() -> dict:
         "favicon_url": favicon_url,
         "accent": _accent(data),
         "footer_links": _footer_links(data),
+        # Public on purpose: the moment this is configured, the script tag it
+        # describes is in the head of every page anyway. Nothing here is a
+        # secret -- a Umami website id identifies a dashboard, it does not
+        # open one.
+        "analytics": _analytics(data),
     }
 
 
@@ -299,6 +357,7 @@ def write_branding(payload: dict) -> list[str]:
             _text(payload, "footer_text"), _i18n_payload(payload, "footer_text_i18n"), default_lang
         ),
         "footer_links": _footer_links(payload),
+        "analytics": _analytics(payload),
     }
     document = {k: v for k, v in normalized.items() if v}
 

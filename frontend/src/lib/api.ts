@@ -312,6 +312,17 @@ export interface SiteBranding {
   accent: string;
   footer_text: string;
   footer_links: FooterLink[];
+  /** Umami, or an empty object for an instance that measures nothing --
+   *  which is the default. Not a secret: the moment it is set, the script
+   *  tag it describes is in the head of every public page. The tag itself is
+   *  written SERVER-side (backend/app/services/seo.py), so nothing in the
+   *  browser has to inject it; this is here for the admin form. */
+  analytics: SiteAnalytics;
+}
+
+export interface SiteAnalytics {
+  umami_url?: string;
+  umami_website_id?: string;
 }
 
 export interface SiteAsset {
@@ -652,6 +663,7 @@ export const api = {
     footer_text: string;
     footer_text_i18n: LocalizedText;
     footer_links: FooterLink[];
+    analytics: SiteAnalytics;
   }) => request<SiteBranding>("/api/admin/site", { method: "PUT", body: JSON.stringify(data) }),
   adminUploadSiteAsset: (file: File) =>
     upload<SiteAsset>(`/api/admin/site/assets?filename=${encodeURIComponent(file.name)}`, file),

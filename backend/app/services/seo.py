@@ -648,6 +648,46 @@ def render_head(meta: Meta) -> str:
     return "".join(f"    {line}\n" for line in lines)
 
 
+# ---- Analytics ----
+#
+# The one thing in this module that is not metadata. It is here because this
+# is the file that owns the `<head>` of a server-rendered response, and a
+# second place that patches the same head is a second place that can get the
+# splice wrong.
+
+# A preview link is a draft somebody was sent personally. Counting those
+# views would put a private page's address, and the fact that it was read,
+# into an analytics dashboard -- neither of which is what the link was for.
+# The admin area is excluded one level up (render_index returns early).
+_UNMEASURED_PREFIX = "preview/"
+
+
+def render_analytics(branding: dict, full_path: str) -> str:
+    """The Umami tag for this instance, or "" when none is configured --
+    which is the default and the state of every instance that never fills the
+    two fields in (see site_branding._analytics for what may go in them).
+
+    `data-do-not-track` is set: a reader whose browser says not to track them
+    is not tracked, and that decision belongs in the tag rather than in an
+    operator's later reading of a settings page. Umami is already cookieless
+    and stores no cross-site identifier; this is the last bit of the same
+    posture.
+
+    Both values arrive already validated against a narrow pattern, and are
+    escaped again on the way out. Two independent guards on one attribute is
+    the right number for the only place this app writes a `src` it did not
+    write itself."""
+    analytics = branding.get("analytics") or {}
+    url = analytics.get("umami_url")
+    website_id = analytics.get("umami_website_id")
+    if not url or not website_id or full_path.lstrip("/").startswith(_UNMEASURED_PREFIX):
+        return ""
+    return (
+        f'    <script defer src="{_attr(url)}" data-website-id="{_attr(website_id)}" '
+        'data-do-not-track="true"></script>\n'
+    )
+
+
 # ---- Patching the shell ----
 
 _TITLE_RE = re.compile(r"[ \t]*<title>.*?</title>\n?", re.IGNORECASE | re.DOTALL)
@@ -697,7 +737,7 @@ def render_index(index: Path, full_path: str, request) -> str | None:
         if shell is None:
             return None
         meta = build_meta(route, public_base_url(request))
-        block = render_head(meta)
+        block = render_head(meta) + render_analytics(site_branding.read_branding(), full_path)
         cut = shell.index("</head>")
         patched = shell[:cut].rstrip(" \t") + block + "  " + shell[cut:]
         if meta.document_language:

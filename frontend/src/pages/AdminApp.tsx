@@ -58,6 +58,7 @@ import {
   type PageVersion,
   type PreviewLink,
   type Project,
+  type SiteAnalytics,
   type SiteAsset,
   type SiteBranding,
 } from "@/lib/api";
@@ -852,6 +853,7 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
         footer_text: draft.footer_text,
         footer_text_i18n: draft.footer_text_i18n,
         footer_links: draft.footer_links,
+        analytics: draft.analytics ?? {},
       });
       setDraft(saved);
       await reload();
@@ -969,6 +971,11 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
 
             <FooterLinksEditor links={draft.footer_links} onChange={(footer_links) => patch({ footer_links })} />
 
+            <AnalyticsFields
+              analytics={draft.analytics ?? {}}
+              onChange={(analytics) => patch({ analytics })}
+            />
+
             <div className="flex gap-2">
               <Button onClick={onSave} disabled={saving}>
                 {t("admin.save")}
@@ -981,6 +988,69 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * The two fields that turn on analytics, and the only two there are.
+ *
+ * A named tool with two narrow fields rather than a "paste your tracking
+ * snippet" box: that box is a script tag in the head of every public page,
+ * writable by anyone with the admin password AND by anyone whose pull
+ * request to `_site.yml` gets merged. What this can produce is one shape of
+ * tag, and the shape is visible in the code that writes it (the backend's
+ * seo.render_analytics).
+ *
+ * Both fields or neither -- the backend drops half a pair, because a script
+ * URL with no website id loads a counter that reports to nowhere and looks,
+ * from the settings page, exactly like a working one.
+ */
+function AnalyticsFields({
+  analytics,
+  onChange,
+}: {
+  analytics: SiteAnalytics;
+  onChange: (analytics: SiteAnalytics) => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">{t("admin.analytics")}</span>
+      <span className="text-xs text-[var(--muted)]">{t("admin.analyticsHint")}</span>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.analyticsUrl")}
+          <Input
+            value={analytics.umami_url ?? ""}
+            onChange={(e) => onChange({ ...analytics, umami_url: e.target.value })}
+            placeholder="https://umami.example.com/script.js"
+            className="font-mono"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.analyticsWebsiteId")}
+          <Input
+            value={analytics.umami_website_id ?? ""}
+            onChange={(e) => onChange({ ...analytics, umami_website_id: e.target.value })}
+            placeholder="2f4a1b0c-1111-2222-3333-444455556666"
+            className="font-mono"
+          />
+        </label>
+      </div>
+      {/* Not a promise the operator has to take on trust: it is what the tag
+          says, and what it does not carry. */}
+      <span className="text-xs text-[var(--muted)]">{t("admin.analyticsPrivacy")}</span>
+      {(analytics.umami_url || analytics.umami_website_id) && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="self-start"
+          onClick={() => onChange({})}
+        >
+          {t("admin.analyticsOff")}
+        </Button>
+      )}
+    </div>
   );
 }
 
