@@ -42,6 +42,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MarkdownView } from "@/components/MarkdownView";
 import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
+import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import {
   api,
   ApiError,
@@ -188,6 +189,7 @@ export function AdminApp() {
   const [showBranding, setShowBranding] = useState(false);
   const [showInsights, setShowInsights] = useState(false);
   const [showTokens, setShowTokens] = useState(false);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   // The selected project's documentation versions, and which one the panels
@@ -324,6 +326,9 @@ export function AdminApp() {
           <Button variant="ghost" size="sm" onClick={() => setShowTokens((v) => !v)}>
             {t("admin.tokens")}
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics((v) => !v)}>
+            {t("diag.title")}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowAccount((v) => !v)}>
             {t("admin.account")}
           </Button>
@@ -344,6 +349,7 @@ export function AdminApp() {
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
         {showTokens && <ApiTokensCard onClose={() => setShowTokens(false)} />}
         {showInsights && <AdminInsightsCard onClose={() => setShowInsights(false)} />}
+        {showDiagnostics && <AdminDiagnosticsCard onClose={() => setShowDiagnostics(false)} />}
 
         <RepoStatusBar status={repoStatus} syncing={syncing} onSync={onSyncNow} />
 

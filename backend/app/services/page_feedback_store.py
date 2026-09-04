@@ -130,6 +130,41 @@ def summary(project_slug: str = "") -> list[dict]:
     return results
 
 
+def count() -> int:
+    with db.get_connection() as conn:
+        row = conn.execute("SELECT COUNT(*) FROM page_feedback").fetchone()
+    return int(row[0])
+
+
+def export_all() -> list[dict]:
+    """Every vote, one row per answer, for the backup archive (see
+    services/backup.py).
+
+    The individual answers rather than summary(): a backup exists to be
+    restorable, and counts cannot be un-summed. There is nothing personal in
+    a row -- no address, no identifier, no user agent; the table stores which
+    page, which answer, and when, and that is all it has ever stored.
+
+    Oldest first, so an archive read by a person reads chronologically and
+    two exports of an unchanged table are byte-identical here."""
+    with db.get_connection() as conn:
+        rows = conn.execute(
+            "SELECT project_slug, page_slug, language, version, helpful, created_at "
+            "FROM page_feedback ORDER BY created_at, id"
+        ).fetchall()
+    return [
+        {
+            "project_slug": row[0],
+            "page_slug": row[1],
+            "language": row[2],
+            "version": row[3],
+            "helpful": bool(row[4]),
+            "created_at": row[5],
+        }
+        for row in rows
+    ]
+
+
 def clear(project_slug: str, page_slug: str) -> int:
     """Forgets one page's votes, and says how many it forgot.
 

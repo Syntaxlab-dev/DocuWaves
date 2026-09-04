@@ -55,8 +55,19 @@ log = logging.getLogger("docuwaves")
 _conflicts: list[dict] = []
 
 
+# When the last full_sync() finished, ISO-8601, or "" before the first one.
+# In memory rather than in a table: it describes THIS process, and a value
+# that survived a restart would be answering a different question than the
+# diagnostics page is asking ("is this instance's index current?").
+_last_sync: str = ""
+
+
 def conflicts() -> list[dict]:
     return list(_conflicts)
+
+
+def last_sync() -> str:
+    return _last_sync
 
 
 def _record_conflict(project: str, category: str, kept_in: str, slug: str, language: str, version: str) -> None:
@@ -77,6 +88,7 @@ def _record_conflict(project: str, category: str, kept_in: str, slug: str, langu
 
 
 def full_sync() -> None:
+    global _last_sync
     _conflicts.clear()
     if not content_files.content_root().exists():
         # No checkout to reconcile against -- the repo was never cloned, or
@@ -87,6 +99,10 @@ def full_sync() -> None:
         return
     with db.get_connection() as conn:
         _sync_projects(conn)
+    # Only after a sync that actually ran: the early return above is "there
+    # is nothing on disk to reconcile against", and stamping that as a
+    # successful sync would report an index as current that was never built.
+    _last_sync = datetime.now(timezone.utc).isoformat()
 
 
 def _placeholder() -> str:

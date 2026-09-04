@@ -20,10 +20,17 @@ stores raise FrozenVersionError before touching a file, and main.py turns
 that into a 403 with the reason spelled out, so a write can't reach a frozen
 version through any route, including one the UI never offers."""
 
+import tempfile
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from app.services import (
+    backup,
+    diagnostics,
     link_check,
     page_feedback_store,
     categories_store,
@@ -1105,6 +1112,61 @@ async def admin_upload_site_asset(filename: str, request: Request):
 
 
 # ---- Reader feedback ----
+
+
+@router.get(
+    "/diagnostics",
+    summary="Is this instance all right?",
+    description="Everything an operator would otherwise go into the container to find out: which database, "
+    "which languages, how many pages and how many of them are drafts, how much disk is left, when the index "
+    "was last rebuilt, which files it could not take, and whether the content repo is writable and its remote "
+    "reachable. Contains no secrets -- no token values, no password hash, no remote URL (it carries the push "
+    "token) and no environment dump -- because this is the page an operator screenshots into a forum thread.",
+)
+def admin_diagnostics():
+    return diagnostics.report()
+
+
+# ---- Export ----
+
+
+@router.get(
+    "/export/summary",
+    summary="What an export would contain, without building one",
+    description="File count and byte size of the content repo, how many reader votes there are, and whether "
+    "there is a version history to bundle -- so the download can say how big it is before it is a download.",
+)
+def admin_export_summary():
+    return backup.summary()
+
+
+@router.get(
+    "/export",
+    summary="Download this instance's documentation as one zip",
+    description="Contains the content repo's working tree (readable Markdown and YAML), its complete version "
+    "history as a `git bundle`, the reader feedback that lives in the database rather than in the repo, and a "
+    "README explaining how to restore it. Deliberately contains NO credentials -- not the admin password "
+    "hash, not sessions, not API tokens, not preview links. The history travels as a bundle rather than as "
+    "the `.git` directory precisely because that directory's config holds the remote's push token.",
+)
+def admin_export(request: Request):
+    # A real file, deleted after the response has been sent: the archive is
+    # as big as the documentation is, and assembling one in memory per
+    # concurrent download is a way to lose the instance to a click.
+    handle = tempfile.NamedTemporaryFile(prefix="docuwaves-export-", suffix=".zip", delete=False)
+    handle.close()
+    path = Path(handle.name)
+    try:
+        backup.build_archive(path)
+    except OSError as exc:
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"The export could not be written: {exc}") from exc
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=backup.archive_name(),
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
 
 
 @router.get("/feedback", summary="Pages readers voted on, worst ratio first")

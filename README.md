@@ -916,6 +916,63 @@ curl -s https://docs.example.com/robots.txt | tail -1
 That last line is the same base URL every canonical tag on the site is built
 from. If it says `http://` or names an internal host, set `PUBLIC_BASE_URL`.
 
+## Backups, and knowing the instance is all right
+
+Two things under **Diagnostics** in the admin area.
+
+### Diagnostics
+
+The questions an operator would otherwise answer with `docker exec`: which
+database, which languages, how many pages and how many of those are still
+drafts, how much disk is left, when the index was last rebuilt, and whether
+the content repo is writable and its remote reachable. Plus the one report
+that is easy to miss otherwise — **files the index could not take**, which is
+what two pages sharing a slug looks like: both exist in the repo, one is
+invisible on the site, and nothing says so anywhere else.
+
+There is deliberately no "repair" button. Every failure this page can show —
+a full disk, a read-only volume, an unreachable remote — is fixed in the
+deployment, and a button claiming to fix one from inside the container would
+be lying about what it can reach.
+
+The page contains **no secrets**: no token values, no password hash, no
+remote URL (it carries the push token) and no environment dump. It is meant
+to be screenshot-able into a forum thread when you are stuck.
+
+### Export
+
+One button, one zip:
+
+```
+content-repo/        the repository's working tree, exactly as on disk
+history.bundle       the complete version history, as a git bundle
+page-feedback.json   the "was this page helpful?" answers
+README-EXPORT.md     what is in here, and how to restore it
+```
+
+Restoring is three steps and does not need this app to read: the Markdown
+*is* the content. To bring the history back too:
+
+```bash
+git clone history.bundle content-repo
+```
+
+**Why a bundle and not the `.git` folder.** `.git/config` holds the remote
+URL, and on a remote-backed instance that URL has the push token embedded in
+it. An archive is a file made to be emailed to yourself and dropped in cloud
+storage, so `.git` in it is a leaked credential with a delivery mechanism
+attached. A bundle carries the objects and the refs and nothing else.
+
+**Deliberately not in the archive:** the admin password hash, live sessions,
+API tokens, and draft preview links. All four are credentials, and none of
+them is something a restore needs — a restored instance asks whoever opens
+it to create an admin account, which is the correct thing for it to do.
+
+This is not a snapshot: files are read while the instance keeps running, so
+an export taken during a save can catch one page a version older or newer
+than its neighbours. Locking every write in the app to avoid that would cost
+more than it buys.
+
 ## Optional: PostgreSQL
 
 If you'd rather run a real database for the search/browse index (e.g. you

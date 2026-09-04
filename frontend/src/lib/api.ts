@@ -320,6 +320,62 @@ export interface SiteBranding {
   analytics: SiteAnalytics;
 }
 
+/** What the diagnostics page is built from. Everything here is either a
+ *  count, a size, a path or a boolean -- deliberately no token values, no
+ *  password hash, no remote URL (it carries the push token) and no
+ *  environment dump, because this is a page operators screenshot. */
+export interface Diagnostics {
+  instance: {
+    python: string;
+    database: string;
+    content_repo_path: string;
+    sqlite_path: string;
+    public_base_url: string;
+    languages: string[];
+    default_language: string;
+    sync_interval_seconds: number;
+    error?: string;
+  };
+  content: {
+    projects: number;
+    categories: number;
+    pages: number;
+    published: number;
+    drafts: number;
+    versions: Record<string, string[]>;
+    error?: string;
+  };
+  storage: {
+    content_files: number;
+    content_bytes: number;
+    database_bytes: number;
+    disk_total_bytes: number;
+    disk_free_bytes: number;
+    error?: string;
+  };
+  operations: {
+    api_tokens: number;
+    preview_links: number;
+    feedback_votes: number;
+    last_sync: string;
+    conflicts: { project: string; slug: string; language: string; version: string; category: string; kept_in: string }[];
+    error?: string;
+  };
+  repo: ContentRepoStatus;
+  /** `skipped` = not applicable here (the remote check on a local-only
+   *  instance), which is not the same as passing and not the same as
+   *  failing. */
+  checks: { id: string; ok: boolean; detail: string; skipped?: boolean }[];
+}
+
+/** What an export would contain, asked before the download is started. */
+export interface ExportSummary {
+  files: number;
+  bytes: number;
+  feedback_votes: number;
+  history: boolean;
+}
+
 export interface SiteAnalytics {
   umami_url?: string;
   umami_website_id?: string;
@@ -650,6 +706,13 @@ export const api = {
     }),
 
   // Admin: site branding -- instance-level, not keyed by anything
+  adminDiagnostics: () => request<Diagnostics>("/api/admin/diagnostics"),
+  adminExportSummary: () => request<ExportSummary>("/api/admin/export/summary"),
+  /** The export is a plain browser download rather than a fetch: the archive
+   *  is as big as the documentation is, and pulling one into a Blob just to
+   *  hand it back to the browser doubles it through memory for nothing. */
+  adminExportUrl: () => "/api/admin/export",
+
   adminGetSite: () => request<SiteBranding>("/api/admin/site"),
   adminUpdateSite: (data: {
     name: string;
