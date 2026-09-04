@@ -337,6 +337,10 @@ export interface SiteBranding {
    *  written SERVER-side (backend/app/services/seo.py), so nothing in the
    *  browser has to inject it; this is here for the admin form. */
   analytics: SiteAnalytics;
+  /** Present on the PUBLIC branding response only -- it describes the
+   *  instance's environment (env vars), not the `_site.yml` the admin form
+   *  edits, so the admin response does not carry it. */
+  chat?: ChatStatus;
 }
 
 /** What the diagnostics page is built from. Everything here is either a
@@ -353,6 +357,7 @@ export interface Diagnostics {
     languages: string[];
     default_language: string;
     sync_interval_seconds: number;
+    chat: ChatStatus;
     error?: string;
   };
   content: {
@@ -393,6 +398,35 @@ export interface ExportSummary {
   bytes: number;
   feedback_votes: number;
   history: boolean;
+}
+
+/** Whether an operator has configured a model for the documentation chat,
+ *  and which one. Carries no key and no endpoint secret -- what it says is
+ *  what a reader is entitled to know before typing a question. Absent on
+ *  the admin branding response, which is about the file rather than about
+ *  the instance's environment. */
+export interface ChatStatus {
+  enabled: boolean;
+  model: string;
+  endpoint: string;
+  max_question_length: number;
+}
+
+/** One answer, and every page it was built from -- `cited` marking the ones
+ *  the answer actually used. `no_sources` is the honest case: nothing in the
+ *  documentation matched, so no model was asked and nothing was invented. */
+export interface ChatAnswer {
+  answer: string;
+  no_sources: boolean;
+  sources: {
+    n: number;
+    title: string;
+    project_slug: string;
+    page_slug: string;
+    version: string;
+    language: string;
+    cited: boolean;
+  }[];
 }
 
 export interface SiteAnalytics {
@@ -839,6 +873,12 @@ export const api = {
       `/api/admin/feedback/${encodeURIComponent(projectSlug)}/${encodeURIComponent(pageSlug)}`,
       { method: "DELETE" },
     ),
+
+  publicChat: (question: string, lang: string, project: string, version: string) =>
+    request<ChatAnswer>(`/api/public/chat${contentQuery(lang)}`, {
+      method: "POST",
+      body: JSON.stringify({ question, project, version }),
+    }),
 
   publicPreview: (token: string) => request<PreviewData>(`/api/public/preview/${encodeURIComponent(token)}`),
 

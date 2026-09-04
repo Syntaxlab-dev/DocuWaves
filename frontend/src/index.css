@@ -178,6 +178,12 @@ body {
   /* The feedback prompt: its buttons are gone with every other button, and
      a question on paper that cannot be answered is worse than no question. */
   .page-feedback,
+  /* The chat, for the same reason as the feedback prompt and one more: the
+     panel floats OVER the text, so on paper it would print a box across
+     whatever it happened to be covering. The launcher is a button and would
+     go anyway; the panel is a div and has to be named. */
+  .doc-chat-launcher,
+  .doc-chat-panel,
   button {
     display: none !important;
   }

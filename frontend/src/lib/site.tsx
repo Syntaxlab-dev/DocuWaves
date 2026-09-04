@@ -31,6 +31,9 @@ const DEFAULT_SITE: SiteBranding = {
   // browser acts on this anyway -- the tag is written server-side (the
   // backend's seo.render_analytics); the admin form is its only reader here.
   analytics: {},
+  // No chat until the real branding says otherwise -- so the launcher never
+  // flashes onto an instance that has no model configured.
+  chat: { enabled: false, model: "", endpoint: "", max_question_length: 500 },
 };
 
 /** `ready` is false until the first branding response has landed (either

@@ -29,6 +29,7 @@ from fastapi.responses import FileResponse
 from app.services import (
     categories_store,
     content_assets,
+    doc_chat,
     content_versions,
     page_feedback_store,
     pages_store,
@@ -252,6 +253,42 @@ def public_get_page(
     }
 
 
+class ChatIn(BaseModel):
+    question: str
+    # Where the reader is standing. Both optional: a question asked from the
+    # home page searches everything, one asked inside a project's v2.0 docs
+    # is answered out of exactly those.
+    project: str = ""
+    version: str = ""
+
+
+@router.post(
+    "/chat",
+    summary="Ask the documentation a question",
+    description="Searches the published pages the reader can see, hands the best few to the model the "
+    "operator configured, and answers with its reply plus the pages it was given. Off (503) unless that "
+    "model is configured -- DocuWaves ships none and calls nothing by default. Rate limited per address, "
+    "because this endpoint is public and spends the operator's budget. Nothing is stored: no conversation "
+    "table, no question log.",
+)
+def public_chat(body: ChatIn, request: Request, lang: str | None = _LANG_QUERY):
+    if not doc_chat.is_enabled():
+        raise HTTPException(status_code=503, detail="chat_not_configured")
+    if doc_chat.rate_limited(_client_key(request)):
+        raise HTTPException(status_code=429, detail="too_many_questions")
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="empty_question")
+    try:
+        return doc_chat.ask(question, _language(lang), body.project.strip(), body.version.strip())
+    except doc_chat.ChatError as exc:
+        # The reason is a short token the frontend turns into a sentence in
+        # the reader's own language; the provider's own error text stays in
+        # the log, where the operator will look. A reader cannot act on
+        # "429 from api.example.com" and it is not theirs to see.
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @router.get(
     "/preview/{token}",
     summary="One page behind a preview link, published or not",
@@ -326,7 +363,13 @@ def public_search(
     "missing, empty or malformed _site.yml answers exactly like an unbranded instance rather than failing.",
 )
 def public_get_site():
-    return site_branding.read_branding()
+    # The chat's status rides along with the branding rather than having its
+    # own endpoint: the branding is fetched once for the whole app anyway,
+    # and a floating button that appears half a second after the page would
+    # be a worse answer than one extra key here. It carries no key and no
+    # secret -- whether the feature is on, and which model answers, which is
+    # what a reader is entitled to know before typing a question into it.
+    return {**site_branding.read_branding(), "chat": doc_chat.status()}
 
 
 @router.get(

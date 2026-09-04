@@ -976,6 +976,56 @@ here, by username. Being able to authenticate against the identity provider
 does not create an account: accounts are created deliberately, and the role
 is decided here.
 
+## Asking the documentation a question
+
+Optional, **off by default**, and it calls nothing until an operator says
+so. DocuWaves ships no model and bundles no API key; an instance that leaves
+these three environment variables blank makes no outbound request, ever.
+
+```bash
+CHAT_API_BASE=http://ollama.example.lan:11434/v1   # OpenAI-compatible
+CHAT_MODEL=llama3.1:8b
+CHAT_API_KEY=ollama                                # anything non-empty for a local server
+```
+
+The endpoint is the OpenAI-compatible one (`POST {base}/chat/completions`),
+which a local **Ollama**, a llama.cpp server, OpenAI and most hosted
+providers all speak — so self-hosted documentation does not have to mean a
+cloud account. All three variables or none: half a configuration would be a
+chat box that fails on every question.
+
+**How the answer is made.** The reader's question goes through the same
+search the site's own search box and the MCP endpoint use — published pages,
+their language, and the project and version they are reading. The best few
+pages are handed to the model as the *only* material it may use, and the
+answer comes back with those pages listed under it, marked by whether it
+actually cited them.
+
+**What it will not do:**
+
+- **Answer from anything but the documentation.** The prompt forbids filling
+  gaps from general knowledge and forbids inventing a page, a link, a flag
+  or a version.
+- **Answer when nothing matched.** If the search finds no pages, no model is
+  called at all — the reader is told the documentation does not cover it.
+  Asking a model to answer with nothing in front of it is asking it to make
+  something up, at the operator's expense.
+- **Cite a page it was not given.** A citation like `[7]` when four sources
+  were supplied is dropped before the answer reaches the reader, so it can
+  never become a link to nowhere.
+- **Remember.** There is no conversation table and no question log. A
+  question is a request parameter; the answer is the response; both are gone
+  when it returns.
+- **Render as HTML.** The model's output is shown as plain text, so nothing
+  it produces can act on the page.
+
+The panel says, before the first question, that the text goes to the model
+the operator configured and which one that is. It is rate limited per
+address, because it is a public endpoint that spends somebody's budget.
+
+Whether it is configured shows up under **Diagnostics** — it is set through
+environment variables, so there is no settings page it could be read off.
+
 ## Backups, and knowing the instance is all right
 
 Two things under **Diagnostics** in the admin area.

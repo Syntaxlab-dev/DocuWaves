@@ -7,6 +7,7 @@ import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
 import { useProjectVersion } from "@/lib/version";
 import { VersionSwitcher } from "@/components/VersionSwitcher";
+import { DocChat } from "@/components/DocChat";
 import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 
@@ -134,6 +135,10 @@ export function PublicLayout() {
           </div>
         </footer>
       )}
+      {/* Last in the layout and fixed-positioned, so it floats over every
+          reading view without any of them having to know about it. Renders
+          nothing at all unless the operator configured a model. */}
+      <DocChat />
     </div>
   );
 }

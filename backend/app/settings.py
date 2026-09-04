@@ -68,5 +68,24 @@ class Settings:
     # "blank = default" contract as everything above.
     public_base_url: str = _base_url(os.environ.get("PUBLIC_BASE_URL", ""))
 
+    # The documentation chat (services/doc_chat.py). Off unless ALL THREE are
+    # set -- an instance that leaves them blank never makes an outbound
+    # request, which is the default and is the point: self-hosted
+    # documentation should not have to mean a cloud account.
+    #
+    # The endpoint is OpenAI-compatible, i.e. POST {base}/chat/completions --
+    # which a local Ollama (http://host:11434/v1), a llama.cpp server, OpenAI
+    # and most hosted providers all speak.
+    #
+    # The key is here rather than in the admin UI because it is a CREDENTIAL,
+    # and every setting a person edits in that UI is written to _site.yml --
+    # a file in a repository built to be cloned and read in pull requests.
+    # The same reasoning keeps API tokens out of the content repo. Once the
+    # key has to be an env var the other two belong beside it, rather than
+    # split across two places an operator has to remember.
+    chat_api_base: str = os.environ.get("CHAT_API_BASE", "").strip().rstrip("/")
+    chat_model: str = os.environ.get("CHAT_MODEL", "").strip()
+    chat_api_key: str = os.environ.get("CHAT_API_KEY", "").strip()
+
 
 settings = Settings()

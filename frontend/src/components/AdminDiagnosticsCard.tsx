@@ -163,6 +163,13 @@ export function AdminDiagnosticsCard({ onClose }: { onClose: () => void }) {
                   label={t("diag.publicUrl")}
                   value={report.instance.public_base_url || t("diag.autoDetected")}
                 />
+                {/* Configured through environment variables, so there is no
+                    settings page it could be read off -- this row is the
+                    only place an operator can see whether it took. */}
+                <Row
+                  label={t("diag.chat")}
+                  value={report.instance.chat?.enabled ? report.instance.chat.model : t("diag.chatOff")}
+                />
               </Section>
 
               <Section title={t("diag.content")}>

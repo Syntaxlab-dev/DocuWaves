@@ -33,6 +33,7 @@ from app.services import (
     content_sync,
     content_versions,
     db,
+    doc_chat,
     git_content_repo,
     preview_links_store,
     page_feedback_store,
@@ -67,6 +68,10 @@ def _instance() -> dict:
         "languages": site_languages.languages(),
         "default_language": site_languages.default_language(),
         "sync_interval_seconds": settings.content_repo_sync_interval_seconds,
+        # An env-var feature, so this page is the only place an operator can
+        # see whether it took. Never the API key -- `enabled` is the whole
+        # truth that is theirs to read here.
+        "chat": doc_chat.status(),
     }
 
 
