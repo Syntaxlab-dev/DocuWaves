@@ -916,6 +916,66 @@ curl -s https://docs.example.com/robots.txt | tail -1
 That last line is the same base URL every canonical tag on the site is built
 from. If it says `http://` or names an internal host, set `PUBLIC_BASE_URL`.
 
+## Accounts and roles
+
+The first person to open a new instance creates the first account, and it is
+an administrator. Everyone after that is created by an administrator under
+**Accounts**, with one of three roles:
+
+| Role | May |
+|---|---|
+| **Read** | Open the admin area and see everything in it — drafts, page history, which translations exist, the feedback and broken-link reports. Change nothing. |
+| **Write** | All of the documentation: projects, categories, pages, images, versions, review notes, preview links. |
+| **Manage** | The above, plus the instance itself: other accounts, API tokens, branding, diagnostics and the export. |
+
+The **Read** role is the one worth explaining: it is the reviewer. Somebody
+asked whether a page is right, who should be able to read the draft and its
+history and *not* able to quietly fix it in passing. (For showing one draft
+to somebody with no account at all, use a preview link instead.)
+
+There is no reader account and there will not be one: the documentation is
+public, so an account for reading would be a login for a site that has none.
+
+**How it is enforced.** In one place — the middleware in front of every
+`/api/` route — and by two rules rather than by a list of endpoints:
+
+- **The write rule is the HTTP method.** `GET` and `HEAD` are reading;
+  anything else changes something. So "Read" is *"GET and HEAD only"*, said
+  once, and an endpoint added next year is covered by it before anybody
+  remembers to think about roles.
+- **The manage rule is a short list of path prefixes**: accounts, tokens,
+  branding, diagnostics, export. Each is authority over the *instance*
+  rather than over its documentation.
+
+The role is read from the database on every request, not from the session
+cookie — so a role that was taken away is taken away now, for sessions that
+are already open. Lowering a role or deleting an account also signs that
+person out, so they are returned to the login screen rather than left
+clicking around a UI that has quietly started answering 403.
+
+**Two things that cannot happen.** An instance cannot be left with no
+administrator: the last one cannot be demoted or deleted, including by
+themselves. And nobody can delete their own account, or reset their own
+password from the Accounts panel — changing your own password is under
+**Account**, which asks for the current one.
+
+An administrator *can* step down when somebody else is left to administer
+the instance, which is what makes a handover possible.
+
+**Deleting an account does not touch anything that person wrote.** The
+content repo attributes commits by name, so their history keeps their name
+on it with no account row required.
+
+**Upgrading from a single-account instance:** nothing to do. The account
+that already exists becomes the administrator, its sessions keep working,
+and the three new columns are added in place — the table holding the
+password hashes is never rebuilt.
+
+**SSO (OIDC)** matches an OIDC identity to an account that already exists
+here, by username. Being able to authenticate against the identity provider
+does not create an account: accounts are created deliberately, and the role
+is decided here.
+
 ## Backups, and knowing the instance is all right
 
 Two things under **Diagnostics** in the admin area.

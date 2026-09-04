@@ -65,7 +65,15 @@ _SQLITE_SCHEMA = [
     CREATE TABLE IF NOT EXISTS auth (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL
+        password_hash TEXT NOT NULL,
+        -- Which of viewer/editor/admin this account is. The DEFAULT is what
+        -- migrates the single account this app used to have: the moment the
+        -- column exists, the account that was already there is an admin, and
+        -- no UPDATE is needed. See services/users_store.py for what the
+        -- three roles mean and why there are three.
+        role TEXT NOT NULL DEFAULT 'admin',
+        created_at TEXT NOT NULL DEFAULT '',
+        last_login_at TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -283,7 +291,15 @@ _POSTGRES_SCHEMA = [
     CREATE TABLE IF NOT EXISTS auth (
         id SERIAL PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL
+        password_hash TEXT NOT NULL,
+        -- Which of viewer/editor/admin this account is. The DEFAULT is what
+        -- migrates the single account this app used to have: the moment the
+        -- column exists, the account that was already there is an admin, and
+        -- no UPDATE is needed. See services/users_store.py for what the
+        -- three roles mean and why there are three.
+        role TEXT NOT NULL DEFAULT 'admin',
+        created_at TEXT NOT NULL DEFAULT '',
+        last_login_at TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -485,6 +501,47 @@ def _rebuild_content_index(conn) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+# Columns added to a table that already exists and must NEVER be dropped to
+# get them. The content index is rebuilt instead of migrated (see
+# _rebuild_content_index) precisely because it holds nothing that isn't in
+# the repo -- `auth` is the opposite case: it holds the password hashes, and
+# dropping it to add a column would lock every user out of their own
+# instance.
+#
+# Every entry is ADDITIVE and carries a DEFAULT, which is what lets the
+# migration be one ALTER per missing column with no data step after it: the
+# rows that already exist get the default, and for `role` that default is
+# exactly right -- the account that predates roles is the admin.
+_ADDED_COLUMNS = {
+    "auth": {
+        "role": "TEXT NOT NULL DEFAULT 'admin'",
+        "created_at": "TEXT NOT NULL DEFAULT ''",
+        "last_login_at": "TEXT NOT NULL DEFAULT ''",
+    },
+}
+
+
+def _add_missing_columns(conn) -> None:
+    """Brings a pre-existing table up to the current shape, one ALTER TABLE
+    ADD COLUMN at a time.
+
+    Checked against the live column list rather than written as `ADD COLUMN
+    IF NOT EXISTS`: SQLite has no such clause, and one code path that works
+    on both backends is worth more than the shorter statement on one of
+    them. A fresh install has no missing columns here -- the CREATE TABLE
+    statements above already have them -- so this is a no-op except on the
+    upgrade it exists for."""
+    for table, columns in _ADDED_COLUMNS.items():
+        existing = _table_columns(conn, table)
+        if not existing:
+            continue  # the table isn't there yet; CREATE TABLE will make it whole
+        for column, ddl in columns.items():
+            if column in existing:
+                continue
+            log.warning("Adding column %s.%s", table, column)
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
 def init_schema() -> None:
     """Called once at startup (see main.py's lifespan) for BOTH backends --
     unlike CachePanel, where this was a Postgres-only no-op, DocuWaves
@@ -499,3 +556,6 @@ def init_schema() -> None:
                 break
         for statement in (_POSTGRES_SCHEMA if is_postgres() else _SQLITE_SCHEMA):
             conn.execute(statement)
+        # After the CREATEs, so a fresh install has its tables to inspect,
+        # and an existing one is measured against the shape they describe.
+        _add_missing_columns(conn)

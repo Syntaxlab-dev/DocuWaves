@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { api, type FeedbackSummary } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { usePermissions } from "@/lib/auth";
 
 type Broken = {
   project_slug: string;
@@ -25,6 +26,10 @@ type Broken = {
  */
 export function AdminInsightsCard({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
+  // Forgetting a page's votes is a DELETE, so a read-only account does not
+  // get the button. Both reports themselves are reading and stay -- they
+  // are, in fact, most of what a reviewer account is for.
+  const { canWrite } = usePermissions();
   const [feedback, setFeedback] = useState<FeedbackSummary[] | null>(null);
   const [broken, setBroken] = useState<Broken[] | null>(null);
 
@@ -79,9 +84,11 @@ export function AdminInsightsCard({ onClose }: { onClose: () => void }) {
                   <span className="shrink-0 tabular-nums text-[var(--muted)]">
                     {row.helpful} / {row.total}
                   </span>
-                  <Button variant="ghost" size="sm" onClick={() => clearVotes(row.project_slug, row.page_slug)}>
-                    {t("insights.clear")}
-                  </Button>
+                  {canWrite && (
+                    <Button variant="ghost" size="sm" onClick={() => clearVotes(row.project_slug, row.page_slug)}>
+                      {t("insights.clear")}
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>

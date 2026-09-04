@@ -43,6 +43,7 @@ import { MarkdownView } from "@/components/MarkdownView";
 import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
+import { AdminUsersCard } from "@/components/AdminUsersCard";
 import {
   api,
   ApiError,
@@ -63,7 +64,7 @@ import {
   type SiteAsset,
   type SiteBranding,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, usePermissions } from "@/lib/auth";
 import {
   clearDraft,
   draftKey,
@@ -190,6 +191,7 @@ export function AdminApp() {
   const [showInsights, setShowInsights] = useState(false);
   const [showTokens, setShowTokens] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showUsers, setShowUsers] = useState(false);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   // The selected project's documentation versions, and which one the panels
@@ -206,6 +208,11 @@ export function AdminApp() {
   // this is the half that stops someone reaching for a button that would
   // then fail.
   const frozen = Boolean(versions && viewing && viewing !== versions.writable);
+  const { canWrite, isAdmin } = usePermissions();
+  // A frozen version and a read-only account are the same thing to every
+  // panel below: browse it, don't change it. One flag rather than two, so
+  // no panel can end up honouring one and not the other.
+  const readOnly = frozen || !canWrite;
 
   function loadRepoStatus() {
     api.contentRepoStatus().then(setRepoStatus);
@@ -317,18 +324,33 @@ export function AdminApp() {
           <Link to="/" className="text-sm text-[var(--accent)]">
             {t("nav.public")}
           </Link>
-          <Button variant="ghost" size="sm" onClick={() => setShowBranding((v) => !v)}>
-            {t("admin.branding")}
-          </Button>
+          {/* Branding, tokens, accounts, diagnostics and the export are
+              administrator territory -- the middleware refuses the whole
+              prefix for anyone else, so offering the buttons would be
+              offering four ways to get a 403. */}
+          {isAdmin && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setShowBranding((v) => !v)}>
+                {t("admin.branding")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowUsers((v) => !v)}>
+                {t("users.title")}
+              </Button>
+            </>
+          )}
           <Button variant="ghost" size="sm" onClick={() => setShowInsights((v) => !v)}>
             {t("admin.insights")}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowTokens((v) => !v)}>
-            {t("admin.tokens")}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics((v) => !v)}>
-            {t("diag.title")}
-          </Button>
+          {isAdmin && (
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setShowTokens((v) => !v)}>
+                {t("admin.tokens")}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics((v) => !v)}>
+                {t("diag.title")}
+              </Button>
+            </>
+          )}
           <Button variant="ghost" size="sm" onClick={() => setShowAccount((v) => !v)}>
             {t("admin.account")}
           </Button>
@@ -350,8 +372,18 @@ export function AdminApp() {
         {showTokens && <ApiTokensCard onClose={() => setShowTokens(false)} />}
         {showInsights && <AdminInsightsCard onClose={() => setShowInsights(false)} />}
         {showDiagnostics && <AdminDiagnosticsCard onClose={() => setShowDiagnostics(false)} />}
+        {showUsers && <AdminUsersCard onClose={() => setShowUsers(false)} onSelfChanged={() => void refresh()} />}
 
-        <RepoStatusBar status={repoStatus} syncing={syncing} onSync={onSyncNow} />
+        {/* Said once, at the top, rather than as a disabled tooltip on every
+            control that isn't there: a reader who cannot find the Save
+            button should learn why from the page, not from hunting. */}
+        {!canWrite && (
+          <p className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--muted)]">
+            {t("users.readOnlyNotice")}
+          </p>
+        )}
+
+        <RepoStatusBar status={repoStatus} syncing={syncing} canSync={canWrite} onSync={onSyncNow} />
 
         {/* No "not connected" gate any more: there is always a content
          *  repository (a local one in the data volume when no remote is
@@ -359,6 +391,7 @@ export function AdminApp() {
         <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
           <ProjectsPanel
             projects={projects}
+            readOnly={!canWrite}
             selected={selectedProject}
             onSelect={(p) => {
               setSelectedProject(p);
@@ -385,7 +418,11 @@ export function AdminApp() {
                   onToggle={() => setShowVersions((v) => !v)}
                 />
 
-                {showVersions && versions && (
+                {/* Freezing a release and deleting one are both writes, so
+                    the card is not offered to a read-only account. The BAR
+                    above it stays: which versions exist, and which one is
+                    being looked at, is reading. */}
+                {showVersions && versions && canWrite && (
                   <VersionsCard
                     project={selectedProject}
                     versions={versions}
@@ -411,7 +448,7 @@ export function AdminApp() {
                     projectSlug={selectedProject.slug}
                     categories={categories}
                     selected={selectedCategory}
-                    readOnly={frozen}
+                    readOnly={readOnly}
                     onSelect={(c) => {
                       setSelectedCategory(c);
                       setEditing(null);
@@ -425,7 +462,7 @@ export function AdminApp() {
                     {selectedCategory && editing === null && (
                       <PagesPanel
                         pages={pages}
-                        readOnly={frozen}
+                        readOnly={readOnly}
                         onEdit={setEditing}
                         onChanged={() => loadPages(selectedCategory.id)}
                       />
@@ -438,7 +475,7 @@ export function AdminApp() {
                         categoryId={selectedCategory.id}
                         categories={categories}
                         version={viewing}
-                        readOnly={frozen}
+                        readOnly={readOnly}
                         onSaved={() => loadPages(selectedCategory.id)}
                         onDone={() => {
                           setEditing(null);
@@ -475,8 +512,10 @@ export function AdminApp() {
 function RepoStatusBar({
   status,
   syncing,
+  canSync,
   onSync,
 }: {
+  canSync: boolean;
   status: ContentRepoStatus | null;
   syncing: boolean;
   onSync: () => void;
@@ -510,7 +549,11 @@ function RepoStatusBar({
           {status.error ? `: ${status.error}` : ""}
         </span>
       )}
-      {!local && (
+      {/* Pulling from the remote is a POST, so a read-only account does not
+          get the button -- but it keeps the bar, because which branch and
+          which commit this instance is on is exactly what a reviewer wants
+          to see. */}
+      {!local && canSync && (
         <Button variant="outline" size="sm" className="ml-auto" onClick={onSync} disabled={syncing}>
           <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
           {t("admin.repoSyncNow")}
@@ -1678,11 +1721,16 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
 
 function ProjectsPanel({
   projects,
+  readOnly,
   selected,
   onSelect,
   onChanged,
 }: {
   projects: Project[];
+  /** A read-only account: browse the projects, don't change them. (Unlike
+   *  the panels below, this one has no frozen-version case -- versions are
+   *  a property of a project, not of the list of them.) */
+  readOnly: boolean;
   selected: Project | null;
   onSelect: (p: Project) => void;
   /** `slug` is the slug the saved project now has -- see loadProjects(). */
@@ -1707,17 +1755,19 @@ function ProjectsPanel({
     <div>
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.projects")}</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => {
-            setShowForm((v) => !v);
-            setEditingId(null);
-          }}
-          aria-label="add"
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
+        {!readOnly && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => {
+              setShowForm((v) => !v);
+              setEditingId(null);
+            }}
+            aria-label="add"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        )}
       </div>
 
       {showForm && (
@@ -1742,33 +1792,37 @@ function ProjectsPanel({
                 {p.icon && <span>{p.icon}</span>}
                 {p.name}
               </button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                aria-label={t("admin.edit")}
-                onClick={() => {
-                  setShowForm(false);
-                  setEditingId((current) => (current === p.id ? null : p.id));
-                }}
-              >
-                <Pencil className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveProject(p.id, -1).then(() => onChanged())}>
-                <ArrowUp className="h-3 w-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                disabled={i === projects.length - 1}
-                onClick={() => api.adminMoveProject(p.id, 1).then(() => onChanged())}
-              >
-                <ArrowDown className="h-3 w-3" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(p.id)}>
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              {!readOnly && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    aria-label={t("admin.edit")}
+                    onClick={() => {
+                      setShowForm(false);
+                      setEditingId((current) => (current === p.id ? null : p.id));
+                    }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveProject(p.id, -1).then(() => onChanged())}>
+                    <ArrowUp className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    disabled={i === projects.length - 1}
+                    onClick={() => api.adminMoveProject(p.id, 1).then(() => onChanged())}
+                  >
+                    <ArrowDown className="h-3 w-3" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(p.id)}>
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
             </div>
             {editingId === p.id && (
               // Keyed by id AND slug: a save renames the directory, so the

@@ -18,7 +18,7 @@ reindex, a new image, a lost-and-recloned content repo: none of them touch a
 token.
 
 WHAT IS STORED. Never the token itself, only its SHA-256 hash -- the same
-"a hash is safe to store" reasoning auth_credentials_store.py documents for
+"a hash is safe to store" reasoning users_store.py documents for
 the admin's bcrypt hash. The plaintext exists exactly once, in the response
 to the create call, and is unrecoverable afterwards: losing it means making
 a new token, not looking the old one up.

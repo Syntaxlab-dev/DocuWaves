@@ -252,10 +252,29 @@ export interface SearchResult {
   version: string;
 }
 
+/** viewer reads the admin area, editor writes the documentation, admin also
+ *  manages accounts, tokens, branding, diagnostics and the export. The
+ *  backend decides all of this in one place (backend/app/auth_guard.py);
+ *  everything the frontend does with a role is about not OFFERING a button
+ *  that would be refused. */
+export type Role = "viewer" | "editor" | "admin";
+
 export interface AuthStatus {
   setup_required: boolean;
   authenticated: boolean;
   username: string | null;
+  /** null while signed out. */
+  role: Role | null;
+}
+
+export interface User {
+  username: string;
+  role: Role;
+  created_at: string;
+  last_login_at: string;
+  /** How many sessions this account has open right now -- so an admin who
+   *  removes somebody can see that it took effect. */
+  sessions: number;
 }
 
 export interface OidcStatus {
@@ -706,6 +725,30 @@ export const api = {
     }),
 
   // Admin: site branding -- instance-level, not keyed by anything
+  // Admin: accounts. Every route here is admin-only, enforced in the
+  // middleware by path prefix rather than per endpoint.
+  adminListUsers: () =>
+    request<{ users: User[]; roles: Role[]; me: string; min_password_length: number }>("/api/admin/users"),
+  adminCreateUser: (username: string, password: string, role: Role) =>
+    request<User>("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify({ username, password, role }),
+    }),
+  adminSetUserRole: (username: string, role: Role) =>
+    request<User>(`/api/admin/users/${encodeURIComponent(username)}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
+  adminSetUserPassword: (username: string, password: string) =>
+    request<{ ok: boolean; sessions_ended: number }>(
+      `/api/admin/users/${encodeURIComponent(username)}/password`,
+      { method: "PUT", body: JSON.stringify({ password }) },
+    ),
+  adminDeleteUser: (username: string) =>
+    request<{ ok: boolean; sessions_ended: number }>(`/api/admin/users/${encodeURIComponent(username)}`, {
+      method: "DELETE",
+    }),
+
   adminDiagnostics: () => request<Diagnostics>("/api/admin/diagnostics"),
   adminExportSummary: () => request<ExportSummary>("/api/admin/export/summary"),
   /** The export is a plain browser download rather than a fetch: the archive

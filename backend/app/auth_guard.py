@@ -4,10 +4,8 @@
   require already being logged in.
 - /api/public/* -- read-only content endpoints the public-facing site
   uses (project/category/page listing, page content, search). No auth at
-  all, and no partial "viewer role" concept like CachePanel has: v1 is
-  single-admin-account, so there's nothing to be a viewer of *as* -- a
-  visitor either edits (admin session) or reads (public endpoints), no
-  third state.
+  all: the documentation is public, so a visitor either edits (a session)
+  or reads (these endpoints).
 
 ...plus ONE non-browser credential: an API token, presented as
 `Authorization: Bearer dwt_...` (see services/api_tokens_store.py). It is
@@ -38,13 +36,37 @@ exempt prefixes above is blocked with 401 setup_required, forcing whoever
 opens the instance first through setup (or an OIDC first-login bootstrap,
 see routers/auth.py) before anything else works -- API tokens included,
 since there is nobody to have created one yet.
+
+---- ROLES ----
+
+A session's account is one of viewer / editor / admin (see
+services/users_store.py). What each may do is decided HERE, in the
+middleware, and not endpoint by endpoint. That is the whole design:
+
+- The write rule is the HTTP METHOD. GET and HEAD are reading; everything
+  else changes something. So a viewer is "GET and HEAD only", stated once,
+  and an endpoint added next year is covered by it before anyone remembers
+  to think about roles. A per-endpoint decorator would be a list that has to
+  stay complete, and the failure mode of an incomplete list is an unguarded
+  write.
+- The admin rule is a short list of PREFIXES, because those really are
+  specific: accounts, API tokens, branding, diagnostics and the export.
+  Every one of them is a different kind of authority from "may edit the
+  documentation" -- handing out a credential, changing what the site claims
+  to be, and downloading the whole instance are not editing.
+
+The role is read from the DATABASE on every request rather than from the
+session cookie. It costs one indexed lookup and it means a role that was
+taken away is taken away NOW, for sessions that are already open -- rather
+than whenever the person happens to log in again. An account that has been
+deleted while logged in fails the same lookup and is signed out.
 """
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from app.services import api_tokens_store, auth_credentials_store, session_registry_store
+from app.services import api_tokens_store, session_registry_store, users_store
 
 _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
 
@@ -53,6 +75,26 @@ _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
 _TOKEN_ONLY_PREFIX = "/api/mcp"
 
 _BEARER = "bearer "
+
+# Reading. Everything else is a change, and a viewer may not make one.
+_READ_METHODS = ("GET", "HEAD")
+
+# Prefixes only an admin may touch, by ANY method -- a viewer's GET included.
+# Each one is authority over the instance rather than over its documentation:
+#
+#   users        -- creating accounts and handing out roles
+#   tokens       -- creating a credential that writes through the MCP endpoint
+#   site         -- the branding: what this instance claims to be
+#   diagnostics  -- paths, disk, counts; harmless to an admin, not an
+#                   editor's business
+#   export       -- the entire instance in one downloadable file
+_ADMIN_ONLY_PREFIXES = (
+    "/api/admin/users",
+    "/api/admin/tokens",
+    "/api/admin/site",
+    "/api/admin/diagnostics",
+    "/api/admin/export",
+)
 
 
 def _bearer_credential(request: Request) -> str | None:
@@ -76,7 +118,7 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         if path.startswith(_EXEMPT_PREFIXES):
             return await call_next(request)
 
-        if not auth_credentials_store.is_configured():
+        if not users_store.is_configured():
             return JSONResponse({"detail": "setup_required"}, status_code=401)
 
         # ---- API token path (before the session path, see the docstring) --
@@ -124,6 +166,32 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         session_id = request.session.get("session_id")
         if not session_id or not session_registry_store.exists(session_id):
             return JSONResponse({"detail": "not_authenticated"}, status_code=401)
+
+        # The account behind the session, looked up now rather than trusted
+        # from the cookie -- see the docstring. Gone means the account was
+        # deleted while this session was open: the session goes with it,
+        # here, rather than being left to expire.
+        user = users_store.get_user(request.session.get("username") or "")
+        if user is None:
+            session_registry_store.revoke(session_id)
+            return JSONResponse({"detail": "not_authenticated"}, status_code=401)
+
         session_registry_store.touch(session_id)
+        role = user["role"]
+        # On the request, so an endpoint that needs to say something
+        # role-dependent (who am I, may I see this) reads it rather than
+        # looking it up a second time.
+        request.state.user = user
+
+        if path.startswith(_ADMIN_ONLY_PREFIXES) and not users_store.is_admin(role):
+            return JSONResponse(
+                {"detail": "This part of the admin area is for administrators."},
+                status_code=403,
+            )
+        if request.method not in _READ_METHODS and not users_store.may_write(role):
+            return JSONResponse(
+                {"detail": "Your account can read the admin area but not change anything."},
+                status_code=403,
+            )
 
         return await call_next(request)

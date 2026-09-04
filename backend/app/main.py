@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
-from app.routers import admin_content, api_tokens, auth, mcp, public_content, sitemap
+from app.routers import admin_content, api_tokens, auth, mcp, public_content, sitemap, users
 from app.services import content_sync, content_versions, db, git_content_repo, seo, session_secret
 from app.settings import settings
 
@@ -127,6 +127,7 @@ def _frozen_version_handler(_request: Request, exc: content_versions.FrozenVersi
 app.include_router(auth.router)
 app.include_router(admin_content.router)
 app.include_router(api_tokens.router)
+app.include_router(users.router)
 # Before the catch-all SPA route below, like every other router -- and after
 # the admin ones, so /api/admin/tokens is matched by its own router rather
 # than by anything more general.

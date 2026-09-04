@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.services import auth_credentials_store, oidc_client, session_registry_store
+from app.services import oidc_client, session_registry_store, users_store
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -24,6 +24,7 @@ def _client_ip(request: Request) -> str:
 
 
 def _start_session(request: Request, username: str) -> None:
+    users_store.touch_login(username)
     session_id = secrets.token_urlsafe(24)
     request.session["authenticated"] = True
     request.session["username"] = username
@@ -33,23 +34,29 @@ def _start_session(request: Request, username: str) -> None:
 
 @router.get("/status", summary="Auth status")
 def auth_status(request: Request):
-    if not auth_credentials_store.is_configured():
+    if not users_store.is_configured():
         return {"setup_required": True, "authenticated": False, "username": None}
     authenticated = bool(request.session.get("authenticated"))
+    # The role comes from the account, not from the session: it is what the
+    # UI hides controls by, and a UI that kept showing yesterday's role
+    # would offer buttons the middleware then refuses. (The middleware is
+    # the enforcement either way -- this only decides what is worth showing.)
+    user = users_store.get_user(request.session.get("username") or "") if authenticated else None
     return {
         "setup_required": False,
-        "authenticated": authenticated,
-        "username": request.session.get("username") if authenticated else None,
+        "authenticated": authenticated and user is not None,
+        "username": user["username"] if user else None,
+        "role": user["role"] if user else None,
     }
 
 
 @router.post("/setup", summary="First-run admin account setup")
 def auth_setup(body: Credentials, request: Request):
-    if auth_credentials_store.is_configured():
+    if users_store.is_configured():
         raise HTTPException(status_code=409, detail="An admin account already exists.")
     if not body.username.strip() or len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Username required, password needs at least 8 characters.")
-    auth_credentials_store.set_credentials(body.username.strip(), body.password)
+    users_store.create_first_admin(body.username.strip(), body.password)
     _start_session(request, body.username.strip())
     return {"ok": True}
 
@@ -57,7 +64,7 @@ def auth_setup(body: Credentials, request: Request):
 @router.post("/login", summary="Admin login")
 def auth_login(body: Credentials, request: Request):
     username = body.username.strip()
-    if not auth_credentials_store.verify_credentials(username, body.password):
+    if not users_store.verify_credentials(username, body.password):
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
     _start_session(request, username)
     return {"ok": True}
@@ -77,11 +84,11 @@ def change_password(body: PasswordChange, request: Request):
     username = request.session.get("username")
     if not username:
         raise HTTPException(status_code=401, detail="Not logged in.")
-    if not auth_credentials_store.verify_credentials(username, body.current_password):
+    if not users_store.verify_credentials(username, body.current_password):
         raise HTTPException(status_code=401, detail="Current password is incorrect.")
     if len(body.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password needs at least 8 characters.")
-    auth_credentials_store.set_password(username, body.new_password)
+    users_store.set_password(username, body.new_password)
     return {"ok": True}
 
 
@@ -133,23 +140,25 @@ def oidc_callback(request: Request):
     if not username:
         return RedirectResponse("/?oidc_login=failed")
 
-    if not auth_credentials_store.is_configured():
+    if not users_store.is_configured():
         # First-run bootstrap: whoever completes a valid OIDC login first on
         # a totally unconfigured instance becomes the one admin account --
         # same trust model as POST /api/auth/setup. Random password (never
         # surfaced) since the schema always needs a password_hash; this
         # account is OIDC-only until the admin sets a real password from
         # the account settings page.
-        auth_credentials_store.set_credentials(username, secrets.token_urlsafe(32))
+        users_store.create_first_admin(username, secrets.token_urlsafe(32))
         _start_session(request, username)
         return RedirectResponse("/")
 
-    # Already configured: v1 has exactly one admin account, so the OIDC
-    # username must match it exactly, or the login is rejected -- anyone
-    # who can authenticate against the identity provider is NOT
-    # automatically granted access, only the one identity that either
-    # bootstrapped this instance or was explicitly matched at setup time.
-    existing = auth_credentials_store.get_user(username)
+    # Already configured: the OIDC username must match an account that
+    # exists here, or the login is rejected. Anyone who can authenticate
+    # against the identity provider is NOT automatically granted access --
+    # accounts are created deliberately, by an admin, and the role they get
+    # is decided there rather than by whoever the provider lets in. That is
+    # the same rule as before multi-user; what changed is only how many
+    # accounts it can match.
+    existing = users_store.get_user(username)
     if existing is None:
         return RedirectResponse("/?oidc_login=no_account")
 

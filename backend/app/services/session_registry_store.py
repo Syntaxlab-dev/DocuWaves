@@ -39,6 +39,35 @@ def touch(session_id: str) -> None:
         )
 
 
+def revoke_for_user(username: str) -> int:
+    """Signs one account out everywhere, and says how many sessions that
+    was.
+
+    Called when an account is DELETED and when its role is lowered. The
+    middleware already re-reads the role on every request, so this is not
+    what makes the change take effect -- it is what makes it visible: the
+    person is returned to the login screen instead of clicking around an
+    admin UI whose every button has quietly started answering 403."""
+    placeholder = "%s" if db.is_postgres() else "?"
+    with db.get_connection() as conn:
+        cursor = conn.execute(f"DELETE FROM sessions WHERE username = {placeholder}", (username,))
+        return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+def sessions_for(username: str) -> list[dict]:
+    """One account's live sessions, newest first -- what the account list
+    shows as "signed in on 2 devices", so an admin removing somebody can see
+    that it took."""
+    placeholder = "%s" if db.is_postgres() else "?"
+    with db.get_connection() as conn:
+        rows = conn.execute(
+            f"SELECT created_at, last_seen_at FROM sessions WHERE username = {placeholder} "
+            f"ORDER BY last_seen_at DESC",
+            (username,),
+        ).fetchall()
+    return [{"created_at": row[0], "last_seen_at": row[1]} for row in rows]
+
+
 def revoke(session_id: str) -> None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:

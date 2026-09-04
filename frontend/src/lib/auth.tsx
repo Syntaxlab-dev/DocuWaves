@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { api, type AuthStatus } from "@/lib/api";
+import { api, type AuthStatus, type Role } from "@/lib/api";
 
 interface AuthContextValue {
   status: AuthStatus | null;
@@ -33,4 +33,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   return useContext(AuthContext);
+}
+
+/**
+ * What the signed-in account may do, for deciding what to SHOW.
+ *
+ * Not for deciding what is allowed: that is settled in the backend
+ * middleware, on every request, from the account row rather than from
+ * anything the browser holds. Hiding a control the server would refuse is a
+ * courtesy to the person using it -- a UI full of buttons that answer 403 is
+ * a UI that lies about what your account is for.
+ *
+ * Both default to false while the status is still loading, so nothing
+ * flashes into view and then disappears.
+ */
+export function usePermissions(): { role: Role | null; canWrite: boolean; isAdmin: boolean } {
+  const { status } = useAuth();
+  const role = status?.role ?? null;
+  return {
+    role,
+    canWrite: role === "editor" || role === "admin",
+    isAdmin: role === "admin",
+  };
 }
