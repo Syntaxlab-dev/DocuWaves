@@ -47,6 +47,8 @@ row's language is '', requested == default == '', and each of these
 functions reduces to exactly the query it ran before.
 """
 
+from datetime import datetime, timezone
+
 from app.services import (
     categories_store,
     content_files,
@@ -54,6 +56,7 @@ from app.services import (
     content_versions,
     db,
     git_content_repo,
+    preview_links_store,
     projects_store,
     prose,
     site_languages,
@@ -61,10 +64,15 @@ from app.services import (
 
 _COLUMNS = (
     "id, project_id, category_id, title, slug, language, markdown_content, sort_order, published, "
-    "created_at, updated_at, version"
+    "created_at, updated_at, version, reviewed_by, reviewed_at"
 )
 
 _NAV_COLUMNS = "id, category_id, title, slug, language, sort_order"
+
+# A reviewer's name is a person's name, not a paragraph. Long enough for
+# "Dr. Maria Fernanda Gonzalez-Weber", short enough that nobody can quietly
+# put a sentence of their own into the footer of every page.
+_REVIEWER_MAX_LENGTH = 80
 
 
 def _row_to_dict(row) -> dict:
@@ -81,6 +89,10 @@ def _row_to_dict(row) -> dict:
         "created_at": row[9],
         "updated_at": row[10],
         "version": row[11],
+        # The review note, "" when there is none. Both halves travel
+        # together everywhere: a name without a date says nothing.
+        "reviewed_by": row[12],
+        "reviewed_at": row[13],
     }
 
 
@@ -419,10 +431,29 @@ def update_page(page_id: int, title: str, slug: str, markdown_content: str, cate
     paths = content_files.relocate_page(
         project["slug"], old_category["slug"], current["slug"], new_category["slug"], slug, version
     )
+    # A rename moved the slug, and preview links name their page by slug --
+    # so they move with it. Doing this from here is the one place it is not
+    # a guess: this call knows the old slug and the new one are the same
+    # page. Left behind instead, a link somebody sent a reviewer yesterday
+    # would 404 because a typo in the title got fixed today.
+    preview_links_store.repoint_page(project["slug"], current["slug"], slug, version)
     order = current["sort_order"] if new_category["id"] == old_category["id"] else _next_order(category_id)
+    # A review note is a statement about a TEXT: "this wording was checked,
+    # by this person, on this day". Edit the text and the statement is no
+    # longer true of what the page now says, so the note goes with it --
+    # silently keeping it would leave the page publicly claiming that
+    # somebody approved words they have never seen.
+    #
+    # Only the BODY counts. Renaming the page or moving it to another
+    # category changes neither a sentence of what was reviewed nor a word of
+    # what a reader reads, and dropping the note over a typo in the title
+    # would train people to ignore it.
+    reviewed = markdown_content == current["markdown_content"]
     paths += content_files.write_page(
         project["slug"], new_category["slug"], slug, title, markdown_content, order, current["published"],
         current["language"], version,
+        reviewed_by=current["reviewed_by"] if reviewed else "",
+        reviewed_at=current["reviewed_at"] if reviewed else "",
     )
     git_content_repo.commit_and_push(paths, f"Update page: {title}", author)
     content_sync.full_sync()
@@ -441,9 +472,51 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
     paths = content_files.write_page(
         project["slug"], category["slug"], current["slug"], current["title"], current["markdown_content"],
         current["sort_order"], published, current["language"], current["version"],
+        reviewed_by=current["reviewed_by"], reviewed_at=current["reviewed_at"],
     )
     verb = "Publish" if published else "Unpublish"
     git_content_repo.commit_and_push(paths, f"{verb} page: {current['title']}", author)
+    content_sync.full_sync()
+    return get_page(page_id)
+
+
+def set_review(page_id: int, reviewed_by: str, author: str) -> dict | None:
+    """Marks this page as reviewed by `reviewed_by` as of today, or -- with
+    an empty `reviewed_by` -- takes the note off again.
+
+    WHAT THIS IS NOT. It is a note in the page's frontmatter saying that a
+    named person looked at this text on a named day, written by whoever was
+    logged in when they pressed the button. It is not a signature, it
+    establishes nothing about identity, and it carries no legal or
+    regulatory weight of any kind. The only thing that makes it worth
+    anything is that it is dropped the moment the text changes (see
+    update_page) -- so a note on a page is at least always a note about the
+    words currently on it.
+
+    PER LANGUAGE, like `published`. A translation is a different text that a
+    different person reads; the German page having been checked says nothing
+    about the English one.
+
+    The date is the instance's own (UTC), never a value from the caller. A
+    review note whose date could be typed would be a review note that can
+    say anything."""
+    current = get_page(page_id)
+    if current is None:
+        return None
+    project = projects_store.get_project(current["project_id"])
+    category = categories_store.get_category(current["category_id"])
+    if project is None or category is None:
+        return None
+    content_versions.ensure_writable(project["slug"], current["version"])
+    name = reviewed_by.strip()[:_REVIEWER_MAX_LENGTH]
+    stamp = datetime.now(timezone.utc).date().isoformat() if name else ""
+    paths = content_files.write_page(
+        project["slug"], category["slug"], current["slug"], current["title"], current["markdown_content"],
+        current["sort_order"], current["published"], current["language"], current["version"],
+        reviewed_by=name, reviewed_at=stamp,
+    )
+    verb = "Mark reviewed" if name else "Clear review note"
+    git_content_repo.commit_and_push(paths, f"{verb}: {current['title']} [{current['language'] or 'default'}]", author)
     content_sync.full_sync()
     return get_page(page_id)
 
@@ -462,6 +535,7 @@ def _write_order(project_slug: str, category_slug: str, project_id: int, slug: s
         paths += content_files.write_page(
             project_slug, category_slug, slug, variant["title"], variant["markdown_content"], order,
             variant["published"], language, version,
+            reviewed_by=variant["reviewed_by"], reviewed_at=variant["reviewed_at"],
         )
     return paths
 
@@ -499,6 +573,11 @@ def delete_page(page_id: int, author: str) -> None:
     content_versions.ensure_writable(project["slug"], current["version"])
     paths = content_files.delete_page(project["slug"], category["slug"], current["slug"], current["version"])
     if paths:
+        # Any preview link to this page goes with it. The links name the page
+        # by slug (ids are reassigned by a reindex), so leaving them behind
+        # would mean a slug somebody reuses later inherits a live link to the
+        # page they just created.
+        preview_links_store.revoke_for_page(project["slug"], current["slug"], current["version"])
         git_content_repo.commit_and_push(paths, f"Remove page: {current['title']}", author)
         content_sync.full_sync()
 
@@ -677,6 +756,10 @@ def restore_page(page_id: int, sha: str, author: str) -> dict | None:
     # repo, say) keeps the page's current one rather than blanking it -- a
     # title is structural, and the editor's own save would reject an empty one.
     title = version["title"] or current["title"]
+    # No review note carried over: this call replaces the body with an older
+    # one, which is exactly the case update_page() drops the note for. The
+    # restored text may well be text that was once reviewed, but not
+    # necessarily by this note's author and not on this note's date.
     paths = content_files.write_page(
         project["slug"], category["slug"], current["slug"], title, version["markdown_content"],
         current["sort_order"], current["published"], current["language"], current["version"],

@@ -231,6 +231,26 @@ the public site entirely, even if it's merged to the content repo's default
 branch; only DocuWaves' own "Publish" toggle (or hand-editing the file)
 changes that.
 
+Two optional keys, written together or not at all, hold a page's **review
+note**:
+
+```markdown
+---
+title: Installation
+order: 0
+published: true
+reviewed_by: Alex Winter
+reviewed_at: "2026-09-04"
+---
+```
+
+It renders as one quiet line under the page ("Reviewed by Alex Winter on 4
+September 2026") and is set from the editor. It is a **note, not a
+signature**: it identifies nobody, proves nothing, and carries no legal or
+regulatory weight. DocuWaves removes it automatically the next time the
+page's body is edited, so a note that is present always refers to the words
+currently on the page. Like `published`, it is per language.
+
 Slugs (the folder/file names themselves) become part of each page's URL, so
 keep them stable once published — renaming a project/category/page's name
 in the admin editor changes its slug (and therefore moves the file) too.
@@ -1005,7 +1025,7 @@ with the same message the admin API gives, rather than quietly redirecting
 the change into `current` and letting the assistant believe it corrected a
 released version.
 
-### ### What this costs
+### What this costs
 
 Nothing, on DocuWaves' side. The MCP endpoint is a tool server: it answers an
 assistant's requests about your documentation and never calls a language model

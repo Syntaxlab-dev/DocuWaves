@@ -24,7 +24,8 @@ enumeration here, see _RESERVED_PREFIX.)
 `_project.yml` / `_category.yml` are plain YAML: name, icon, (color/
 description for projects only), an optional cover `image:`, order. A page's
 `.md` file is YAML
-frontmatter (title, order, published) followed by its Markdown body,
+frontmatter (title, order, published, and the optional review note
+`reviewed_by`/`reviewed_at`) followed by its Markdown body,
 parsed/written with python-frontmatter so the format is the same one most
 static-site generators already use -- a contributor who's touched Jekyll,
 Hugo or MkDocs will recognize it immediately.
@@ -431,13 +432,25 @@ def read_page(project_slug: str, category_slug: str, slug: str, language: str = 
         "title": post.metadata.get("title", slug),
         "order": int(post.metadata.get("order", 0)),
         "published": bool(post.metadata.get("published", False)),
+        # The review note, or "" for a page nobody has marked as reviewed --
+        # which is every page until someone does, and every page in an
+        # instance that never uses the feature. Read as str() rather than
+        # trusted: a hand-written `reviewed_at: 2026-09-04` in the repo is
+        # parsed by PyYAML as a date OBJECT, and handing that to the database
+        # layer as-is would be a type error at index time. See write_page for
+        # the quoting that stops this instance's own writes doing it.
+        "reviewed_by": str(post.metadata.get("reviewed_by", "") or ""),
+        "reviewed_at": str(post.metadata.get("reviewed_at", "") or ""),
         "markdown_content": post.content,
         "language": language,
     }
 
 
 def parse_page_document(text: str) -> dict:
-    """A page file's raw text split into the same fields read_page() returns.
+    """A page file's raw text split into the fields read_page() returns,
+    minus the review note -- the only caller is the history panel, which
+    shows what a page SAID at a commit, and a note is about the current
+    text rather than part of it (see write_page).
 
     Separate from read_page() because the text does not have to come from
     disk: git_content_repo.file_at() hands back a version of a page that no
@@ -472,10 +485,33 @@ def write_page(
     published: bool,
     language: str = "",
     version: str = "",
+    reviewed_by: str = "",
+    reviewed_at: str = "",
 ) -> list[str]:
+    """`reviewed_by`/`reviewed_at` are the page's review note, and both being
+    set is what makes one exist -- a name with no date, or a date with no
+    name, is half a statement and is written as no statement at all.
+
+    The two keys are OMITTED from the frontmatter entirely when there is no
+    note, rather than written as empty strings. Every page in the repo is a
+    file somebody reads in a pull request, and a feature nobody on this
+    instance uses must not add two blank lines to every one of them -- nor
+    produce a diff on every page the first time an instance running this
+    version saves them.
+
+    `reviewed_at` is written through str(), which is what makes PyYAML quote
+    it (`reviewed_at: '2026-09-04'`) -- it quotes any string that would
+    otherwise re-read as another type. Handed a `date` object instead, it
+    would emit a bare `2026-09-04`, and the page's own frontmatter would
+    round-trip back as a `datetime.date` rather than as the string every
+    caller here expects."""
     path = _page_path_for_write(project_slug, category_slug, slug, language, version)
     path.parent.mkdir(parents=True, exist_ok=True)
-    post = frontmatter.Post(markdown_content, title=title, order=order, published=published)
+    metadata = {"title": title, "order": order, "published": published}
+    if reviewed_by and reviewed_at:
+        metadata["reviewed_by"] = reviewed_by
+        metadata["reviewed_at"] = str(reviewed_at)
+    post = frontmatter.Post(markdown_content, **metadata)
     path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
     return [_rel(path)]
 

@@ -11,6 +11,7 @@ import { PublicProject } from "@/pages/PublicProject";
 import { PublicCategory } from "@/pages/PublicCategory";
 import { PublicPage } from "@/pages/PublicPage";
 import { SearchResults } from "@/pages/SearchResults";
+import { PreviewPage } from "@/pages/PreviewPage";
 import { AdminGate } from "@/pages/AdminGate";
 import { NotFound } from "@/components/NotFound";
 
@@ -83,6 +84,13 @@ function LanguageRouting() {
     <ContentLangProvider languages={site.languages} defaultLanguage={site.default_language} ready={ready}>
       <Routes>
         <Route path="/admin/*" element={<AdminGate />} />
+        {/* Outside PublicLayout on purpose: a preview link gives its holder
+            ONE page, and the layout's search box, sidebar and home link are
+            all ways out of it into an instance they were not given. The
+            literal first segment also keeps it clear of the `:lang` route
+            below -- react-router ranks a literal above a dynamic segment,
+            and `preview` is not a language code on any instance. */}
+        <Route path="/preview/:token" element={<PreviewPage />} />
         {/* Inside the layout route's element, so the header's version
             switcher and the docs views below it share one context -- the
             views report which version they loaded, the header renders the

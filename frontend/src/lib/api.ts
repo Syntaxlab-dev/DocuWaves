@@ -123,8 +123,40 @@ export interface Page extends PageSummary {
   markdown_content: string;
   sort_order: number;
   published: boolean;
+  /** The review note: who marked this text as checked, and on what date
+   *  (YYYY-MM-DD). Both "" when there is none, which is every page until
+   *  somebody says otherwise. A note, never a signature -- and dropped by
+   *  the backend the next time the body is edited, so one that is present
+   *  always refers to the words currently on the page. */
+  reviewed_by: string;
+  reviewed_at: string;
   created_at: string;
   updated_at: string;
+}
+
+/** A live link that shows one unpublished page to somebody with no login
+ *  here, until `expires_at`. The token itself is NOT in here: it is
+ *  returned once, when the link is made, and stored only as a hash. */
+export interface PreviewLink {
+  id: number;
+  project_slug: string;
+  page_slug: string;
+  language: string;
+  version: string;
+  created_at: string;
+  /** YYYY-MM-DD. The link works for all of that day. */
+  expires_at: string;
+  created_by: string;
+}
+
+/** What a preview page loads: one page, published or not, plus how long the
+ *  link that reached it is good for. No navigation and no siblings -- the
+ *  token reads exactly the page it names. */
+export interface PreviewData {
+  project: Project;
+  category: Category | null;
+  page: Page;
+  expires_at: string;
 }
 
 /** What the admin editor loads: one language's page, plus every language
@@ -354,6 +386,16 @@ export interface CategoryInput {
   name_i18n?: LocalizedText;
 }
 
+/** One of the four skeletons a new page can start from. The Markdown comes
+ *  with the list -- there are four of them and they are a couple of KB, so a
+ *  second round trip at the moment the author picks one would buy nothing. */
+export interface PageTemplate {
+  id: string;
+  name: string;
+  description: string;
+  markdown: string;
+}
+
 export interface PageInput {
   title: string;
   markdown_content: string;
@@ -511,12 +553,42 @@ export const api = {
   // the reindex keys rows by (version, slug, language). Anything following up
   // on the same page must use the id this returns, not the one it sent.
   adminUpdatePage: (id: number, data: PageInput) =>
-    request<{ ok: boolean; id: number; slug: string }>(`/api/admin/pages/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    }),
+    request<{ ok: boolean; id: number; slug: string; reviewed_by: string; reviewed_at: string }>(
+      `/api/admin/pages/${id}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      },
+    ),
+  adminPageTemplates: (language: string) =>
+    request<{ templates: PageTemplate[] }>(
+      `/api/admin/page-templates${language ? `?language=${encodeURIComponent(language)}` : ""}`,
+    ),
   adminPublishPage: (id: number, published: boolean) =>
     request(`/api/admin/pages/${id}/publish?published=${published}`, { method: "POST" }),
+  /** An empty `reviewedBy` takes the note off again. The DATE is never sent:
+   *  the server stamps its own, so a review note cannot claim a day it was
+   *  not made on. */
+  adminReviewPage: (id: number, reviewedBy: string) =>
+    request<{ reviewed_by: string; reviewed_at: string }>(`/api/admin/pages/${id}/review`, {
+      method: "POST",
+      body: JSON.stringify({ reviewed_by: reviewedBy }),
+    }),
+
+  adminListPreviewLinks: (id: number) =>
+    request<{ links: PreviewLink[]; max_links: number; max_days: number; default_days: number }>(
+      `/api/admin/pages/${id}/preview-links`,
+    ),
+  /** The one and only time the token is readable -- it is stored hashed, so
+   *  a link that isn't copied now has to be made again. */
+  adminCreatePreviewLink: (id: number, days: number) =>
+    request<{ token: string; url_path: string; expires_at: string }>(`/api/admin/pages/${id}/preview-links`, {
+      method: "POST",
+      body: JSON.stringify({ days }),
+    }),
+  adminRevokePreviewLink: (linkId: number) =>
+    request(`/api/admin/preview-links/${linkId}`, { method: "DELETE" }),
+
   adminMovePage: (id: number, direction: -1 | 1) =>
     request(`/api/admin/pages/${id}/move?direction=${direction}`, { method: "POST" }),
   adminDeletePage: (id: number) => request(`/api/admin/pages/${id}`, { method: "DELETE" }),
@@ -649,6 +721,8 @@ export const api = {
       `/api/admin/feedback/${encodeURIComponent(projectSlug)}/${encodeURIComponent(pageSlug)}`,
       { method: "DELETE" },
     ),
+
+  publicPreview: (token: string) => request<PreviewData>(`/api/public/preview/${encodeURIComponent(token)}`),
 
   publicGetPage: (projectSlug: string, pageSlug: string, lang?: string, version?: string) =>
     request<{

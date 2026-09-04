@@ -10,6 +10,7 @@ import { NotFound } from "@/components/NotFound";
 import { PageFooterNav } from "@/components/PageFooterNav";
 import { TableOfContents } from "@/components/TableOfContents";
 import { collectHeadings } from "@/lib/headings";
+import { formatIsoDate } from "@/lib/dates";
 import { useProjectNav, type NavStatus } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
@@ -20,23 +21,6 @@ import { useDocumentTitle } from "@/lib/site";
  *  one entry is never worth a column, and two is where it starts telling a
  *  reader something the text above the fold didn't already. */
 const MIN_TOC_HEADINGS = 2;
-
-/** "2026-08-31" as the reader's own locale spells a date.
- *
- *  Built from the parts rather than handed to `new Date(iso)`: that parses a
- *  bare date as UTC midnight, which renders as the previous day for every
- *  reader west of Greenwich -- a "last updated" line that is a day off is
- *  worse than none. An unparseable value is shown as it came, which is also
- *  what happens if the backend ever answers with something else. */
-function formatIsoDate(iso: string, locale: string): string {
-  const [year, month, day] = iso.split("-").map(Number);
-  if (!year || !month || !day) return iso;
-  return new Date(year, month - 1, day).toLocaleDateString(locale, {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
 
 export function PublicPage() {
   const { projectSlug, pageSlug, version } = useParams<{
@@ -174,6 +158,22 @@ export function PublicPage() {
       {data.last_updated && (
         <p className="mt-8 text-xs text-[var(--muted)]">
           {t("page.lastUpdated")} <time dateTime={data.last_updated}>{formatIsoDate(data.last_updated, uiLang)}</time>
+        </p>
+      )}
+      {/* The review note, in the same quiet register as the line above it
+          and directly under it -- the two say related things about how
+          current this page is.
+          No icon, no badge, no colour. What this line says is that a named
+          person read this text on a named day, which is a modest claim, and
+          dressing it up as a seal of approval would make it a bigger one
+          than anybody made. Both halves or nothing: a name without a date
+          says nothing about whether the check is recent, and the backend
+          never writes one without the other. */}
+      {data.page.reviewed_by && data.page.reviewed_at && (
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          {t("page.reviewedBy")
+            .replace("{name}", data.page.reviewed_by)
+            .replace("{date}", formatIsoDate(data.page.reviewed_at, uiLang))}
         </p>
       )}
       <PageFeedback

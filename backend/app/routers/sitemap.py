@@ -195,9 +195,15 @@ def sitemap(request: Request) -> StreamingResponse:
 # crawler has to be allowed to FETCH a page to see that it says noindex --
 # blocking it here would leave those URLs indexable-by-hearsay, which is the
 # opposite of what blocking them looks like it does.
+# /preview is a draft behind a link somebody shared with a named person. The
+# app already answers those URLs with a noindex (seo.parse_route reads them
+# as `other`), so this line is the second of two independent statements
+# rather than the only one -- and it is the one a crawler reads before it
+# ever fetches the page.
 _ROBOTS = """User-agent: *
 Allow: /
 Disallow: /admin
+Disallow: /preview
 Disallow: /api/
 
 Sitemap: {base}/sitemap.xml

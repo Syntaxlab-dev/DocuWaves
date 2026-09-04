@@ -175,6 +175,13 @@ _SQLITE_SCHEMA = [
         markdown_content TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         published INTEGER NOT NULL DEFAULT 0,
+        -- The review note: who marked this page as checked, and on what
+        -- date. Both '' for every page nobody has -- which is the normal
+        -- state, and the only state on an instance that never uses it.
+        -- Indexed here like every other frontmatter field, because it is
+        -- one: the file in the content repo is where it actually lives.
+        reviewed_by TEXT NOT NULL DEFAULT '',
+        reviewed_at TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(project_id, version, slug, language)
@@ -237,6 +244,37 @@ _SQLITE_SCHEMA = [
     """
     CREATE INDEX IF NOT EXISTS page_feedback_page
         ON page_feedback (project_slug, page_slug)
+    """,
+    # A preview link: one URL that shows one unpublished page to somebody
+    # with no login here, until a date. See preview_links_store.py for what
+    # this is and (at more length) what it deliberately is not.
+    #
+    # NOT in _CONTENT_TABLES, like api_tokens and page_feedback next to it:
+    # a schema rebuild reindexes the content repo, and a credential is not
+    # in the content repo -- it cannot be, since that repo exists to be
+    # cloned and read.
+    #
+    # The page is named by SLUG, not by pages.id: those ids are reassigned
+    # on every full reindex, so a numeric reference would silently repoint
+    # an old link at a different page. Renaming a page therefore breaks the
+    # preview links made before the rename, which is the safe direction --
+    # a dead link, never a link to the wrong text.
+    """
+    CREATE TABLE IF NOT EXISTS preview_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        token_hash TEXT UNIQUE NOT NULL,
+        project_slug TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS preview_links_page
+        ON preview_links (project_slug, page_slug, version)
     """,
 ]
 
@@ -314,6 +352,10 @@ _POSTGRES_SCHEMA = [
         markdown_content TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
         published BOOLEAN NOT NULL DEFAULT FALSE,
+        -- See the SQLite table above: the page's review note, indexed from
+        -- its frontmatter like every other field on it.
+        reviewed_by TEXT NOT NULL DEFAULT '',
+        reviewed_at TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(project_id, version, slug, language)
@@ -356,6 +398,22 @@ _POSTGRES_SCHEMA = [
     CREATE INDEX IF NOT EXISTS page_feedback_page
         ON page_feedback (project_slug, page_slug)
     """,
+    # See the SQLite schema above for what a preview link is and why it lives
+    # here rather than in the content repo.
+    """
+    CREATE TABLE IF NOT EXISTS preview_links (
+        id SERIAL PRIMARY KEY,
+        token_hash TEXT UNIQUE NOT NULL,
+        project_slug TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        created_by TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS preview_links_page ON preview_links (project_slug, page_slug, version)",
 ]
 
 
@@ -365,16 +423,17 @@ _POSTGRES_SCHEMA = [
 _REQUIRED_COLUMNS = {
     "projects": {"name_i18n", "description_i18n", "image"},
     "categories": {"name_i18n", "version", "image"},
-    "pages": {"language", "version"},
+    "pages": {"language", "version", "reviewed_by", "reviewed_at"},
 }
 
-# Only the content index is ever rebuilt. `auth`, `sessions` and
-# `api_tokens` are real state that exists nowhere else (the admin's password
-# hash, live logins, the credentials handed to an AI assistant) -- they are
-# NOT in this list and are never dropped. That is the whole difference
-# between them and the three below: dropping a content table costs one
-# reindex from files that are still on disk, while dropping one of those
-# three would destroy something no reindex could bring back.
+# Only the content index is ever rebuilt. `auth`, `sessions`, `api_tokens`,
+# `page_feedback` and `preview_links` are real state that exists nowhere else
+# (the admin's password hash, live logins, the credentials handed to an AI
+# assistant, readers' votes, the links people were sent) -- none of them is
+# in this list and none is ever dropped. That is the whole difference between
+# them and the three below: dropping a content table costs one reindex from
+# files that are still on disk, while dropping one of those would destroy
+# something no reindex could bring back.
 _CONTENT_TABLES = ["pages", "categories", "projects"]
 
 _SQLITE_FTS_OBJECTS = [

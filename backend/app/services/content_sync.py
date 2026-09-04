@@ -249,12 +249,19 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
                     # equally untrue "everything changed just now". The
                     # right-hand sides see the pre-update row in both SQLite
                     # and Postgres, so the comparison is old-vs-new.
+                    #
+                    # The review note is SET but is deliberately not part of
+                    # the CASE: marking a page as checked does not change
+                    # what the page says, so it must not move the date that
+                    # claims the page changed.
                     f"UPDATE pages SET title={p}, markdown_content={p}, sort_order={p}, published={p}, "
-                    f"category_id={p}, updated_at = CASE WHEN title <> {p} OR markdown_content <> {p} "
+                    f"category_id={p}, reviewed_by={p}, reviewed_at={p}, "
+                    f"updated_at = CASE WHEN title <> {p} OR markdown_content <> {p} "
                     f"OR sort_order <> {p} OR published <> {p} OR category_id <> {p} "
                     f"THEN {p} ELSE updated_at END WHERE id={p}",
                     (
                         data["title"], data["markdown_content"], data["order"], published_value, category_id,
+                        data["reviewed_by"], data["reviewed_at"],
                         data["title"], data["markdown_content"], data["order"], published_value, category_id,
                         datetime.now(timezone.utc).isoformat(),
                         page_id,
@@ -263,23 +270,23 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
             else:
                 columns = (
                     "project_id, category_id, title, slug, language, version, markdown_content, sort_order, "
-                    "published, created_at, updated_at"
+                    "published, reviewed_by, reviewed_at, created_at, updated_at"
                 )
                 now = datetime.now(timezone.utc).isoformat()
                 params = (
                     project_id, category_id, data["title"], slug, language, version, data["markdown_content"],
-                    data["order"], published_value, now, now,
+                    data["order"], published_value, data["reviewed_by"], data["reviewed_at"], now, now,
                 )
+                placeholders = ",".join([p] * len(params))
                 if db.is_postgres():
                     row = conn.execute(
-                        f"INSERT INTO pages ({columns}) "
-                        f"VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                        f"INSERT INTO pages ({columns}) VALUES ({placeholders}) RETURNING id",
                         params,
                     ).fetchone()
                     page_id = row[0]
                 else:
                     cursor = conn.execute(
-                        f"INSERT INTO pages ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})",
+                        f"INSERT INTO pages ({columns}) VALUES ({placeholders})",
                         params,
                     )
                     page_id = cursor.lastrowid

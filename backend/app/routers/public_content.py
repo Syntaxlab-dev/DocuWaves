@@ -32,6 +32,7 @@ from app.services import (
     content_versions,
     page_feedback_store,
     pages_store,
+    preview_links_store,
     projects_store,
     site_branding,
     site_languages,
@@ -248,6 +249,44 @@ def public_get_page(
         "versions": _versions_payload(
             project_slug, resolved, pages_store.page_versions(project["id"], page_slug, published_only=True)
         ),
+    }
+
+
+@router.get(
+    "/preview/{token}",
+    summary="One page behind a preview link, published or not",
+    description="The ONLY endpoint in this app that answers with an unpublished page to a caller with no "
+    "session, and it does so for exactly one page: the one its token names. It reads nothing else -- no "
+    "navigation, no sibling pages, no search, no other draft in the same category -- so a leaked link "
+    "exposes the page it was made for and nothing beyond it. An unknown, revoked or expired token is one "
+    "and the same 404, so whoever holds a dead link learns only that it is dead.",
+)
+def public_preview(token: str):
+    link = preview_links_store.verify(token)
+    if link is None:
+        raise HTTPException(status_code=404, detail="This preview link is not valid, or has expired.")
+    project = projects_store.get_project_by_slug(link["project_slug"], link["language"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    # By slug and EXACT language, with no published filter and no language
+    # fallback. Both of those are reader conveniences on the public site;
+    # here they would be wrong. The link was made while looking at one
+    # translation of one page, and that is the text somebody was asked to
+    # read -- quietly serving a different language's version of it would be
+    # showing them something nobody sent them.
+    page = pages_store.get_page_by_slug(project["id"], link["page_slug"], link["language"], link["version"])
+    if page is None:
+        # The page was renamed (its slug moved) or deleted after the link was
+        # made. Same 404 as a bad token: there is nothing here to show.
+        raise HTTPException(status_code=404, detail="This preview link no longer points at a page.")
+    category = categories_store.get_category(page["category_id"], link["language"])
+    return {
+        "project": project,
+        "category": category,
+        "page": page,
+        # So the page can say how long it is readable for, rather than
+        # simply stopping one day with a 404 the reader has to guess at.
+        "expires_at": link["expires_at"],
     }
 
 

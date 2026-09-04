@@ -32,7 +32,9 @@ from app.services import (
     content_sync,
     content_versions,
     git_content_repo,
+    page_templates,
     pages_store,
+    preview_links_store,
     projects_store,
     site_branding,
     site_languages,
@@ -430,6 +432,21 @@ def admin_find_page(project_slug: str, page_slug: str, language: str = "", versi
     return {"page": page, "languages": languages, "frozen": content_versions.is_frozen(project_slug, resolved)}
 
 
+@router.get(
+    "/page-templates",
+    summary="The skeletons a new page can start from",
+    description="Four structures -- a how-to, an API reference, release notes, a course module -- each with "
+    "its Markdown body included, so picking one costs no second request. `language` is which language to "
+    "write them in: a template becomes the body of a page, so it has to arrive in the language that page is "
+    "in. Unlike every other language parameter in this router, an unconfigured code is NOT an error here -- "
+    "it falls back to English. It is a hint about wording, not a decision about which file gets written, and "
+    "an instance that never configured `languages:` has no code to send but still has an interface language "
+    "worth taking as the guess.",
+)
+def admin_page_templates(language: str = ""):
+    return {"templates": page_templates.list_templates(language)}
+
+
 @router.post("/pages")
 def admin_create_page(body: PageIn, request: Request):
     _require_content_repo()
@@ -502,7 +519,19 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
     # that kept using the old one (the editor did, for the publish call it
     # makes right after saving) got a 404 on a save that had in fact
     # succeeded, and lost whatever it was trying to set.
-    return {"ok": True, "id": updated["id"] if updated else page_id, "slug": updated["slug"] if updated else slug}
+    # The review note travels back with the save because the save may have
+    # REMOVED it: editing the body drops the note (see pages_store.update_page),
+    # and an editor that kept showing "reviewed by ..." after the very edit
+    # that invalidated it would be showing the one thing this rule exists to
+    # prevent. Returned rather than re-fetched, so the editor needs no second
+    # round trip to find out what it is now looking at.
+    return {
+        "ok": True,
+        "id": updated["id"] if updated else page_id,
+        "slug": updated["slug"] if updated else slug,
+        "reviewed_by": updated["reviewed_by"] if updated else "",
+        "reviewed_at": updated["reviewed_at"] if updated else "",
+    }
 
 
 @router.post("/pages/{page_id}/publish")
@@ -517,6 +546,34 @@ def admin_publish_page(page_id: int, published: bool, request: Request):
     return {"ok": True}
 
 
+class ReviewIn(BaseModel):
+    # Empty = take the note off. The date is never a parameter: it is the
+    # instance's own, see pages_store.set_review.
+    reviewed_by: str = ""
+
+
+@router.post(
+    "/pages/{page_id}/review",
+    summary="Mark this page as reviewed, or take the note off again",
+    description="Writes `reviewed_by` and today's date into the page's frontmatter, per language -- a "
+    "translation is a different text and is reviewed separately. Send an empty `reviewed_by` to remove the "
+    "note. This is a NOTE, not a signature: it establishes nothing about identity and carries no legal or "
+    "regulatory weight. It is dropped automatically the next time the page's body is edited, so a note that "
+    "is present always refers to the words currently on the page.",
+)
+def admin_review_page(page_id: int, body: ReviewIn, request: Request):
+    _require_content_repo()
+    if pages_store.get_page(page_id) is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    try:
+        page = pages_store.set_review(page_id, body.reviewed_by, _author(request))
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    if page is None:
+        raise HTTPException(status_code=500, detail="The note was saved but could not be read back -- check the server log.")
+    return {"reviewed_by": page["reviewed_by"], "reviewed_at": page["reviewed_at"]}
+
+
 @router.post("/pages/{page_id}/move")
 def admin_move_page(page_id: int, direction: int, request: Request):
     _require_content_repo()
@@ -529,6 +586,79 @@ def admin_move_page(page_id: int, direction: int, request: Request):
         pages_store.reorder_page(page["category_id"], page_id, direction, _author(request))
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
+# ---- Preview links ----
+#
+# A link that shows ONE unpublished page to somebody with no login here,
+# until a date. See services/preview_links_store.py for what it is and, at
+# more length, what it deliberately is not.
+
+
+class PreviewLinkIn(BaseModel):
+    days: int = preview_links_store.DEFAULT_DAYS
+
+
+def _preview_target(page_id: int) -> tuple[dict, dict]:
+    """(page row, project row) for a page that exists, or 404. A preview
+    link names its page by slug, so both are needed to make or list one."""
+    page = pages_store.get_page(page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    project = projects_store.get_project(page["project_id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return page, project
+
+
+@router.get(
+    "/pages/{page_id}/preview-links",
+    summary="The live preview links for this page, in this language",
+    description="Never the tokens themselves -- those exist once, in the answer to the create call. Expired "
+    "links are deleted rather than listed. Per LANGUAGE, like everything else about a page: a link is to one "
+    "translation, because that is the text somebody was asked to read.",
+)
+def admin_list_preview_links(page_id: int):
+    page, project = _preview_target(page_id)
+    return {
+        "links": preview_links_store.list_for_page(
+            project["slug"], page["slug"], page["language"], page["version"]
+        ),
+        "max_links": preview_links_store.MAX_LINKS_PER_PAGE,
+        "max_days": preview_links_store.MAX_DAYS,
+        "default_days": preview_links_store.DEFAULT_DAYS,
+    }
+
+
+@router.post(
+    "/pages/{page_id}/preview-links",
+    summary="Make a preview link for this page",
+    description="Answers with the token ONCE -- it is stored only as a hash, so it cannot be shown again; a "
+    "lost link is replaced by making another. `days` is clamped to 1-90: there is deliberately no link that "
+    "never expires, because a draft's audience is a conversation and not the public. 409 when the page "
+    "already has the maximum number of live links, which means one should be revoked rather than the limit "
+    "raised.",
+)
+def admin_create_preview_link(page_id: int, body: PreviewLinkIn, request: Request):
+    page, project = _preview_target(page_id)
+    link = preview_links_store.create(
+        project["slug"], page["slug"], page["language"], page["version"],
+        body.days, _author(request),
+    )
+    if link is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This page already has {preview_links_store.MAX_LINKS_PER_PAGE} preview links. "
+            "Revoke one before making another.",
+        )
+    return link
+
+
+@router.delete("/preview-links/{link_id}", summary="Revoke one preview link")
+def admin_revoke_preview_link(link_id: int):
+    if not preview_links_store.revoke(link_id):
+        raise HTTPException(status_code=404, detail="Preview link not found.")
     return {"ok": True}
 
 

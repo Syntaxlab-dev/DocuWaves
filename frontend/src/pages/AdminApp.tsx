@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  BadgeCheck,
   Copy,
   Eye,
   EyeOff,
@@ -21,6 +22,7 @@ import {
   GitBranch,
   ImagePlus,
   KeyRound,
+  Link2,
   Moon,
   Pencil,
   Plus,
@@ -52,7 +54,9 @@ import {
   type LocalizedText,
   type Page,
   type PageHistory,
+  type PageTemplate,
   type PageVersion,
+  type PreviewLink,
   type Project,
   type SiteAsset,
   type SiteBranding,
@@ -69,6 +73,7 @@ import {
   type PageDraft,
 } from "@/lib/drafts";
 import { useI18n } from "@/lib/i18n";
+import { formatIsoDate } from "@/lib/dates";
 import { languageName } from "@/lib/lang";
 import { normalizeVersionId } from "@/lib/version";
 import { logoForTheme, useDocumentTitle, useSite } from "@/lib/site";
@@ -2207,6 +2212,18 @@ function PageEditor({
   /** Bumped after an upload so the image panel below re-lists the project's
    *  assets: a file pasted into the textarea belongs in its thumbnails too. */
   const [assetsKey, setAssetsKey] = useState(0);
+  /** The four page skeletons, for the language being written, or null until
+   *  they have been asked for. Kept WITH the language they were fetched in:
+   *  switching tabs has to fetch them again (a German page must not be
+   *  started from English headings), and holding the code next to the list
+   *  is what says whether the one in hand is still the right one. */
+  const [templates, setTemplates] = useState<{ language: string; list: PageTemplate[] } | null>(null);
+  /** The page's review note as the server last told us. Kept in state rather
+   *  than read from a loaded page object, because a save can REMOVE it: the
+   *  backend drops the note whenever the body changes, and the PUT answers
+   *  with what the note is now. */
+  const [reviewedBy, setReviewedBy] = useState("");
+  const [reviewedAt, setReviewedAt] = useState("");
   /** Fingerprint of the text the SERVER last handed us. A draft records the
    *  one it was started from, and the two disagreeing is what says the page
    *  moved underneath the draft -- see lib/drafts.ts. */
@@ -2276,6 +2293,8 @@ function PageEditor({
       setPublished(false);
       setLoadedId(null);
       setExisting([]);
+      setReviewedBy("");
+      setReviewedAt("");
       offerDraft(localDraftKey, "", "");
       return;
     }
@@ -2288,6 +2307,8 @@ function PageEditor({
         setTargetCategoryId(page.page.category_id);
         setPublished(page.page.published);
         setLoadedId(page.page.id);
+        setReviewedBy(page.page.reviewed_by);
+        setReviewedAt(page.page.reviewed_at);
         offerDraft(localDraftKey, page.page.title, page.page.markdown_content);
       } else {
         // This language has no version yet: an empty editor, but on the
@@ -2296,6 +2317,8 @@ function PageEditor({
         setContent("");
         setPublished(false);
         setLoadedId(null);
+        setReviewedBy("");
+        setReviewedAt("");
         offerDraft(localDraftKey, "", "");
       }
     });
@@ -2352,6 +2375,48 @@ function PageEditor({
       flushDraft.current();
     };
   }, []);
+
+  /** An empty page is the only page a template can start: applying one
+   *  REPLACES the body, and doing that to text somebody has written would be
+   *  the single most destructive button in this editor. So the picker is
+   *  only fetched -- and only rendered -- while there is nothing to destroy,
+   *  and it disappears the moment the first character is typed.
+   *
+   *  A failed fetch is swallowed on purpose. The templates are a convenience
+   *  on top of a textarea that works perfectly without them; an error toast
+   *  over a blank editor would be reporting a problem the author does not
+   *  have. */
+  const blank = content.trim() === "";
+  /** Which language to write the templates in: the page's own content
+   *  language when it has one, the interface language otherwise. An instance
+   *  that never configured `languages:` writes its pages in SOME language
+   *  and has no code to say which -- and on such an instance the person at
+   *  the admin UI is the one writing them, so what their interface is set to
+   *  is the best guess available. The endpoint treats it as a hint and falls
+   *  back to English rather than refusing a code it doesn't know. */
+  const templateLanguage = language || uiLang;
+  useEffect(() => {
+    if (readOnly || !blank || templates?.language === templateLanguage) return;
+    let current = true;
+    api
+      .adminPageTemplates(templateLanguage)
+      .then((result) => {
+        if (current) setTemplates({ language: templateLanguage, list: result.templates });
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [blank, templateLanguage, readOnly, templates]);
+
+  function applyTemplate(template: PageTemplate) {
+    setContent(template.markdown);
+    setDirty(true);
+    setTab("edit");
+    // Caret at the very top, on the title placeholder -- which is the first
+    // thing every one of these templates asks to be replaced.
+    focusAt(0);
+  }
 
   function onRestoreDraft() {
     if (!draftOffer) return;
@@ -2426,6 +2491,9 @@ function PageEditor({
         // author just toggled.
         await api.adminPublishPage(saved.id, published);
         setLoadedId(saved.id);
+        // May well be empty now: editing the body drops the review note.
+        setReviewedBy(saved.reviewed_by);
+        setReviewedAt(saved.reviewed_at);
       }
       setDirty(false);
       // The text is in the content repo now, so the local copy of it has
@@ -2760,6 +2828,23 @@ function PageEditor({
         </Button>
       </div>
 
+      {/* Directly under the title and the publish toggle, because it belongs
+          to the same set of facts about this page: is it public, and has
+          anyone checked it. Only for a page that has been saved -- a note is
+          about a text, and an unsaved editor has none yet. */}
+      {loadedId !== null && (
+        <ReviewNote
+          pageId={loadedId}
+          reviewedBy={reviewedBy}
+          reviewedAt={reviewedAt}
+          readOnly={readOnly}
+          onChanged={(by, at) => {
+            setReviewedBy(by);
+            setReviewedAt(at);
+          }}
+        />
+      )}
+
       <div className="mt-3 flex gap-1 border-b border-[var(--border)]">
         <button
           type="button"
@@ -2794,6 +2879,31 @@ function PageEditor({
           {t("admin.historyTab")}
         </button>
       </div>
+
+      {/* Only while the body is empty, and gone for good once it isn't:
+          applying a template replaces the whole text. Placed under the tabs
+          rather than in a dialog on "new page", so it is equally available
+          on an empty TRANSLATION tab -- which is a blank page too, and the
+          one an author is most likely to want a structure for. */}
+      {!readOnly && blank && templates && templates.list.length > 0 && (
+        <div className="mt-3 rounded-lg border border-dashed border-[var(--border)] px-3 py-2">
+          <div className="text-xs font-medium">{t("admin.templatesTitle")}</div>
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {templates.list.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                title={template.description}
+                onClick={() => applyTemplate(template)}
+                className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs hover:border-[var(--accent)] hover:text-[var(--accent)]"
+              >
+                {template.name}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-[var(--muted)]">{t("admin.templatesHint")}</p>
+        </div>
+      )}
 
       {/* The uploader writes into the version being EDITED, so it has no
           place on a frozen one -- and its "insert" would paste a snippet
@@ -2888,6 +2998,12 @@ function PageEditor({
         )}
       </div>
 
+      {/* Below the text rather than beside the publish toggle: making a link
+          is something an author does once the draft is worth showing, which
+          is after they have written it, not before. Nothing on a frozen
+          version -- there is no draft in a released version to preview. */}
+      {loadedId !== null && !readOnly && tab !== "history" && <PreviewLinksPanel pageId={loadedId} />}
+
       <div className="mt-3 flex gap-2">
         {/* No Save at all on a frozen version, rather than one that errors:
             the notice above the panels already says why, and the way to
@@ -2902,6 +3018,266 @@ function PageEditor({
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * "Reviewed by X on Y", or the button that makes it say that.
+ *
+ * The name is ASKED FOR, not taken. A one-click "mark as reviewed" would
+ * sign the note with the logged-in account -- which, on a single-account
+ * instance, is the account everybody shares, and the one thing this note has
+ * to get right is who. So it opens a prompt with that account name filled in
+ * and lets it be typed over: the person carrying a change into the repo is
+ * often not the person who read it.
+ *
+ * What this note is NOT -- an identity check, a signature, anything with
+ * legal or regulatory weight -- is said in full inside that prompt, which is
+ * the moment somebody could otherwise assume the opposite. Under the line
+ * itself only the short form stands: it is on screen during every edit of
+ * every page, and a four-line disclaimer in that position is one people stop
+ * reading by the second page.
+ */
+function ReviewNote({
+  pageId,
+  reviewedBy,
+  reviewedAt,
+  readOnly,
+  onChanged,
+}: {
+  pageId: number;
+  reviewedBy: string;
+  reviewedAt: string;
+  readOnly: boolean;
+  onChanged: (reviewedBy: string, reviewedAt: string) => void;
+}) {
+  const { t, lang: uiLang } = useI18n();
+  const { status } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const has = Boolean(reviewedBy && reviewedAt);
+
+  async function write(name: string) {
+    setBusy(true);
+    try {
+      const result = await api.adminReviewPage(pageId, name);
+      onChanged(result.reviewed_by, result.reviewed_at);
+      toast.success(name ? t("admin.reviewSaved") : t("admin.reviewCleared"));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onMark() {
+    const name = prompt(t("admin.reviewPrompt"), status?.username ?? "");
+    // Cancel is null and must do nothing; an empty string typed on purpose
+    // is not a way to clear the note either -- that is what the button next
+    // to the note is for, and it says what it does.
+    if (!name || !name.trim()) return;
+    void write(name.trim());
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--muted)]">
+      <BadgeCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+      <span>
+        {has
+          ? t("admin.reviewBy")
+              .replace("{name}", reviewedBy)
+              .replace("{date}", formatIsoDate(reviewedAt, uiLang))
+          : t("admin.reviewNone")}
+      </span>
+      {!readOnly && (
+        <>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onMark}
+            className="underline underline-offset-2 hover:text-[var(--accent)] disabled:opacity-50"
+          >
+            {t("admin.reviewMark")}
+          </button>
+          {has && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void write("")}
+              className="underline underline-offset-2 hover:text-[var(--accent)] disabled:opacity-50"
+            >
+              {t("admin.reviewClear")}
+            </button>
+          )}
+        </>
+      )}
+      <span className="w-full text-[var(--muted)]">{t("admin.reviewHint")}</span>
+    </div>
+  );
+}
+
+/**
+ * The links that let somebody without a login read this one draft.
+ *
+ * A `<details>`, closed by default: most saves have nothing to do with
+ * sharing, and a panel that is open on every page would be a permanent
+ * invitation to hand out links. Its contents are only fetched when it is
+ * opened, so the ordinary edit costs no request for it.
+ *
+ * A created link is shown ONCE and never again -- the server keeps only its
+ * hash, exactly like an API token. The list below it is therefore a list of
+ * links that EXIST, with their dates, not a list of links to copy: what a
+ * lost one costs is one click to make another.
+ */
+function PreviewLinksPanel({ pageId }: { pageId: number }) {
+  const { t, lang: uiLang } = useI18n();
+  const [links, setLinks] = useState<PreviewLink[] | null>(null);
+  const [defaults, setDefaults] = useState({ max_days: 90, default_days: 7 });
+  /** null until the server has said what its default is, so the number in
+   *  the box is the one the backend would have used anyway -- and is never
+   *  overwritten again once the author has changed it. */
+  const [days, setDays] = useState<number | null>(null);
+  const [created, setCreated] = useState<{ url: string; expires_at: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  async function load() {
+    try {
+      const result = await api.adminListPreviewLinks(pageId);
+      setLinks(result.links);
+      setDefaults({ max_days: result.max_days, default_days: result.default_days });
+      setDays((current) => current ?? result.default_days);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+      setLinks([]);
+    }
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    void load();
+    // pageId is in the deps because saving a renamed page hands the editor a
+    // NEW id for the same page (the reindex reassigns it), and the panel has
+    // to follow it rather than keep listing the old row's links.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, pageId]);
+
+  // Closing the panel drops the one-time link from the screen. It is not
+  // recoverable, and leaving it lying open in a shared screen-share for the
+  // rest of the session is not the same thing as showing it once.
+  useEffect(() => {
+    if (!open) setCreated(null);
+  }, [open]);
+
+  async function onCreate() {
+    setBusy(true);
+    try {
+      const link = await api.adminCreatePreviewLink(pageId, days ?? defaults.default_days);
+      setCreated({ url: `${window.location.origin}${link.url_path}`, expires_at: link.expires_at });
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRevoke(id: number) {
+    try {
+      await api.adminRevokePreviewLink(id);
+      toast.success(t("admin.previewLinkRevoked"));
+      await load();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
+  }
+
+  async function onCopy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(t("admin.tokenCopied"));
+    } catch {
+      // Clipboard access needs a secure context, which a LAN install on
+      // plain http has none of. The link is on screen to select by hand.
+      toast.error(t("admin.tokenCopyFailed"));
+    }
+  }
+
+  return (
+    <details
+      className="mt-3 rounded-lg border border-[var(--border)] px-3 py-2"
+      onToggle={(event) => setOpen((event.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary className="flex cursor-pointer items-center gap-1.5 text-sm font-medium">
+        <Link2 className="h-3.5 w-3.5" aria-hidden="true" />
+        {t("admin.previewLinks")}
+      </summary>
+
+      <p className="mt-2 text-xs text-[var(--muted)]">{t("admin.previewLinksHint")}</p>
+      <p className="mt-1 text-xs text-[var(--muted)]">{t("admin.previewLinkEndsWhen")}</p>
+
+      {created && (
+        <div className="mt-2 flex flex-col gap-1.5 rounded-lg border border-amber-500/60 bg-amber-500/10 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="min-w-0 flex-1 break-all rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 font-mono text-xs">
+              {created.url}
+            </code>
+            <Button variant="outline" size="sm" onClick={() => void onCopy(created.url)}>
+              <Copy className="h-3.5 w-3.5" />
+              {t("admin.previewLinkCopy")}
+            </Button>
+          </div>
+          <span className="text-xs text-[var(--muted)]">{t("admin.previewLinkOnce")}</span>
+          <span className="text-xs text-[var(--muted)]">
+            {t("admin.previewLinkExpires").replace("{date}", formatIsoDate(created.expires_at, uiLang))}
+          </span>
+        </div>
+      )}
+
+      <div className="mt-2 flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.previewLinkDays")}
+          <Input
+            type="number"
+            min={1}
+            max={defaults.max_days}
+            value={days ?? defaults.default_days}
+            onChange={(e) => setDays(Number(e.target.value))}
+            className="h-8 w-24"
+          />
+        </label>
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => void onCreate()}>
+          <Plus className="h-3.5 w-3.5" />
+          {t("admin.previewLinkNew")}
+        </Button>
+      </div>
+
+      {links === null ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">{t("common.loading")}</p>
+      ) : links.length === 0 ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">{t("admin.previewLinkNone")}</p>
+      ) : (
+        <div className="mt-2 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+          {links.map((link) => (
+            <div key={link.id} className="flex items-center gap-2 px-2.5 py-1.5 text-xs">
+              <span className="flex-1">
+                {t("admin.previewLinkExpires").replace("{date}", formatIsoDate(link.expires_at, uiLang))}
+                {link.created_by
+                  ? ` · ${t("admin.previewLinkCreatedBy").replace("{name}", link.created_by)}`
+                  : ""}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6"
+                onClick={() => void onRevoke(link.id)}
+              >
+                {t("admin.previewLinkRevoke")}
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+    </details>
   );
 }
 

@@ -78,6 +78,13 @@ const de = {
   "page.fallbackBadge": "Nur auf ",
   "page.fallbackBadgeSuffix": " verfügbar",
   "page.lastUpdated": "Zuletzt aktualisiert:",
+  "page.reviewedBy": "Geprüft von {name} am {date}",
+  "preview.badge": "Entwurfs-Vorschau",
+  "preview.notice":
+    "Diese Seite ist eine Vorschau über einen geteilten Link. Sie ist nicht Teil der öffentlichen Dokumentation und kann sich noch ändern.",
+  "preview.published": "Diese Seite ist inzwischen veröffentlicht — die öffentliche Fassung steht in der Dokumentation.",
+  "preview.expires": "Dieser Link gilt bis {date}.",
+  "preview.invalid": "Dieser Vorschaulink ist ungültig, wurde zurückgezogen oder ist abgelaufen.",
   "notFound.title": "Seite nicht gefunden",
   "notFound.body":
     "Zu dieser Adresse gibt es keine veröffentlichte Seite. Möglicherweise wurde sie umbenannt, entfernt — oder sie ist noch ein Entwurf.",
@@ -151,6 +158,36 @@ const de = {
   "admin.draftDiscard": "Entwurf verwerfen",
   "admin.draftRestored": "Entwurf wiederhergestellt — noch nicht gespeichert.",
   "admin.draftDiscarded": "Entwurf verworfen.",
+  "admin.templatesTitle": "Mit einer Vorlage anfangen",
+  "admin.templatesHint":
+    "Setzt eine Struktur ein — Überschriften und Platzhalter zum Überschreiben, kein fertiger Text. Wird nur angeboten, solange die Seite leer ist, denn Einsetzen ersetzt den ganzen Inhalt.",
+  "admin.reviewTitle": "Freigabe-Vermerk",
+  "admin.reviewNone": "Kein Vermerk",
+  "admin.reviewMark": "Als geprüft vermerken",
+  "admin.reviewBy": "Geprüft von {name} am {date}",
+  "admin.reviewClear": "Vermerk entfernen",
+  "admin.reviewPrompt":
+    "Wer hat diese Seite geprüft?\n\nDer Name erscheint mit dem heutigen Datum unter der Seite. Das ist ein Vermerk, keine Unterschrift: er weist niemanden aus und hat keine rechtliche Wirkung. Er gilt nur für diese Sprache und verfällt automatisch, sobald der Text bearbeitet wird.",
+  "admin.reviewHint": "Vermerk, keine Unterschrift — verfällt, sobald der Text bearbeitet wird.",
+  "admin.reviewSaved": "Vermerk gesetzt.",
+  "admin.reviewCleared": "Vermerk entfernt.",
+  "admin.reviewNotSavedYet": "Erst speichern — ein Vermerk gehört zu einem Text, den es schon gibt.",
+  "admin.previewLinks": "Entwurfs-Vorschau",
+  "admin.previewLinksHint":
+    "Ein Link, über den jemand ohne Zugang hier genau diese eine Seite liest — auch unveröffentlicht, bis zum Ablaufdatum. Er erreicht sonst nichts: keine Navigation, keine Suche, keine anderen Entwürfe.",
+  "admin.previewLinkNew": "Link erstellen",
+  "admin.previewLinkDays": "Gültig (Tage)",
+  "admin.previewLinkOnce":
+    "Jetzt kopieren — der Link wird nur dieses eine Mal angezeigt. Gespeichert wird nur seine Prüfsumme; ein verlorener Link wird durch einen neuen ersetzt.",
+  "admin.previewLinkNone": "Noch kein Vorschaulink für diese Seite.",
+  "admin.previewLinkExpires": "gültig bis {date}",
+  "admin.previewLinkCreatedBy": "erstellt von {name}",
+  "admin.previewLinkRevoke": "Zurückziehen",
+  "admin.previewLinkRevoked": "Vorschaulink zurückgezogen.",
+  "admin.previewLinkCopy": "Link kopieren",
+  "admin.previewLinkNotSavedYet": "Erst speichern — ein Vorschaulink zeigt auf eine gespeicherte Seite.",
+  "admin.previewLinkEndsWhen":
+    "Ein Link endet mit seinem Datum, durch Zurückziehen, oder wenn die Seite gelöscht wird. Beim Umbenennen der Seite bleibt er gültig.",
   "admin.branding": "Branding",
   "admin.brandingIntro":
     "Name, Logo, Farbe und Fußzeile dieser Instanz. Wird als _site.yml im Content-Repo gespeichert — also versioniert, per Pull Request änderbar und pro Instanz eigenständig.",
@@ -359,6 +396,13 @@ const en: Dict = {
   "page.fallbackBadge": "Only in ",
   "page.fallbackBadgeSuffix": "",
   "page.lastUpdated": "Last updated:",
+  "page.reviewedBy": "Reviewed by {name} on {date}",
+  "preview.badge": "Draft preview",
+  "preview.notice":
+    "This page is a preview behind a shared link. It is not part of the published documentation and may still change.",
+  "preview.published": "This page has since been published -- the public version is in the documentation.",
+  "preview.expires": "This link is valid until {date}.",
+  "preview.invalid": "This preview link is not valid, has been revoked, or has expired.",
   "notFound.title": "Page not found",
   "notFound.body":
     "There's no published page at this address. It may have been renamed, removed -- or it's still a draft.",
@@ -432,6 +476,36 @@ const en: Dict = {
   "admin.draftDiscard": "Discard the draft",
   "admin.draftRestored": "Draft restored -- not saved yet.",
   "admin.draftDiscarded": "Draft discarded.",
+  "admin.templatesTitle": "Start from a template",
+  "admin.templatesHint":
+    "Inserts a structure -- headings and placeholders to overwrite, not finished text. Only offered while the page is empty, because inserting one replaces the whole body.",
+  "admin.reviewTitle": "Review note",
+  "admin.reviewNone": "No note",
+  "admin.reviewMark": "Mark as reviewed",
+  "admin.reviewBy": "Reviewed by {name} on {date}",
+  "admin.reviewClear": "Remove the note",
+  "admin.reviewPrompt":
+    "Who reviewed this page?\n\nThe name appears under the page with today's date. This is a note, not a signature: it establishes nothing about identity and carries no legal weight. It applies to this language only, and is dropped automatically as soon as the text is edited.",
+  "admin.reviewHint": "A note, not a signature -- dropped as soon as the text is edited.",
+  "admin.reviewSaved": "Note added.",
+  "admin.reviewCleared": "Note removed.",
+  "admin.reviewNotSavedYet": "Save first -- a note belongs to a text that already exists.",
+  "admin.previewLinks": "Draft preview",
+  "admin.previewLinksHint":
+    "A link that lets somebody with no login here read this one page -- unpublished included -- until it expires. It reaches nothing else: no navigation, no search, no other drafts.",
+  "admin.previewLinkNew": "Create a link",
+  "admin.previewLinkDays": "Valid for (days)",
+  "admin.previewLinkOnce":
+    "Copy it now -- the link is shown this once. Only its checksum is stored; a lost link is replaced by making another.",
+  "admin.previewLinkNone": "No preview link for this page yet.",
+  "admin.previewLinkExpires": "valid until {date}",
+  "admin.previewLinkCreatedBy": "created by {name}",
+  "admin.previewLinkRevoke": "Revoke",
+  "admin.previewLinkRevoked": "Preview link revoked.",
+  "admin.previewLinkCopy": "Copy the link",
+  "admin.previewLinkNotSavedYet": "Save first -- a preview link points at a saved page.",
+  "admin.previewLinkEndsWhen":
+    "A link ends on its date, when it is revoked, or when the page is deleted. Renaming the page does not break it.",
   "admin.branding": "Branding",
   "admin.brandingIntro":
     "This instance's name, logo, colour and footer. Stored as _site.yml in the content repo -- versioned, changeable by pull request, and its own per instance.",
