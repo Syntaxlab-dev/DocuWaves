@@ -14,7 +14,7 @@
     "clsx": "^2.1.1",
     "highlight.js": "^11.11.1",
     "katex": "^0.18.5",
-    "lucide-react": "^1.35.0",
+    "lucide-react": "^1.39.0",
     "mermaid": "^11.17.2",
     "qrcode-generator": "^2.0.4",
     "react": "^19.2.8",
