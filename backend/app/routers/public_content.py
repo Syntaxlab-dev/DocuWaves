@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from fastapi.responses import FileResponse
 
 from app.services import (
+from app.services.client_address import client_address
     categories_store,
     content_assets,
     doc_chat,
@@ -279,14 +280,17 @@ def public_chat(body: ChatIn, request: Request, lang: str | None = _LANG_QUERY):
     question = body.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="empty_question")
-    try:
-        return doc_chat.ask(question, _language(lang), body.project.strip(), body.version.strip())
-    except doc_chat.ChatError as exc:
-        # The reason is a short token the frontend turns into a sentence in
-        # the reader's own language; the provider's own error text stays in
-        # the log, where the operator will look. A reader cannot act on
-        # "429 from api.example.com" and it is not theirs to see.
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    with doc_chat.answer_slot() as got_slot:
+        if not got_slot:
+            raise HTTPException(status_code=503, detail="chat_busy", headers={"Retry-After": "10"})
+        try:
+            return doc_chat.ask(question, _language(lang), body.project.strip(), body.version.strip())
+        except doc_chat.ChatError as exc:
+            # The reason is a short token the frontend turns into a sentence in
+            # the reader's own language; the provider's own error text stays in
+            # the log, where the operator will look. A reader cannot act on
+            # "429 from api.example.com" and it is not theirs to see.
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.get(
@@ -453,11 +457,8 @@ class FeedbackIn(BaseModel):
 
 def _client_key(request: Request) -> str:
     """Whoever is calling, as well as this app can tell behind a proxy. Used
-    only to count votes per minute, never stored."""
-    forwarded = request.headers.get("x-forwarded-for", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    return request.client.host if request.client else ""
+    only to count questions and votes per minute, never stored."""
+    return client_address(request)
 
 
 @router.post("/feedback", summary="Record a 'was this page helpful?' answer")

@@ -71,9 +71,11 @@ export function DocChat() {
       setError(
         reason === "too_many_questions"
           ? t("chat.tooMany")
-          : reason === "timeout"
-            ? t("chat.timeout")
-            : t("chat.failed"),
+          : reason === "chat_busy"
+            ? t("chat.busy")
+            : reason === "timeout"
+              ? t("chat.timeout")
+              : t("chat.failed"),
       );
     } finally {
       setBusy(false);

@@ -133,6 +133,7 @@ const de = {
   "chat.noSources":
     "Dazu findet sich in dieser Dokumentation nichts. Es wurde deshalb auch kein Modell gefragt — eine erfundene Antwort wäre schlechter als gar keine. Probier andere Wörter oder die Suche oben.",
   "chat.tooMany": "Zu viele Fragen in kurzer Zeit. Bitte kurz warten.",
+  "chat.busy": "Gerade beantworten wir viele Fragen gleichzeitig. Bitte versuche es in ein paar Sekunden noch einmal.",
   "chat.timeout": "Das Modell hat nicht rechtzeitig geantwortet. Bitte nochmal versuchen.",
   "chat.failed": "Das hat gerade nicht geklappt. Die Suche oben funktioniert unabhängig davon.",
   "feedback.question": "War diese Seite hilfreich?",
@@ -557,6 +558,7 @@ const en: Dict = {
   "chat.noSources":
     "Nothing in this documentation covers that. No model was asked, because an invented answer would be worse than none. Try other words, or the search box above.",
   "chat.tooMany": "That is a lot of questions at once. Please wait a moment.",
+  "chat.busy": "Lots of questions are being answered right now. Please try again in a few seconds.",
   "chat.timeout": "The model did not answer in time. Please try again.",
   "chat.failed": "That did not work just now. The search box above works independently of this.",
   "feedback.question": "Was this page helpful?",

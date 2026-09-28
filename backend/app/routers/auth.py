@@ -4,7 +4,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.services import oidc_client, session_registry_store, users_store
+from app.services import login_throttle, oidc_client, session_registry_store, users_store
+from app.services.client_address import client_address
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -20,7 +21,18 @@ class PasswordChange(BaseModel):
 
 
 def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    return client_address(request) or "unknown"
+
+
+def _refuse_if_throttled(address: str, username: str) -> None:
+    wait = login_throttle.retry_after(address, username)
+    if wait:
+        minutes = max(1, -(-wait // 60))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Try again in {minutes} minute{'s' if minutes != 1 else ''}.",
+            headers={"Retry-After": str(wait)},
+        )
 
 
 def _start_session(request: Request, username: str) -> None:
@@ -64,8 +76,12 @@ def auth_setup(body: Credentials, request: Request):
 @router.post("/login", summary="Admin login")
 def auth_login(body: Credentials, request: Request):
     username = body.username.strip()
+    address = client_address(request)
+    _refuse_if_throttled(address, username)
     if not users_store.verify_credentials(username, body.password):
+        login_throttle.record_failure(address, username)
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
+    login_throttle.record_success(username)
     _start_session(request, username)
     return {"ok": True}
 
@@ -84,7 +100,10 @@ def change_password(body: PasswordChange, request: Request):
     username = request.session.get("username")
     if not username:
         raise HTTPException(status_code=401, detail="Not logged in.")
+    address = client_address(request)
+    _refuse_if_throttled(address, username)
     if not users_store.verify_credentials(username, body.current_password):
+        login_throttle.record_failure(address, username)
         raise HTTPException(status_code=401, detail="Current password is incorrect.")
     if len(body.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password needs at least 8 characters.")
