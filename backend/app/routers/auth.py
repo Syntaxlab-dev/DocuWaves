@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from app.services import login_throttle, oidc_client, session_registry_store, users_store
 from app.services.client_address import client_address
+from app.services.same_origin import is_same_origin
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -22,6 +23,13 @@ class PasswordChange(BaseModel):
 
 def _client_ip(request: Request) -> str:
     return client_address(request) or "unknown"
+
+
+def _refuse_cross_site(request: Request) -> None:
+    # These routes are exempt from the admin middleware (they are how a
+    # session starts, ends or changes), so they check the origin themselves.
+    if not is_same_origin(request):
+        raise HTTPException(status_code=403, detail="cross_site_request")
 
 
 def _refuse_if_throttled(address: str, username: str) -> None:
@@ -64,6 +72,7 @@ def auth_status(request: Request):
 
 @router.post("/setup", summary="First-run admin account setup")
 def auth_setup(body: Credentials, request: Request):
+    _refuse_cross_site(request)
     if users_store.is_configured():
         raise HTTPException(status_code=409, detail="An admin account already exists.")
     if not body.username.strip() or len(body.password) < 8:
@@ -75,6 +84,7 @@ def auth_setup(body: Credentials, request: Request):
 
 @router.post("/login", summary="Admin login")
 def auth_login(body: Credentials, request: Request):
+    _refuse_cross_site(request)
     username = body.username.strip()
     address = client_address(request)
     _refuse_if_throttled(address, username)
@@ -88,6 +98,7 @@ def auth_login(body: Credentials, request: Request):
 
 @router.post("/logout", summary="Logout")
 def auth_logout(request: Request):
+    _refuse_cross_site(request)
     session_id = request.session.get("session_id")
     if session_id:
         session_registry_store.revoke(session_id)
@@ -97,8 +108,13 @@ def auth_logout(request: Request):
 
 @router.post("/password", summary="Change the admin password")
 def change_password(body: PasswordChange, request: Request):
+    _refuse_cross_site(request)
     username = request.session.get("username")
-    if not username:
+    session_id = request.session.get("session_id")
+    # Exempt from the middleware, so the session registry is checked here:
+    # a session that was revoked (account deleted, signed out elsewhere) must
+    # not still be able to change the password.
+    if not username or not session_id or not session_registry_store.exists(session_id):
         raise HTTPException(status_code=401, detail="Not logged in.")
     address = client_address(request)
     _refuse_if_throttled(address, username)
@@ -108,7 +124,10 @@ def change_password(body: PasswordChange, request: Request):
     if len(body.new_password) < 8:
         raise HTTPException(status_code=400, detail="New password needs at least 8 characters.")
     users_store.set_password(username, body.new_password)
-    return {"ok": True}
+    # A password is usually changed because it may have leaked; whatever
+    # session the leak was used to open ends here too. This one stays.
+    signed_out = session_registry_store.revoke_others(username, session_id)
+    return {"ok": True, "other_sessions_signed_out": signed_out}
 
 
 def _oidc_redirect_uri(request: Request) -> str:
@@ -155,6 +174,17 @@ def oidc_callback(request: Request):
     except oidc_client.OidcError:
         return RedirectResponse("/?oidc_login=failed")
 
+    subject = oidc_client.subject_from_claims(claims)
+    if not subject:
+        return RedirectResponse("/?oidc_login=failed")
+
+    # An account already bound to this identity: that account, whatever the
+    # provider now says the person's username or email is.
+    bound = users_store.get_user_by_oidc_subject(subject)
+    if bound is not None:
+        _start_session(request, bound["username"])
+        return RedirectResponse("/")
+
     username = oidc_client.username_from_claims(claims)
     if not username:
         return RedirectResponse("/?oidc_login=failed")
@@ -167,6 +197,7 @@ def oidc_callback(request: Request):
         # account is OIDC-only until the admin sets a real password from
         # the account settings page.
         users_store.create_first_admin(username, secrets.token_urlsafe(32))
+        users_store.bind_oidc_subject(username, subject)
         _start_session(request, username)
         return RedirectResponse("/")
 
@@ -180,6 +211,13 @@ def oidc_callback(request: Request):
     existing = users_store.get_user(username)
     if existing is None:
         return RedirectResponse("/?oidc_login=no_account")
-
+    # First SSO sign-in for this account: bind it to this identity from now
+    # on. An account already bound to a DIFFERENT identity is not taken over
+    # by somebody who merely carries the same username or email -- which is
+    # exactly what a person who can pick their own username at the provider
+    # would otherwise be able to do to an account called "admin".
+    if users_store.oidc_subject(username):
+        return RedirectResponse("/?oidc_login=failed")
+    users_store.bind_oidc_subject(username, subject)
     _start_session(request, username)
     return RedirectResponse("/")

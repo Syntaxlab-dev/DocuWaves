@@ -265,3 +265,38 @@ def verify_credentials(username: str, password: str) -> bool:
 # above costs the same bcrypt round the found-account branch does. Computed
 # once at import; the password is discarded.
 _DUMMY_HASH = bcrypt.hashpw(b"not-a-password", bcrypt.gensalt())
+
+
+# ---- Single sign-on binding ----
+#
+# An account is bound to ONE identity at the provider: its `sub`, the one
+# claim a provider guarantees is stable and never reassigned. Usernames and
+# email addresses are not -- at many providers a user can choose or change
+# them -- so after the first SSO sign-in they are no longer what decides
+# which account somebody gets. See routers/auth.py's oidc_callback.
+
+
+def get_user_by_oidc_subject(subject: str) -> dict | None:
+    if not subject:
+        return None
+    with db.get_connection() as conn:
+        row = conn.execute(
+            f"SELECT {_COLUMNS} FROM auth WHERE oidc_subject = {_placeholder()}", (subject,)
+        ).fetchone()
+    return _row_to_dict(row) if row else None
+
+
+def oidc_subject(username: str) -> str:
+    with db.get_connection() as conn:
+        row = conn.execute(
+            f"SELECT oidc_subject FROM auth WHERE username = {_placeholder()}", (username,)
+        ).fetchone()
+    return (row[0] or "") if row else ""
+
+
+def bind_oidc_subject(username: str, subject: str) -> None:
+    placeholder = _placeholder()
+    with db.get_connection() as conn:
+        conn.execute(
+            f"UPDATE auth SET oidc_subject = {placeholder} WHERE username = {placeholder}", (subject, username)
+        )

@@ -165,9 +165,22 @@ def complete_login(code: str, redirect_uri: str, code_verifier: str, nonce: str)
     return _validate_id_token(discovery, tokens["id_token"], nonce)
 
 
+def subject_from_claims(claims: dict) -> str | None:
+    """The provider's stable, never-reassigned id for this person -- what an
+    account is bound to after its first SSO sign-in."""
+    value = claims.get("sub")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def username_from_claims(claims: dict) -> str | None:
-    for key in ("preferred_username", "email", "sub"):
-        value = claims.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
+    """Which local account a FIRST SSO sign-in is matched to (later ones go
+    by `sub`). An email address only counts when the provider says it has
+    verified it: an unverified one is just text the person typed, and could
+    be the address of somebody who already has an account here."""
+    preferred = claims.get("preferred_username")
+    if isinstance(preferred, str) and preferred.strip():
+        return preferred.strip()
+    email = claims.get("email")
+    if isinstance(email, str) and email.strip() and claims.get("email_verified") is True:
+        return email.strip()
     return None

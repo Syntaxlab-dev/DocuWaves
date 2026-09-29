@@ -68,6 +68,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.services import api_tokens_store, session_registry_store, users_store
+from app.services.same_origin import is_same_origin
 
 _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
 
@@ -189,6 +190,11 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
             return JSONResponse({"detail": "not_authenticated"}, status_code=401)
 
         session_registry_store.touch(session_id)
+        # A cookie-authenticated change must come from this site's own pages;
+        # see services/same_origin.py. Only the session path: a bearer token
+        # is sent deliberately by its holder, never ambiently by a browser.
+        if request.method not in _READ_METHODS and not is_same_origin(request):
+            return JSONResponse({"detail": "cross_site_request"}, status_code=403)
         role = user["role"]
         # On the request, so an endpoint that needs to say something
         # role-dependent (who am I, may I see this) reads it rather than

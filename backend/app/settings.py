@@ -13,6 +13,14 @@ def _base_url(raw: str) -> str:
     return ""
 
 
+def _cookie_secure(explicit: str, public_base_url: str) -> bool:
+    """SESSION_COOKIE_SECURE when it is set, otherwise whether the public
+    address is https -- see the setting below."""
+    if explicit.strip():
+        return explicit.strip().lower() in ("1", "true", "yes", "on")
+    return _base_url(public_base_url).startswith("https://")
+
+
 @dataclass
 class Settings:
     # SQLite is the zero-config default (a single file under /data) --
@@ -98,6 +106,15 @@ class Settings:
     # right behind a single ordinary reverse proxy. See
     # services/client_address.py for why it is never the leftmost one.
     client_ip_header: str = os.environ.get("CLIENT_IP_HEADER", "").strip().lower()
+
+    # Send the session cookie over HTTPS only. Blank = on when PUBLIC_BASE_URL
+    # is an https:// address, off otherwise (plain HTTP on a LAN, local
+    # development). Set it to true behind any HTTPS reverse proxy that does
+    # not set PUBLIC_BASE_URL, so the cookie is never sent over plain HTTP --
+    # not even on the one request before the proxy redirects to https.
+    session_cookie_secure: bool = _cookie_secure(
+        os.environ.get("SESSION_COOKIE_SECURE", ""), os.environ.get("PUBLIC_BASE_URL", "")
+    )
 
 
 settings = Settings()

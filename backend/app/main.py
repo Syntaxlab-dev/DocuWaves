@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
 from app.routers import admin_content, api_tokens, auth, mcp, public_content, sitemap, users
-from app.services import content_sync, content_versions, db, git_content_repo, seo, session_secret
+from app.services import content_sync, content_versions, db, git_content_repo, seo, session_registry_store, session_secret
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -36,6 +36,7 @@ async def _periodic_content_sync() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     db.init_schema()
+    session_registry_store.prune_stale()
     sync_task: asyncio.Task | None = None
     try:
         # Unconditional, because there is always a content repository: with
@@ -106,7 +107,9 @@ app.add_middleware(
     secret_key=session_secret.get_or_create_secret(),
     max_age=30 * 24 * 3600,
     same_site="lax",
-    https_only=False,  # typically sits behind a reverse proxy or is hit directly over plain HTTP on a LAN
+    # Off by default because an instance may well be reached over plain HTTP
+    # on a LAN; see SESSION_COOKIE_SECURE in settings.py for when it is on.
+    https_only=settings.session_cookie_secure,
 )
 
 

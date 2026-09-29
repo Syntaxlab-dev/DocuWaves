@@ -3,9 +3,9 @@ session -- lets a login be revoked (logout) even though the cookie's own
 signature stays valid until it expires. Same pattern as CachePanel's own
 session_registry_store.py."""
 
-import time
 import threading
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 from app.services import db
 
@@ -89,3 +89,29 @@ def revoke(session_id: str) -> None:
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         conn.execute(f"DELETE FROM sessions WHERE session_id = {placeholder}", (session_id,))
+
+
+def revoke_others(username: str, keep_session_id: str) -> int:
+    """Signs one account out everywhere EXCEPT the session making the call --
+    what a password change does, so a password changed because it leaked also
+    ends whatever session the leak was used to open."""
+    placeholder = "%s" if db.is_postgres() else "?"
+    with db.get_connection() as conn:
+        cursor = conn.execute(
+            f"DELETE FROM sessions WHERE username = {placeholder} AND session_id <> {placeholder}",
+            (username, keep_session_id or ""),
+        )
+        return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0
+
+
+# The session cookie lives 30 days (main.py); a row not seen for longer than
+# that can never be used again and only makes "signed in on N devices" wrong.
+STALE_AFTER_DAYS = 30
+
+
+def prune_stale() -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=STALE_AFTER_DAYS)).isoformat()
+    placeholder = "%s" if db.is_postgres() else "?"
+    with db.get_connection() as conn:
+        cursor = conn.execute(f"DELETE FROM sessions WHERE last_seen_at < {placeholder}", (cutoff,))
+        return cursor.rowcount if cursor.rowcount and cursor.rowcount > 0 else 0

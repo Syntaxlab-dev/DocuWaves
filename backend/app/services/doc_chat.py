@@ -117,6 +117,14 @@ def status() -> dict:
     }
 
 
+def public_status() -> dict:
+    """What the PUBLIC site needs: whether to show the chat box at all, and how
+    long a question may be. Not which model or which endpoint -- that tells a
+    stranger where the operator's model runs (an internal Ollama address, say)
+    and is the admin area's business, see status()."""
+    return {"enabled": is_enabled(), "max_question_length": MAX_QUESTION_LENGTH}
+
+
 def rate_limited(client_key: str) -> bool:
     """True = this address has asked too often in the last minute. In memory
     only, swept rather than retained: a bucket of timestamps, never a log of

@@ -80,7 +80,10 @@ _SQLITE_SCHEMA = [
         -- three roles mean and why there are three.
         role TEXT NOT NULL DEFAULT 'admin',
         created_at TEXT NOT NULL DEFAULT '',
-        last_login_at TEXT NOT NULL DEFAULT ''
+        last_login_at TEXT NOT NULL DEFAULT '',
+        -- The identity provider's `sub` this account is bound to after its
+        -- first SSO sign-in; '' = never signed in via SSO. See routers/auth.py.
+        oidc_subject TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -93,6 +96,10 @@ _SQLITE_SCHEMA = [
         user_agent TEXT NOT NULL
     )
     """,
+    # Signing one account out everywhere and pruning stale sessions both
+    # filter on these; without them each is a scan of every session.
+    "CREATE INDEX IF NOT EXISTS sessions_username ON sessions (username)",
+    "CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions (last_seen_at)",
     # API tokens for the MCP endpoint (see services/api_tokens_store.py for
     # the full reasoning). Here rather than in the content repo on purpose:
     # everything else this app owns is a file in that repo because the repo
@@ -306,7 +313,10 @@ _POSTGRES_SCHEMA = [
         -- three roles mean and why there are three.
         role TEXT NOT NULL DEFAULT 'admin',
         created_at TEXT NOT NULL DEFAULT '',
-        last_login_at TEXT NOT NULL DEFAULT ''
+        last_login_at TEXT NOT NULL DEFAULT '',
+        -- The identity provider's `sub` this account is bound to after its
+        -- first SSO sign-in; '' = never signed in via SSO. See routers/auth.py.
+        oidc_subject TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -319,6 +329,10 @@ _POSTGRES_SCHEMA = [
         user_agent TEXT NOT NULL
     )
     """,
+    # Signing one account out everywhere and pruning stale sessions both
+    # filter on these; without them each is a scan of every session.
+    "CREATE INDEX IF NOT EXISTS sessions_username ON sessions (username)",
+    "CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions (last_seen_at)",
     # See the SQLite block above for what this table is and why it lives in
     # the database rather than in the content repo.
     """
@@ -524,6 +538,7 @@ _ADDED_COLUMNS = {
         "role": "TEXT NOT NULL DEFAULT 'admin'",
         "created_at": "TEXT NOT NULL DEFAULT ''",
         "last_login_at": "TEXT NOT NULL DEFAULT ''",
+        "oidc_subject": "TEXT NOT NULL DEFAULT ''",
     },
 }
 
