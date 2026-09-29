@@ -1119,6 +1119,14 @@ needs the same `--profile postgres` flag.
 DocuWaves speaks standard OpenID Connect, so it works with Authentik,
 Keycloak, Authelia, Zitadel, or anything else that implements the spec.
 
+**Which account an SSO login gets.** The first time an account signs in via
+SSO it is matched by `preferred_username` -- or by `email`, but only when the
+provider reports that address as verified -- and from then on it is **bound
+to the provider's `sub`**, the one identifier a provider guarantees is stable
+and never reassigned. Later sign-ins go by `sub` alone, so somebody who picks
+the username `admin` at the provider cannot take over an account that is
+already bound. Sign in via SSO once with each account that should use it.
+
 In your identity provider, create an OAuth2/OpenID application with:
 
 - **Redirect URI:** `https://<your-docuwaves-domain>/api/auth/oidc/callback`

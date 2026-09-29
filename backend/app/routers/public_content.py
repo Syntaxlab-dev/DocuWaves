@@ -373,7 +373,7 @@ def public_get_site():
     # be a worse answer than one extra key here. It carries no key and no
     # secret -- whether the feature is on, and which model answers, which is
     # what a reader is entitled to know before typing a question into it.
-    return {**site_branding.read_branding(), "chat": doc_chat.status()}
+    return {**site_branding.read_branding(), "chat": doc_chat.public_status()}
 
 
 @router.get(
