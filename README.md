@@ -1068,6 +1068,55 @@ address, because it is a public endpoint that spends somebody's budget.
 Whether it is configured shows up under **Diagnostics** — it is set through
 environment variables, so there is no settings page it could be read off.
 
+## Announcing changes: webhooks
+
+DocuWaves can post to a Discord or Slack channel — or send JSON to any URL —
+when documentation changes:
+
+```env
+WEBHOOK_URLS=https://discord.com/api/webhooks/…,https://example.org/docs-hook
+WEBHOOK_EVENTS=published,updated   # default: published
+WEBHOOK_SECRET=a-long-random-string  # optional, signs JSON deliveries
+```
+
+| Event | When |
+|---|---|
+| `published` | a draft goes live |
+| `updated` | the title or text of a published page changes |
+| `unpublished` | a published page goes back to draft, or is deleted |
+
+Only a **change** counts: saving a published page without touching its title
+or text (say, moving it to another category) sends nothing, and neither does
+anything done to a draft. Leave `updated` off if every typo fix would be too
+much for your channel.
+
+The format follows the address: `discord.com` gets an embed (no mentions are
+ever resolved, so a title containing `@everyone` pings nobody),
+`hooks.slack.com` a linked line of text, anything else this JSON:
+
+```json
+{
+  "event": "published",
+  "occurred_at": "2026-09-29T10:00:00+00:00",
+  "page": {"title": "Installation", "slug": "installation", "language": "de",
+           "version": "", "summary": "So installierst du …",
+           "url": "https://docs.example.com/p/demo/pages/installation"},
+  "project": {"name": "Demo", "slug": "demo"},
+  "category": {"name": "Guides", "slug": "guides"}
+}
+```
+
+with the headers `X-DocuWaves-Event` and, when `WEBHOOK_SECRET` is set,
+`X-DocuWaves-Signature: sha256=<HMAC-SHA256 of the body>` — recompute it on
+your side to know the message came from your instance. Links need
+`PUBLIC_BASE_URL`; without it the message has no link.
+
+Delivery runs in the background with a 5-second timeout and one retry, so a
+slow or dead endpoint never slows down or fails a save; it shows up in the
+log (host name only — the path of a Discord or Slack webhook is its secret).
+These are environment variables rather than an admin setting for that same
+reason: everything edited in the admin UI ends up in the content repository.
+
 ## Backups, and knowing the instance is all right
 
 Two things under **Diagnostics** in the admin area.
@@ -1369,6 +1418,9 @@ API), but within that it is real write access to what your readers see.
 | `OIDC_CLIENT_SECRET` | *(empty)* | OIDC client secret |
 | `OIDC_PROVIDER_NAME` | `authentik` | Label shown on the SSO login button |
 | `PUBLIC_BASE_URL` | *(empty — auto-detected)* | The address readers use, e.g. `https://docs.example.com`. Only needed to override what the app works out from the proxy headers — see "Search engines and link previews" |
+| `WEBHOOK_URLS` | *(empty — off)* | Discord/Slack/JSON endpoints to notify, comma-separated — see "Announcing changes: webhooks" |
+| `WEBHOOK_EVENTS` | `published` | Which of `published`, `updated`, `unpublished` to send |
+| `WEBHOOK_SECRET` | *(empty)* | Signs JSON deliveries with HMAC-SHA256 |
 
 ## Development
 

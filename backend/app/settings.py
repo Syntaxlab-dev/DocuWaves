@@ -1,4 +1,5 @@
 import os
+import re
 from dataclasses import dataclass
 
 
@@ -11,6 +12,11 @@ def _base_url(raw: str) -> str:
     if value.startswith("http://") or value.startswith("https://"):
         return value
     return ""
+
+
+def _list(raw: str) -> list[str]:
+    """Comma- or whitespace-separated values, blanks dropped."""
+    return [part for part in re.split(r"[\s,]+", raw.strip()) if part]
 
 
 def _cookie_secure(explicit: str, public_base_url: str) -> bool:
@@ -112,6 +118,19 @@ class Settings:
     # development). Set it to true behind any HTTPS reverse proxy that does
     # not set PUBLIC_BASE_URL, so the cookie is never sent over plain HTTP --
     # not even on the one request before the proxy redirects to https.
+    # Webhooks (services/webhooks.py): where to announce documentation
+    # changes -- Discord and Slack webhook URLs are recognised and get their
+    # own message format, anything else receives JSON. Env vars, not the
+    # admin UI, because a webhook URL is itself a credential. Blank = off.
+    webhook_urls: tuple[str, ...] = tuple(
+        url for url in _list(os.environ.get("WEBHOOK_URLS", "")) if url.startswith(("https://", "http://"))
+    )
+    # Which changes are announced: published, updated, unpublished. Default
+    # "published" alone -- a channel told about every typo fix stops being read.
+    webhook_events: frozenset[str] = frozenset(_list(os.environ.get("WEBHOOK_EVENTS", "published").lower()))
+    # Signs JSON deliveries (X-DocuWaves-Signature: sha256=<hmac of the body>).
+    webhook_secret: str = os.environ.get("WEBHOOK_SECRET", "")
+
     session_cookie_secure: bool = _cookie_secure(
         os.environ.get("SESSION_COOKIE_SECURE", ""), os.environ.get("PUBLIC_BASE_URL", "")
     )
