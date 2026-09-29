@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Languages, Moon, Search, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { languageName, useContentLang } from "@/lib/lang";
 import { useProjectVersion } from "@/lib/version";
 import { VersionSwitcher } from "@/components/VersionSwitcher";
 import { DocChat } from "@/components/DocChat";
+import { QuickSearch, useQuickSearchShortcut } from "@/components/QuickSearch";
 import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 
@@ -19,6 +20,15 @@ export function PublicLayout() {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
   const [isDark, setIsDark] = useState(getPreferredTheme() === "dark");
+  const [quickSearchOpen, setQuickSearchOpen] = useState(false);
+  const openQuickSearch = useCallback(() => setQuickSearchOpen(true), []);
+  useQuickSearchShortcut(openQuickSearch);
+  // The same scope the header search sends along (see onSearch): the version
+  // being read, inside a versioned project, and nothing anywhere else.
+  const searchScope = projectVersion.info
+    ? { project: projectVersion.projectSlug, version: projectVersion.version || projectVersion.info.default }
+    : null;
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   function toggleTheme() {
     const next = isDark ? "light" : "dark";
@@ -65,6 +75,7 @@ export function PublicLayout() {
       >
         {t("nav.skipToContent")}
       </a>
+      <QuickSearch open={quickSearchOpen} onOpenChange={setQuickSearchOpen} scope={searchScope} />
       <header className="border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
           <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">
@@ -80,8 +91,16 @@ export function PublicLayout() {
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder={t("nav.search")}
-                className="pl-8"
+                className="pl-8 sm:pr-12"
               />
+              {/* A hint, not a button: the field itself still searches on
+                  Enter, and on a phone there is no keyboard shortcut to hint at. */}
+              <kbd
+                className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)] sm:block"
+                title={t("quickSearch.title")}
+              >
+                {isMac ? "⌘K" : "Ctrl K"}
+              </kbd>
             </div>
           </form>
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>

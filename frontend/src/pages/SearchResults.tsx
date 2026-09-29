@@ -5,41 +5,7 @@ import { FallbackBadge } from "@/components/FallbackBadge";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
 import { useDocumentTitle } from "@/lib/site";
-
-/** The words to mark in a snippet. Mirrors prose.terms_of() on the server,
- *  which is what chose the snippet's window -- if the two disagreed, the
- *  window would be built around one set of words and highlight another. */
-function termsOf(query: string): string[] {
-  const found = query.toLowerCase().match(/[\w./-]{2,}/g) || [];
-  return [...new Set(found)].sort((a, b) => b.length - a.length);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&");
-}
-
-/** The snippet with the searched words marked. Rendered as elements, never
- *  as HTML: the text is author-controlled content from the repo, and the
- *  terms come straight out of the query string. */
-function Highlighted({ text, terms }: { text: string; terms: string[] }) {
-  if (!terms.length || !text) return <>{text}</>;
-  // One capturing group, so split() hands back the matches at the odd
-  // indices and the text between them at the even ones.
-  const pattern = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi");
-  return (
-    <>
-      {text.split(pattern).map((part, index) =>
-        index % 2 === 1 ? (
-          <mark key={index} className="rounded bg-[var(--accent-soft)] px-0.5 text-[var(--ink)]">
-            {part}
-          </mark>
-        ) : (
-          part
-        ),
-      )}
-    </>
-  );
-}
+import { Highlighted, searchResultPath, termsOf } from "@/lib/search";
 
 export function SearchResults() {
   const [params] = useSearchParams();
@@ -71,14 +37,8 @@ export function SearchResults() {
     api.search(q, lang, project || undefined, version || undefined).then((r) => setResults(r.results));
   }, [q, lang, project, version]);
 
-  /** A hit's address. The version segment is only ever added for a SCOPED
-   *  search, where every hit is in the project and version being read --
-   *  an unscoped search returns each project's default version, whose
-   *  addresses carry no segment by definition. */
-  function resultPath(r: SearchResult): string {
-    const segment = project && r.project_slug === project && r.version ? `/${r.version}` : "";
-    return path(`/p/${r.project_slug}${segment}/pages/${r.page_slug}`);
-  }
+  const resultPath = (r: SearchResult) => searchResultPath(r, project, path);
+
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
