@@ -49,7 +49,7 @@ import threading
 
 import requests
 
-from app.services import pages_store, projects_store, prose, site_languages, snippets
+from app.services import pages_store, projects_store, prose, search_suggest, site_languages, snippets
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -166,13 +166,17 @@ def find_sources(question: str, language: str, project_slug: str = "", version: 
         project = projects_store.get_project_by_slug(project_slug, language)
         if project is not None:
             project_id = project["id"]
-    hits = pages_store.search(
-        question,
-        limit=_SOURCE_LIMIT,
-        language=language,
-        project_id=project_id,
-        version=version if project_id is not None else None,
-    )
+    scope = {
+        "limit": _SOURCE_LIMIT,
+        "language": language,
+        "project_id": project_id,
+        "version": version if project_id is not None else None,
+    }
+    # A typo in the question must not cost the answer its sources -- the
+    # model would then honestly say the docs don't cover it. Same correction
+    # as the search box (services/search_suggest.py).
+    corrected = search_suggest.correct(question)
+    hits = (pages_store.search(corrected, **scope) if corrected else []) or pages_store.search(question, **scope)
     return hits[:_SOURCE_LIMIT]
 
 

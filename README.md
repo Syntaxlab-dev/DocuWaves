@@ -936,6 +936,20 @@ cross-site identifier. The tag is written with do-not-track respected.
 Nothing here stops another tool being added later; what it stops is
 arbitrary script.
 
+## Searching
+
+The search box in the header — or **Ctrl/⌘+K** (or `/`) anywhere on the
+public site — searches the published pages of the language being read, and
+inside a versioned project the version being read. It matches word
+beginnings, so `instal` already finds "Installation".
+
+It also forgives typos: a word that appears nowhere in the published docs is
+corrected to the closest one that does (one wrong letter in a short word,
+two in a longer one; swapped letters count as one), and the page says so —
+"Results for *installation*", searched as `instalation`. Words from drafts
+are never suggested. The same correction helps the chat find its sources
+when a question has a typo in it.
+
 ## Search engines and link previews
 
 The reader-facing site is a single-page app, which used to mean the server
