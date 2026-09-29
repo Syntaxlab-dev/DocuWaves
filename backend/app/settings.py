@@ -86,6 +86,18 @@ class Settings:
     chat_api_base: str = os.environ.get("CHAT_API_BASE", "").strip().rstrip("/")
     chat_model: str = os.environ.get("CHAT_MODEL", "").strip()
     chat_api_key: str = os.environ.get("CHAT_API_KEY", "").strip()
+    # How many questions may wait on the model at once. Each one holds a
+    # worker thread for up to the chat timeout; without a ceiling a burst of
+    # slow answers takes every thread, and the whole instance -- health
+    # check included -- stops answering until they come back.
+    chat_max_concurrent: int = max(1, int(os.environ.get("CHAT_MAX_CONCURRENT", "4")))
+
+    # Which header carries the reader's real address, when there is more
+    # than one proxy in front of DocuWaves (e.g. CF-Connecting-IP behind
+    # Cloudflare). Blank = the rightmost X-Forwarded-For entry, which is
+    # right behind a single ordinary reverse proxy. See
+    # services/client_address.py for why it is never the leftmost one.
+    client_ip_header: str = os.environ.get("CLIENT_IP_HEADER", "").strip().lower()
 
 
 settings = Settings()

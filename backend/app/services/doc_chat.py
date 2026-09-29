@@ -42,6 +42,7 @@ their provider, and the admin UI says so.
 """
 
 import logging
+from contextlib import contextmanager
 import re
 import time
 import threading
@@ -78,6 +79,24 @@ _rate_lock = threading.Lock()
 _rate_buckets: dict[str, list[float]] = {}
 
 _TIMEOUT_SECONDS = 60
+
+# At most this many questions wait on the model at once (CHAT_MAX_CONCURRENT).
+# The per-address limit above counts one reader; this caps all of them
+# together, so a burst of slow answers cannot take every worker thread.
+_answer_slots = threading.BoundedSemaphore(settings.chat_max_concurrent)
+
+
+@contextmanager
+def answer_slot():
+    """Yields True with a slot held for the duration, or False at once when
+    every slot is taken -- a reader is told to try again rather than queued
+    behind answers that may each take the full timeout."""
+    acquired = _answer_slots.acquire(blocking=False)
+    try:
+        yield acquired
+    finally:
+        if acquired:
+            _answer_slots.release()
 
 
 def is_enabled() -> bool:
