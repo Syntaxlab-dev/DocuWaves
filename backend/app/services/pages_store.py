@@ -64,6 +64,7 @@ from app.services import (
     projects_store,
     prose,
     site_languages,
+    snippets,
     webhooks,
 )
 
@@ -1024,7 +1025,7 @@ def search(
                 # which for a documentation page is its opening sentence --
                 # the same text for every hit in that page, and no evidence
                 # of why it matched.
-                "snippet": prose.snippet(prose.to_prose(r[3] or ""), terms),
+                "snippet": prose.snippet(prose.to_prose(snippets.resolve(r[3] or "", r[5], r[11], r[8])), terms),
                 # The project/category names come out of the same rows the
                 # tiles and the sidebar use, so a hit is labelled with the
                 # names the reader has been seeing, not the default

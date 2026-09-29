@@ -2277,6 +2277,50 @@ const DRAFT_DEBOUNCE_MS = 800;
  * A single-language instance sees no tab strip at all: `languages` is empty
  * there, so the editor is exactly the one-language editor it always was.
  */
+/** The preview as readers will see it: snippets and variables are filled in
+ *  on the server (services/snippets.py), where the snippet files are. Until
+ *  that answer arrives -- or if it can't, for a read-only account say -- the
+ *  source is shown as it is, which is still the page. */
+function ResolvedPreview({
+  content,
+  title,
+  projectSlug,
+  categorySlug,
+  version,
+  language,
+}: {
+  content: string;
+  title: string;
+  projectSlug: string;
+  categorySlug?: string;
+  version: string;
+  language: string;
+}) {
+  const [resolved, setResolved] = useState<string | null>(null);
+
+  useEffect(() => {
+    let current = true;
+    setResolved(null);
+    api
+      .resolveMarkdown({ project_slug: projectSlug, version, language, markdown: content })
+      .then((r) => current && setResolved(r.markdown))
+      .catch(() => current && setResolved(content));
+    return () => {
+      current = false;
+    };
+  }, [content, projectSlug, version, language]);
+
+  return (
+    <MarkdownView
+      content={resolved ?? content}
+      title={title}
+      projectSlug={projectSlug}
+      categorySlug={categorySlug}
+      versionDir={version}
+    />
+  );
+}
+
 function PageEditor({
   target,
   projectSlug,
@@ -3112,12 +3156,13 @@ function PageEditor({
         {tab === "edit" && <MarkdownCheatSheet />}
         {tab === "preview" && (
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
-            <MarkdownView
+            <ResolvedPreview
               content={content}
               title={title}
               projectSlug={projectSlug}
               categorySlug={targetCategorySlug}
-              versionDir={version}
+              version={version}
+              language={multilingual ? language : ""}
             />
           </div>
         )}

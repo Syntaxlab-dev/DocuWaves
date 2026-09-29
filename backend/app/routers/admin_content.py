@@ -46,6 +46,7 @@ from app.services import (
     projects_store,
     site_branding,
     site_languages,
+    snippets,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -174,6 +175,37 @@ def admin_content_repo_sync():
         raise _git_error_response(exc) from exc
     content_sync.full_sync()
     return {"ok": True}
+
+
+# ---- Snippets and variables ----
+
+
+class ResolveIn(BaseModel):
+    project_slug: str
+    version: str = ""
+    language: str = ""
+    markdown: str
+
+
+@router.post(
+    "/resolve-markdown",
+    summary="A page's Markdown with its snippets and variables filled in",
+    description="What the editor's preview shows: the text exactly as readers will get it, with an unknown "
+    "snippet shown as a warning instead of silently dropped. Writes nothing.",
+)
+def admin_resolve_markdown(body: ResolveIn):
+    if projects_store.get_project_by_slug(body.project_slug) is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    # Both end up in a file path: only values that exist are accepted.
+    if body.version and body.version not in content_versions.version_ids(body.project_slug):
+        raise HTTPException(status_code=400, detail="Unknown version.")
+    if body.language and body.language not in site_languages.languages():
+        raise HTTPException(status_code=400, detail="Unknown language.")
+    return {
+        "markdown": snippets.resolve(
+            body.markdown, body.project_slug, body.version, body.language, mark_missing=True
+        )
+    }
 
 
 # ---- Projects ----

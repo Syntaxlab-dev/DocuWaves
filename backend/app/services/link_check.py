@@ -24,7 +24,7 @@ on it, or a build step to generate one from the other.
 """
 import re
 
-from app.services import categories_store, content_assets, content_versions, pages_store, projects_store
+from app.services import categories_store, content_assets, content_versions, pages_store, projects_store, snippets
 
 # `[text](target)` and `![alt](target)`. Titles (`(url "title")`) are
 # tolerated by stopping the target at the first whitespace.
@@ -138,7 +138,8 @@ def _check_internal(target: str, project_slug: str, own_ids: set[str]) -> str:
         # A fragment on another page: check it against THAT page's headings.
         if "#" in rest[1]:
             fragment = rest[1].split("#", 1)[1]
-            if fragment and fragment not in heading_ids(page["markdown_content"]):
+            body = snippets.resolve(page["markdown_content"], project["slug"], page["version"], page["language"])
+            if fragment and fragment not in heading_ids(body):
                 return f"no section '#{fragment}' on '{page_slug}'"
         return ""
 
@@ -158,8 +159,12 @@ def broken_links(project_slug: str = "") -> list[dict]:
         for version in content_versions.index_versions(project["slug"]):
             for category in categories_store.list_categories(project["id"], version=version):
                 for page in pages_store.list_pages(category["id"], published_only=True):
-                    own_ids = heading_ids(page["markdown_content"])
-                    for target in _targets(page["markdown_content"]):
+                    # As readers get it: a link or a heading can come from a
+                    # snippet, and a broken link in one is broken on every
+                    # page that includes it.
+                    body = snippets.resolve(page["markdown_content"], project["slug"], version, page["language"])
+                    own_ids = heading_ids(body)
+                    for target in _targets(body):
                         reason = _reason(target, project, category, page, version, own_ids)
                         if reason:
                             findings.append(
