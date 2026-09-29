@@ -64,6 +64,7 @@ from app.services import (
     projects_store,
     prose,
     site_languages,
+    webhooks,
 )
 
 _COLUMNS = (
@@ -510,7 +511,14 @@ def _update_page(
     )
     git_content_repo.commit_and_push(paths, f"Update page: {title}", author)
     content_sync.full_sync()
-    return get_page_by_slug(current["project_id"], slug, current["language"], version)
+    updated = get_page_by_slug(current["project_id"], slug, current["language"], version)
+    # Readers only ever saw the published text, so only a change to THAT is
+    # news -- a draft being edited, or a page merely moved to another
+    # category, is not.
+    if current["published"] and (title != current["title"] or markdown_content != current["markdown_content"]):
+        announced = updated or {**current, "title": title, "slug": slug, "markdown_content": markdown_content}
+        webhooks.notify("updated", announced, project, new_category)
+    return updated
 
 
 def set_published(page_id: int, published: bool, author: str) -> dict | None:
@@ -530,6 +538,10 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
     verb = "Publish" if published else "Unpublish"
     git_content_repo.commit_and_push(paths, f"{verb} page: {current['title']}", author)
     content_sync.full_sync()
+    # Only a real change of state is announced: the editor publishes after
+    # every save, and "published" for each of those would be noise.
+    if published != bool(current["published"]):
+        webhooks.notify("published" if published else "unpublished", current, project, category)
     return get_page(page_id)
 
 
@@ -633,6 +645,8 @@ def delete_page(page_id: int, author: str) -> None:
         preview_links_store.revoke_for_page(project["slug"], current["slug"], current["version"])
         git_content_repo.commit_and_push(paths, f"Remove page: {current['title']}", author)
         content_sync.full_sync()
+        if current["published"]:
+            webhooks.notify("unpublished", current, project, category)
 
 
 # ---- Change history ----
