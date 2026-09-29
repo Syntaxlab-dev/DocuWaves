@@ -27,7 +27,6 @@ from pydantic import BaseModel
 from fastapi.responses import FileResponse
 
 from app.services import (
-from app.services.client_address import client_address
     categories_store,
     content_assets,
     doc_chat,
@@ -39,6 +38,7 @@ from app.services.client_address import client_address
     site_branding,
     site_languages,
 )
+from app.services.client_address import client_address
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
