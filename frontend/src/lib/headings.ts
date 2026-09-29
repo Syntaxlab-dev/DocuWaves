@@ -25,6 +25,8 @@ export interface Heading {
   id: string;
 }
 
+import { isTabsClose, isTabsOpen } from "@/lib/tabs";
+
 /** Opening or closing fence of a fenced code block. A `## ...` line inside
  *  one is code, never a heading, and must not end up in the contents. */
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
@@ -69,8 +71,10 @@ export function collectHeadings(markdown: string): Heading[] {
   const headings: Heading[] = [];
   const used = new Set<string>();
   let fence: string | null = null;
+  let inTabs = false;
+  const lines = markdown.split("\n");
 
-  markdown.split("\n").forEach((line, index) => {
+  lines.forEach((line, index) => {
     const fenceMatch = FENCE.exec(line);
     if (fence !== null) {
       // A fence only closes on the same character, at least as long as the
@@ -80,6 +84,20 @@ export function collectHeadings(markdown: string): Heading[] {
     }
     if (fenceMatch) {
       fence = fenceMatch[1];
+      return;
+    }
+
+    // Nothing inside a tab group goes into the contents: the tab names are
+    // not headings once rendered, and a section in a tab the reader is not
+    // looking at would be a link to something hidden. Only a group that is
+    // closed counts -- an unclosed one renders as ordinary headings (see
+    // lib/tabs.ts), so its headings are ordinary contents entries too.
+    if (inTabs) {
+      if (isTabsClose(line)) inTabs = false;
+      return;
+    }
+    if (isTabsOpen(line) && lines.slice(index + 1).some(isTabsClose)) {
+      inTabs = true;
       return;
     }
 
