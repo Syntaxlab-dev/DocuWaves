@@ -1,10 +1,11 @@
 name: Tests
 
 on:
-  push:
-    branches: [main]
   pull_request:
   workflow_dispatch: {}
+  # Called by docker-publish.yml before it builds anything: a push to main
+  # runs the suite there, as a gate, rather than here in parallel with it.
+  workflow_call: {}
 
 jobs:
   backend:

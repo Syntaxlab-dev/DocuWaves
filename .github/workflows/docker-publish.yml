@@ -19,7 +19,14 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  # The same suite a pull request runs, and nothing is built until it passes.
+  # Without this, publish and tests ran side by side: a push that broke the
+  # tests still became :latest -- the tag running instances pull.
+  tests:
+    uses: ./.github/workflows/tests.yml
+
   build-and-push:
+    needs: tests
     runs-on: ubuntu-latest
     permissions:
       contents: read
