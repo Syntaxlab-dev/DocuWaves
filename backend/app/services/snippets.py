@@ -43,6 +43,7 @@ import frontmatter
 import yaml
 
 from app.services import content_files, content_versions, site_languages
+from app.settings import settings
 
 log = logging.getLogger("docuwaves")
 
@@ -213,3 +214,113 @@ def _include(
         body = frontmatter.loads(path.read_text(encoding="utf-8")).content.strip("\n")
         out.append(_include(body, project_slug, version, language, mark_missing, (*stack, name)))
     return "\n".join(out)
+
+
+# ---- Managing them (the admin UI) ----
+#
+# A SCOPE is where a set of snippets and variables lives: a project's content
+# directory for one version, or the whole site (project_slug ""). The
+# caller has already checked that the project and version exist; nothing
+# here is handed a path.
+
+MAX_SNIPPET_CHARS = 100_000
+MAX_VARIABLES_CHARS = 50_000
+_VARIABLE_NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+
+
+class InvalidSnippet(ValueError):
+    """Something the admin sent that must not be written. The message is
+    shown to them as it is."""
+
+
+def scope_dir(project_slug: str, version: str) -> Path:
+    if not project_slug:
+        return content_files.content_root()
+    return content_files.project_content_dir(project_slug, version)
+
+
+def _rel(path: Path) -> str:
+    return str(path.relative_to(Path(settings.content_repo_path)))
+
+
+def list_snippets(project_slug: str, version: str) -> list[dict]:
+    directory = scope_dir(project_slug, version) / SNIPPETS_DIRNAME
+    if not directory.is_dir():
+        return []
+    snippets = []
+    for path in sorted(directory.glob("*.md")):
+        name, language = site_languages.parse_page_filename(path.stem)
+        if not _SNIPPET_NAME_RE.match(name):
+            continue
+        snippets.append({"name": name, "language": language, "content": path.read_text(encoding="utf-8")})
+    return snippets
+
+
+def read_variables_text(project_slug: str, version: str) -> str:
+    path = scope_dir(project_slug, version) / VARIABLES_FILENAME
+    return path.read_text(encoding="utf-8") if path.is_file() else ""
+
+
+def check_variables_text(text: str) -> None:
+    """Refuses what would not work, with a reason an author can act on --
+    rather than writing it and having every `{{name}}` quietly stay as it is."""
+    if len(text) > MAX_VARIABLES_CHARS:
+        raise InvalidSnippet("The variables file is too long.")
+    try:
+        data = yaml.safe_load(text) if text.strip() else {}
+    except yaml.YAMLError as exc:
+        mark = getattr(exc, "problem_mark", None)
+        where = f" (line {mark.line + 1})" if mark else ""
+        raise InvalidSnippet(f"This is not valid YAML{where}.") from exc
+    if data is None:
+        return
+    if not isinstance(data, dict):
+        raise InvalidSnippet("Write one variable per line: name: value")
+    for name, value in data.items():
+        if not _VARIABLE_NAME_RE.match(str(name)):
+            raise InvalidSnippet(f"'{name}' can't be a variable name: letters, digits, _ . - only.")
+        values = value.values() if isinstance(value, dict) else [value]
+        for item in values:
+            if isinstance(item, bool) or not isinstance(item, (str, int, float)):
+                raise InvalidSnippet(
+                    f"'{name}': a value is text or a number (or one per language). "
+                    "Put quotes around it if it is meant as text."
+                )
+
+
+def write_variables(project_slug: str, version: str, text: str) -> list[str]:
+    check_variables_text(text)
+    path = scope_dir(project_slug, version) / VARIABLES_FILENAME
+    if not text.strip():
+        if path.exists():
+            path.unlink()
+        return [_rel(path)]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
+    return [_rel(path)]
+
+
+def _snippet_file(project_slug: str, version: str, name: str, language: str) -> Path:
+    if not _SNIPPET_NAME_RE.match(name):
+        raise InvalidSnippet("A snippet name is letters, digits, - and _ only, starting with a letter or digit.")
+    if language and language not in site_languages.languages():
+        raise InvalidSnippet("Unknown language.")
+    filename = site_languages.page_filename(name, language) if language else f"{name}.md"
+    return scope_dir(project_slug, version) / SNIPPETS_DIRNAME / filename
+
+
+def write_snippet(project_slug: str, version: str, name: str, language: str, content: str) -> list[str]:
+    if len(content) > MAX_SNIPPET_CHARS:
+        raise InvalidSnippet("The snippet is too long.")
+    path = _snippet_file(project_slug, version, name, language)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
+    return [_rel(path)]
+
+
+def delete_snippet(project_slug: str, version: str, name: str, language: str) -> list[str]:
+    path = _snippet_file(project_slug, version, name, language)
+    if not path.exists():
+        raise InvalidSnippet("There is no such snippet.")
+    path.unlink()
+    return [_rel(path)]

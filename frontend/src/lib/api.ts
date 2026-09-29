@@ -552,6 +552,14 @@ export type FeedbackSummary = {
   last_vote: string;
 };
 
+/** One file in a `_snippets/` directory (see services/snippets.py). */
+export interface SnippetFile {
+  name: string;
+  /** "" = every language. */
+  language: string;
+  content: string;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -620,6 +628,20 @@ export const api = {
   // Admin: content repo
   contentRepoStatus: () => request<ContentRepoStatus>("/api/admin/content-repo/status"),
   contentRepoSync: () => request("/api/admin/content-repo/sync", { method: "POST" }),
+  adminListSnippets: (project: string, version: string) =>
+    request<{ variables: string; snippets: SnippetFile[]; frozen: boolean }>(
+      `/api/admin/snippets?project=${encodeURIComponent(project)}&version=${encodeURIComponent(version)}`,
+    ),
+  adminWriteVariables: (data: { project: string; version: string; text: string }) =>
+    request("/api/admin/variables", { method: "PUT", body: JSON.stringify(data) }),
+  adminWriteSnippet: (name: string, data: { project: string; version: string; language: string; content: string }) =>
+    request(`/api/admin/snippets/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify(data) }),
+  adminDeleteSnippet: (name: string, where: { project: string; version: string; language: string }) =>
+    request(
+      `/api/admin/snippets/${encodeURIComponent(name)}?project=${encodeURIComponent(where.project)}` +
+        `&version=${encodeURIComponent(where.version)}&language=${encodeURIComponent(where.language)}`,
+      { method: "DELETE" },
+    ),
   /** The Markdown as readers will get it: snippets and variables filled in. */
   resolveMarkdown: (data: { project_slug: string; version: string; language: string; markdown: string }) =>
     request<{ markdown: string }>("/api/admin/resolve-markdown", { method: "POST", body: JSON.stringify(data) }),

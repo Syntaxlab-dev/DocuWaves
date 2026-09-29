@@ -30,6 +30,7 @@ import {
   RotateCcw,
   Sun,
   History,
+  Puzzle,
   Lock,
   Trash2,
   Upload,
@@ -44,6 +45,7 @@ import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
+import { SnippetsCard } from "@/components/SnippetsCard";
 import {
   api,
   ApiError,
@@ -202,6 +204,7 @@ export function AdminApp() {
   const [versions, setVersions] = useState<AdminVersions | null>(null);
   const [viewing, setViewing] = useState("");
   const [showVersions, setShowVersions] = useState(false);
+  const [showSnippets, setShowSnippets] = useState(false);
   // Read-only: a frozen version is a snapshot of a release. Every control
   // that writes is hidden while one is being viewed, and the API refuses
   // the write anyway (see the backend's content_versions.ensure_writable) --
@@ -416,6 +419,7 @@ export function AdminApp() {
                   }}
                   open={showVersions}
                   onToggle={() => setShowVersions((v) => !v)}
+                  onToggleSnippets={() => setShowSnippets((v) => !v)}
                 />
 
                 {/* Freezing a release and deleting one are both writes, so
@@ -431,6 +435,15 @@ export function AdminApp() {
                       setSelectedCategory(null);
                       setEditing(null);
                     }}
+                  />
+                )}
+
+                {showSnippets && (
+                  <SnippetsCard
+                    projectSlug={selectedProject.slug}
+                    version={viewing}
+                    readOnly={readOnly}
+                    onClose={() => setShowSnippets(false)}
                   />
                 )}
 
@@ -1320,12 +1333,14 @@ function VersionsBar({
   onView,
   open,
   onToggle,
+  onToggleSnippets,
 }: {
   versions: AdminVersions | null;
   viewing: string;
   onView: (version: string) => void;
   open: boolean;
   onToggle: () => void;
+  onToggleSnippets: () => void;
 }) {
   const { t } = useI18n();
   const hasFrozen = Boolean(versions && versions.versions.length > 0);
@@ -1353,6 +1368,10 @@ function VersionsBar({
       <Button variant="ghost" size="sm" className={hasFrozen ? "" : "ml-auto"} onClick={onToggle}>
         <History className="h-3.5 w-3.5" />
         {t("admin.versions")}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={onToggleSnippets}>
+        <Puzzle className="h-3.5 w-3.5" />
+        {t("snippets.title")}
       </Button>
       {open && <span className="sr-only">{t("admin.versionsIntro")}</span>}
     </div>
