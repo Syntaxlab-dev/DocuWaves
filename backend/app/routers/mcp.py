@@ -43,6 +43,7 @@ import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from app.services import api_tokens_store, content_versions, git_content_repo, mcp_tools
 
@@ -344,7 +345,10 @@ async def mcp_endpoint(request: Request):
     if not isinstance(message, dict):
         return _error(None, _INVALID_REQUEST, "A JSON-RPC message must be an object.")
 
-    response = _dispatch(message, token)
+    # _dispatch is synchronous and a write tool ends in git commit + push +
+    # reindex; run on the event loop, that stalled every other request of
+    # the process -- the public site and the health check included.
+    response = await run_in_threadpool(_dispatch, message, token)
     if response is None:
         # A notification. 202 with no body, which is what JSON-RPC's "no
         # response to a notification" looks like over HTTP.
