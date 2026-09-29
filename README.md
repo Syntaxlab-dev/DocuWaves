@@ -545,6 +545,31 @@ Browsers that refuse storage entirely (a private window, a full quota, site
 data blocked) simply get no drafts; the editor works exactly as it did
 before this existed.
 
+### Callouts
+
+GitHub's own syntax, so the content repo reads the same on GitHub:
+
+```markdown
+> [!TIP]
+> Back up the data volume before upgrading.
+```
+
+Five kinds: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, `CAUTION`. Each renders as
+a coloured box with its label in the reader's language. Anywhere else it is
+an ordinary quote.
+
+### Code blocks with a file name
+
+````markdown
+```python title="app/main.py"
+def hello(): ...
+```
+````
+
+The `title` after the language is shown above the block together with the
+language. Blocks without one look exactly as before. Every block has a copy
+button either way.
+
 ### Diagrams
 
 A fenced code block tagged `mermaid` is rendered as a diagram instead of as

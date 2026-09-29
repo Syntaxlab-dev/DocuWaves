@@ -24,6 +24,8 @@ const ROWS: { key: string; syntax: string }[] = [
   { key: "cheat.list", syntax: "- one\n- two" },
   { key: "cheat.numbered", syntax: "1. one\n2. two" },
   { key: "cheat.quote", syntax: "> note" },
+  { key: "cheat.callout", syntax: "> [!TIP]\n> Text" },
+  { key: "cheat.codeTitle", syntax: "```python title=\"app.py\"\n…\n```" },
   { key: "cheat.table", syntax: "| a | b |\n|---|---|\n| 1 | 2 |" },
   { key: "cheat.rule", syntax: "---" },
   { key: "cheat.math", syntax: "$E = mc^2$" },
