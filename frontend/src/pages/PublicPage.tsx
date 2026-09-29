@@ -11,6 +11,7 @@ import { PageFooterNav } from "@/components/PageFooterNav";
 import { TableOfContents } from "@/components/TableOfContents";
 import { collectHeadings } from "@/lib/headings";
 import { formatIsoDate } from "@/lib/dates";
+import { readingTime } from "@/lib/reading";
 import { useProjectNav, type NavStatus } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
@@ -97,6 +98,8 @@ export function PublicPage() {
 
   const showToc = headings.length >= MIN_TOC_HEADINGS;
 
+  const readingMinutes = readingTime(data.page.markdown_content);
+
   return (
     <DocsShell
       nav={nav}
@@ -155,9 +158,17 @@ export function PublicPage() {
           A date and nothing else: who changed it, why, and the diff all
           exist, and all of it stays behind the admin login (the content repo
           is private, and its commit messages are its own business). */}
-      {data.last_updated && (
+      {/* Reading time sits on the same quiet line: it is about the text
+          (how long), the date is about the text (how current). */}
+      {(data.last_updated || readingMinutes > 0) && (
         <p className="mt-8 text-xs text-[var(--muted)]">
-          {t("page.lastUpdated")} <time dateTime={data.last_updated}>{formatIsoDate(data.last_updated, uiLang)}</time>
+          {data.last_updated && (
+            <>
+              {t("page.lastUpdated")} <time dateTime={data.last_updated}>{formatIsoDate(data.last_updated, uiLang)}</time>
+            </>
+          )}
+          {data.last_updated && readingMinutes > 0 && " · "}
+          {readingMinutes > 0 && t("page.readingTime").replace("{n}", String(readingMinutes))}
         </p>
       )}
       {/* The review note, in the same quiet register as the line above it

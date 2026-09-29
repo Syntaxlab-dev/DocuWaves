@@ -1,4 +1,5 @@
 import { useMemo, useRef, type HTMLAttributes, type ReactNode } from "react";
+import { AlertOctagon, AlertTriangle, Info, Lightbulb, MessageSquareWarning, type LucideIcon } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -11,6 +12,7 @@ import "katex/dist/katex.min.css";
 import type { Element, ElementContent } from "hast";
 import { CopyButton } from "@/components/CopyButton";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { remarkCallouts, type CalloutKind } from "@/lib/callouts";
 import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
 
@@ -87,7 +89,8 @@ export function MarkdownView({
         // what it found into markup. KaTeX rather than MathJax: it renders
         // synchronously, in one pass, with no layout reflow afterwards --
         // which matters because these pages are also printed.
-        remarkPlugins={[remarkGfm, remarkMath]}
+        // remarkCallouts: GitHub's `> [!WARNING]` boxes, see lib/callouts.ts.
+        remarkPlugins={[remarkGfm, remarkMath, remarkCallouts]}
         // plainText: "mermaid" is not a highlight.js language, it's a
         // diagram. Told plainly, the highlighter leaves the block completely
         // alone -- no `hljs` class, no spans -- which keeps its source in one
@@ -167,7 +170,26 @@ export function MarkdownView({
             // stays the fenced block it always was.
             const diagram = mermaidSource(node);
             if (diagram !== null) return <MermaidDiagram code={diagram} />;
-            return <CodeBlock {...props}>{children}</CodeBlock>;
+            const { title, language } = codeInfo(node);
+            return (
+              <CodeBlock title={title} language={language} {...props}>
+                {children}
+              </CodeBlock>
+            );
+          },
+          blockquote({ node, children, ...props }) {
+            const kind = node?.properties?.dataCallout as CalloutKind | undefined;
+            if (!kind) return <blockquote {...props}>{children}</blockquote>;
+            const { icon: Icon, label } = CALLOUTS[kind];
+            return (
+              <div className={`callout callout-${kind}`} role="note">
+                <p className="callout-title">
+                  <Icon className="h-4 w-4" aria-hidden="true" />
+                  {t(label)}
+                </p>
+                {children}
+              </div>
+            );
           },
         }}
       >
@@ -199,11 +221,58 @@ function Heading({
   );
 }
 
-function CodeBlock({ children, ...props }: HTMLAttributes<HTMLPreElement>) {
+const CALLOUTS = {
+  note: { icon: Info, label: "callout.note" },
+  tip: { icon: Lightbulb, label: "callout.tip" },
+  important: { icon: MessageSquareWarning, label: "callout.important" },
+  warning: { icon: AlertTriangle, label: "callout.warning" },
+  caution: { icon: AlertOctagon, label: "callout.caution" },
+} as const satisfies Record<CalloutKind, { icon: LucideIcon; label: string }>;
+
+/**
+ * What the fence line says about a block beyond its language:
+ *
+ *     ```python title="app/main.py"
+ *
+ * The part after the language is the fence's "meta" string, which Markdown
+ * itself ignores and remark hands through on the <code> element. Only
+ * `title` is read; anything else there is left alone, so a meta string
+ * written for another tool does no harm here.
+ */
+function codeInfo(node?: Element): { title: string; language: string } {
+  const code = node?.children.find((child) => child.type === "element");
+  if (code?.type !== "element" || code.tagName !== "code") return { title: "", language: "" };
+  const meta = typeof code.data === "object" && code.data && "meta" in code.data ? String(code.data.meta ?? "") : "";
+  const title = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(meta);
+  const className = code.properties?.className;
+  const languageClass = Array.isArray(className)
+    ? className.map(String).find((name) => name.startsWith("language-"))
+    : undefined;
+  return {
+    title: title ? (title[1] ?? title[2] ?? title[3] ?? "").trim() : "",
+    language: languageClass ? languageClass.slice("language-".length) : "",
+  };
+}
+
+function CodeBlock({
+  children,
+  title,
+  language,
+  ...props
+}: HTMLAttributes<HTMLPreElement> & { title?: string; language?: string }) {
   const preRef = useRef<HTMLPreElement>(null);
 
   return (
-    <div className="code-block">
+    <div className={`code-block${title ? " has-title" : ""}`}>
+      {/* A file name says where this code goes, which is the question a
+          reader copying it has first. The language is only shown next to a
+          title: on its own the highlighting already says it. */}
+      {title && (
+        <div className="code-title">
+          <span className="truncate">{title}</span>
+          {language && <span className="code-language">{language}</span>}
+        </div>
+      )}
       <pre ref={preRef} {...props}>
         {children}
       </pre>
