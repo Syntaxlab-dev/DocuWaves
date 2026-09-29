@@ -570,6 +570,38 @@ The `title` after the language is shown above the block together with the
 language. Blocks without one look exactly as before. Every block has a copy
 button either way.
 
+### Tabs
+
+The same step for several systems, one visible at a time:
+
+````markdown
+<!-- tabs -->
+#### macOS
+```bash
+brew install docuwaves
+```
+#### Linux
+```bash
+apt install docuwaves
+```
+<!-- /tabs -->
+````
+
+The first heading after `<!-- tabs -->` names the first tab, and every
+heading **of the same level** starts the next one; deeper headings, code,
+callouts, lists — anything — are content of the tab they are in. On GitHub
+the comments are invisible and the page reads as a heading per system with
+its steps underneath, which is how you would write it without tabs.
+
+A reader's choice is remembered by name, in their browser, and applies to
+every tab group on every page: pick "Linux" once and every group that has a
+Linux tab shows it. Printed pages show all tabs, one after another, each
+under its name. Headings inside a tab group stay out of "On this page" —
+they would link to something the reader may not be looking at.
+
+A group that doesn't start with a heading, or is never closed, is shown as
+ordinary text.
+
 ### Diagrams
 
 A fenced code block tagged `mermaid` is rendered as a diagram instead of as

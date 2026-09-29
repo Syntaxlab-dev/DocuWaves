@@ -12,9 +12,11 @@ import "katex/dist/katex.min.css";
 import type { Element, ElementContent } from "hast";
 import { CopyButton } from "@/components/CopyButton";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { Tabs } from "@/components/Tabs";
 import { remarkCallouts, type CalloutKind } from "@/lib/callouts";
 import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
+import { remarkTabs } from "@/lib/tabs";
 
 /**
  * Images are written in a page as a plain relative path
@@ -90,7 +92,8 @@ export function MarkdownView({
         // synchronously, in one pass, with no layout reflow afterwards --
         // which matters because these pages are also printed.
         // remarkCallouts: GitHub's `> [!WARNING]` boxes, see lib/callouts.ts.
-        remarkPlugins={[remarkGfm, remarkMath, remarkCallouts]}
+        // remarkTabs: `<!-- tabs -->` groups, see lib/tabs.ts.
+        remarkPlugins={[remarkGfm, remarkMath, remarkTabs, remarkCallouts]}
         // plainText: "mermaid" is not a highlight.js language, it's a
         // diagram. Told plainly, the highlighter leaves the block completely
         // alone -- no `hljs` class, no spans -- which keeps its source in one
@@ -176,6 +179,18 @@ export function MarkdownView({
                 {children}
               </CodeBlock>
             );
+          },
+          div({ node, children, ...props }) {
+            if (node?.properties?.dataTabs !== undefined) {
+              const labels = (node.children ?? [])
+                .filter((child): child is Element => child.type === "element")
+                .map((panel) => String(panel.properties?.dataTabLabel ?? ""));
+              return <Tabs labels={labels}>{children}</Tabs>;
+            }
+            // A panel: Tabs wraps it in the element that does the showing
+            // and hiding, so it adds no box of its own.
+            if (node?.properties?.dataTabLabel !== undefined) return <>{children}</>;
+            return <div {...props}>{children}</div>;
           },
           blockquote({ node, children, ...props }) {
             const kind = node?.properties?.dataCallout as CalloutKind | undefined;
