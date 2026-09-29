@@ -908,7 +908,13 @@ function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: () => voi
       await reload();
       toast.success(t("admin.brandingSaved"));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+      toast.error(
+        err instanceof ApiError
+          ? err.message === "page_changed"
+            ? t("admin.pageChangedKept")
+            : err.message
+          : t("common.error"),
+      );
     } finally {
       setSaving(false);
     }
@@ -2313,6 +2319,9 @@ function PageEditor({
   const [tab, setTab] = useState<"edit" | "preview" | "history">("edit");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
+  // The server's fingerprint of the page as loaded; sent back on save so a
+  // save on top of someone else's newer change is refused, not silent.
+  const [revision, setRevision] = useState("");
   const [dirty, setDirty] = useState(false);
   /** Bumped to re-run the load below when nothing about WHICH page is open
    *  has changed but its content has -- restoring an older version writes a
@@ -2422,6 +2431,7 @@ function PageEditor({
       setTargetCategoryId(categoryId);
       setPublished(false);
       setLoadedId(null);
+      setRevision("");
       setExisting([]);
       setReviewedBy("");
       setReviewedAt("");
@@ -2437,6 +2447,7 @@ function PageEditor({
         setTargetCategoryId(page.page.category_id);
         setPublished(page.page.published);
         setLoadedId(page.page.id);
+        setRevision(page.page.revision ?? "");
         setReviewedBy(page.page.reviewed_by);
         setReviewedAt(page.page.reviewed_at);
         offerDraft(localDraftKey, page.page.title, page.page.markdown_content);
@@ -2447,6 +2458,7 @@ function PageEditor({
         setContent("");
         setPublished(false);
         setLoadedId(null);
+      setRevision("");
         setReviewedBy("");
         setReviewedAt("");
         offerDraft(localDraftKey, "", "");
@@ -2609,12 +2621,22 @@ function PageEditor({
         setSlug(created.slug);
         setExisting((codes) => (codes.includes(created.language) ? codes : [...codes, created.language]));
       } else {
-        const saved = await api.adminUpdatePage(loadedId, {
-          title,
-          markdown_content: content,
-          category_id: targetCategoryId,
-          language,
-        });
+        const input = { title, markdown_content: content, category_id: targetCategoryId, language };
+        let saved;
+        try {
+          saved = await api.adminUpdatePage(loadedId, { ...input, base_revision: revision || undefined });
+        } catch (err) {
+          // Somebody else saved this page since it was opened. Ask rather
+          // than decide: overwriting is safe to offer, because their version
+          // stays in the page's history and can be restored from there.
+          const changedMeanwhile =
+            err instanceof ApiError && err.status === 409 && err.message === "page_changed";
+          if (changedMeanwhile && window.confirm(t("admin.pageChangedConfirm"))) {
+            saved = await api.adminUpdatePage(loadedId, input);
+          } else {
+            throw err;
+          }
+        }
         // saved.id, not loadedId: renaming the page moved its file, and the
         // row it had is gone. Publishing under the old id 404s on a save
         // that actually worked, and silently drops the published state the
@@ -2624,6 +2646,7 @@ function PageEditor({
         // May well be empty now: editing the body drops the review note.
         setReviewedBy(saved.reviewed_by);
         setReviewedAt(saved.reviewed_at);
+        setRevision(saved.revision);
       }
       setDirty(false);
       // The text is in the content repo now, so the local copy of it has

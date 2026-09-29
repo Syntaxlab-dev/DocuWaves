@@ -133,6 +133,8 @@ const de = {
   "chat.noSources":
     "Dazu findet sich in dieser Dokumentation nichts. Es wurde deshalb auch kein Modell gefragt — eine erfundene Antwort wäre schlechter als gar keine. Probier andere Wörter oder die Suche oben.",
   "chat.tooMany": "Zu viele Fragen in kurzer Zeit. Bitte kurz warten.",
+  "admin.pageChangedConfirm": "Diese Seite wurde inzwischen von jemand anderem geändert.\n\nOK: deine Fassung trotzdem speichern – die andere bleibt in der Versionsgeschichte erhalten und kann wiederhergestellt werden.\nAbbrechen: nichts speichern.",
+  "admin.pageChangedKept": "Nicht gespeichert: Die Seite wurde inzwischen geändert. Deine Änderungen sind noch im Editor – lade die Seite in einem neuen Tab, um die neue Fassung zu sehen.",
   "chat.busy": "Gerade beantworten wir viele Fragen gleichzeitig. Bitte versuche es in ein paar Sekunden noch einmal.",
   "chat.timeout": "Das Modell hat nicht rechtzeitig geantwortet. Bitte nochmal versuchen.",
   "chat.failed": "Das hat gerade nicht geklappt. Die Suche oben funktioniert unabhängig davon.",
@@ -558,6 +560,8 @@ const en: Dict = {
   "chat.noSources":
     "Nothing in this documentation covers that. No model was asked, because an invented answer would be worse than none. Try other words, or the search box above.",
   "chat.tooMany": "That is a lot of questions at once. Please wait a moment.",
+  "admin.pageChangedConfirm": "Someone else has changed this page since you opened it.\n\nOK: save your version anyway – theirs stays in the page history and can be restored.\nCancel: save nothing.",
+  "admin.pageChangedKept": "Not saved: the page was changed in the meantime. Your edits are still in the editor – open the page in a new tab to see the newer version.",
   "chat.busy": "Lots of questions are being answered right now. Please try again in a few seconds.",
   "chat.timeout": "The model did not answer in time. Please try again.",
   "chat.failed": "That did not work just now. The search box above works independently of this.",

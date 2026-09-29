@@ -47,6 +47,8 @@ row's language is '', requested == default == '', and each of these
 functions reduces to exactly the query it ran before.
 """
 
+import threading
+import hashlib
 from datetime import datetime, timezone
 
 from app.services import (
@@ -408,10 +410,59 @@ def create_page(
     return get_page_by_slug(project_id, slug, requested, version)
 
 
-def update_page(page_id: int, title: str, slug: str, markdown_content: str, category_id: int, author: str) -> dict | None:
+class PageChangedError(Exception):
+    """The page is no longer the one the editor loaded: somebody else saved it
+    in between. Carries the revision it has now."""
+
+    def __init__(self, current_revision: str):
+        super().__init__("page_changed")
+        self.current_revision = current_revision
+
+
+def page_revision(page: dict) -> str:
+    """A fingerprint of what an editor sees and saves: the title and the body.
+    Sent to the editor with the page and back with a save, so the save can
+    tell whether it is still writing on top of the text it was based on."""
+    digest = hashlib.sha256(f"{page['title']}\n\0{page['markdown_content']}".encode("utf-8"))
+    return digest.hexdigest()[:20]
+
+
+# Checking the revision and writing the page happen as one step: two saves
+# arriving together would otherwise both pass the check against the same old
+# text and the second would still silently replace the first.
+_update_lock = threading.Lock()
+
+
+def update_page(
+    page_id: int,
+    title: str,
+    slug: str,
+    markdown_content: str,
+    category_id: int,
+    author: str,
+    expected_revision: str = "",
+) -> dict | None:
+    with _update_lock:
+        return _update_page(page_id, title, slug, markdown_content, category_id, author, expected_revision)
+
+
+def _update_page(
+    page_id: int,
+    title: str,
+    slug: str,
+    markdown_content: str,
+    category_id: int,
+    author: str,
+    expected_revision: str,
+) -> dict | None:
     current = get_page(page_id)
     if current is None:
         return None
+    # Blank = the caller did not say what it started from (the MCP tools, an
+    # older browser tab): saved as before. Given and different = someone else
+    # saved in between, and writing now would drop their change unseen.
+    if expected_revision and expected_revision != page_revision(current):
+        raise PageChangedError(page_revision(current))
     project = projects_store.get_project(current["project_id"])
     old_category = categories_store.get_category(current["category_id"])
     new_category = categories_store.get_category(category_id)

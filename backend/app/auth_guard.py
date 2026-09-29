@@ -62,9 +62,10 @@ than whenever the person happens to log in again. An account that has been
 deleted while logged in fails the same lookup and is signed out.
 """
 
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from app.services import api_tokens_store, session_registry_store, users_store
 
@@ -118,6 +119,17 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         if path.startswith(_EXEMPT_PREFIXES):
             return await call_next(request)
 
+        # The checks below read (and, for the session's last-seen time, write)
+        # the database. Run in the thread pool: done on the event loop, every
+        # admin request serialised the whole process behind its queries, and
+        # a reindex holding the database made the public site wait too.
+        refusal = await run_in_threadpool(self._refusal, request, path)
+        if refusal is not None:
+            return refusal
+        return await call_next(request)
+
+    def _refusal(self, request: Request, path: str) -> Response | None:
+        """The response that refuses this request, or None to let it through."""
         if not users_store.is_configured():
             return JSONResponse({"detail": "setup_required"}, status_code=401)
 
@@ -148,7 +160,7 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
             # request's own scope so the MCP router can decide what this
             # token may do without looking the header up a second time.
             request.state.api_token = record
-            return await call_next(request)
+            return None
 
         if path.startswith(_TOKEN_ONLY_PREFIX):
             return JSONResponse(
@@ -194,4 +206,4 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
                 status_code=403,
             )
 
-        return await call_next(request)
+        return None

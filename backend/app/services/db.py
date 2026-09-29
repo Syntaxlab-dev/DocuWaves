@@ -54,9 +54,16 @@ def get_connection():
     if is_postgres():
         return psycopg.connect(settings.database_url)
     Path(settings.sqlite_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(settings.sqlite_path)
+    conn = sqlite3.connect(settings.sqlite_path, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # WAL lets readers carry on while a reindex writes, and busy_timeout makes
+    # two writers WAIT for each other instead of the second one failing at
+    # once with "database is locked" -- after its git commit already happened.
+    # journal_mode is stored in the database file, so setting it again on
+    # every connection is a no-op after the first.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 10000")
     return _SqliteConnWrapper(conn)
 
 

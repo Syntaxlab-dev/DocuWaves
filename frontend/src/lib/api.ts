@@ -132,6 +132,10 @@ export interface Page extends PageSummary {
   reviewed_at: string;
   created_at: string;
   updated_at: string;
+  /** Fingerprint of title + body as the server has them. Sent back as
+   *  `base_revision` on save, so a save on top of someone else's newer
+   *  change is refused (409 `page_changed`) instead of silently winning. */
+  revision?: string;
 }
 
 /** A live link that shows one unpublished page to somebody with no login
@@ -525,6 +529,8 @@ export interface PageInput {
   /** Set only when creating a TRANSLATION: the existing page's slug, which
    *  its translations share. Omitted = a new page, slug from the title. */
   slug?: string;
+  /** The `revision` the editor loaded; see Page.revision. */
+  base_revision?: string;
 }
 
 class ApiError extends Error {
@@ -673,7 +679,7 @@ export const api = {
   // the reindex keys rows by (version, slug, language). Anything following up
   // on the same page must use the id this returns, not the one it sent.
   adminUpdatePage: (id: number, data: PageInput) =>
-    request<{ ok: boolean; id: number; slug: string; reviewed_by: string; reviewed_at: string }>(
+    request<{ ok: boolean; id: number; slug: string; reviewed_by: string; reviewed_at: string; revision: string }>(
       `/api/admin/pages/${id}`,
       {
         method: "PUT",

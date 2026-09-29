@@ -3,6 +3,8 @@ session -- lets a login be revoked (logout) even though the cookie's own
 signature stays valid until it expires. Same pattern as CachePanel's own
 session_registry_store.py."""
 
+import time
+import threading
 from datetime import datetime, timezone
 
 from app.services import db
@@ -30,7 +32,22 @@ def exists(session_id: str) -> bool:
     return row is not None
 
 
+# last_seen_at is shown as "last active", to the minute at best. Writing it
+# on EVERY admin request turned each page load of the admin UI into a
+# database write, serialised against every reindex; once a minute is plenty.
+_TOUCH_INTERVAL_SECONDS = 60
+_last_touch: dict[str, float] = {}
+_touch_lock = threading.Lock()
+
+
 def touch(session_id: str) -> None:
+    now = time.monotonic()
+    with _touch_lock:
+        if now - _last_touch.get(session_id, float("-inf")) < _TOUCH_INTERVAL_SECONDS:
+            return
+        if len(_last_touch) > 4096:
+            _last_touch.clear()
+        _last_touch[session_id] = now
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         conn.execute(

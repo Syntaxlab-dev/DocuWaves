@@ -27,6 +27,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
+from starlette.concurrency import run_in_threadpool
 
 from app.services import (
     backup,
@@ -388,6 +389,11 @@ class PageIn(BaseModel):
     # language). Blank means "a new page", and the slug is derived from the
     # title as it always was.
     slug: str = ""
+    # The `revision` the editor loaded the page with. Given, a save that
+    # would overwrite a change somebody else made in the meantime is refused
+    # with 409 `page_changed` instead. Blank = no check (API clients, older
+    # tabs) -- the behaviour this endpoint always had.
+    base_revision: str = ""
 
 
 @router.get(
@@ -413,6 +419,7 @@ def admin_get_page(page_id: int):
     # say nothing about this one's.
     return {
         **page,
+        "revision": pages_store.page_revision(page),
         "languages": pages_store.page_languages(page["project_id"], page["slug"], page["version"]),
     }
 
@@ -434,6 +441,8 @@ def admin_find_page(project_slug: str, page_slug: str, language: str = "", versi
     if not languages:
         raise HTTPException(status_code=404, detail="Page not found.")
     page = pages_store.get_page_by_slug(project["id"], page_slug, _page_language(language), resolved)
+    if page is not None:
+        page = {**page, "revision": pages_store.page_revision(page)}
     # `frozen` so the editor can open a frozen version's page read-only and
     # say why, instead of offering a Save button that the API then refuses.
     return {"page": page, "languages": languages, "frozen": content_versions.is_frozen(project_slug, resolved)}
@@ -517,7 +526,14 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
         else _unique_slug(title, pages_store.slug_taken, page["project_id"], page["version"], exclude_id=page_id)
     )
     try:
-        updated = pages_store.update_page(page_id, title, slug, body.markdown_content, body.category_id, _author(request))
+        updated = pages_store.update_page(
+            page_id, title, slug, body.markdown_content, body.category_id, _author(request),
+            expected_revision=body.base_revision.strip(),
+        )
+    except pages_store.PageChangedError as exc:
+        raise HTTPException(
+            status_code=409, detail="page_changed", headers={"X-Current-Revision": exc.current_revision}
+        ) from exc
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     # `id` as well as `slug`: renaming a page moves its file, and the reindex
@@ -538,6 +554,8 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
         "slug": updated["slug"] if updated else slug,
         "reviewed_by": updated["reviewed_by"] if updated else "",
         "reviewed_at": updated["reviewed_at"] if updated else "",
+        # What the next save from this editor has to name as its base.
+        "revision": pages_store.page_revision(updated) if updated else "",
     }
 
 
@@ -981,11 +999,17 @@ async def admin_upload_asset(project_slug: str, filename: str, request: Request,
     content_versions.ensure_writable(project_slug, resolved)
 
     data = await _read_validated_image(request, filename)
+    # Reading the body is the only part that needs the event loop. Writing,
+    # committing and pushing are blocking (a push is network I/O), and done
+    # here directly they stalled every other request of the process.
+    return await run_in_threadpool(_store_project_asset, project_slug, project, filename, data, resolved, _author(request))
 
+
+def _store_project_asset(project_slug: str, project: dict, filename: str, data: bytes, resolved: str, author: str) -> dict:
     stored_name = content_assets.unique_filename(project_slug, filename, resolved)
     path = content_assets.write_asset(project_slug, stored_name, data, resolved)
     try:
-        git_content_repo.commit_and_push([path], f"Add image: {stored_name} ({project['name']})", _author(request))
+        git_content_repo.commit_and_push([path], f"Add image: {stored_name} ({project['name']})", author)
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return _asset_info(project_slug, stored_name, len(data), resolved)
@@ -1101,11 +1125,14 @@ def admin_update_site(body: SiteBrandingIn, request: Request):
 async def admin_upload_site_asset(filename: str, request: Request):
     _require_content_repo()
     data = await _read_validated_image(request, filename)
+    return await run_in_threadpool(_store_site_asset, filename, data, _author(request))
 
+
+def _store_site_asset(filename: str, data: bytes, author: str) -> dict:
     stored_name = site_branding.unique_asset_filename(filename)
     path = site_branding.write_site_asset(stored_name, data)
     try:
-        git_content_repo.commit_and_push([path], f"Add branding image: {stored_name}", _author(request))
+        git_content_repo.commit_and_push([path], f"Add branding image: {stored_name}", author)
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"filename": stored_name, "size": len(data), "url": site_branding.asset_url(stored_name)}

@@ -42,6 +42,7 @@ its versions) in one single pass.
 """
 
 import logging
+import threading
 from datetime import datetime, timezone
 
 from app.services import content_files, content_versions, db, site_languages
@@ -87,7 +88,21 @@ def _record_conflict(project: str, category: str, kept_in: str, slug: str, langu
     )
 
 
+# One reindex at a time. Every write (editor, MCP token, background sync)
+# ends in a full_sync, and two of them interleaving -- each reading the files
+# and rewriting the same rows -- could leave the index with a page missing or
+# fail on a UNIQUE constraint AFTER the change was already committed. Waiting
+# for the other one to finish costs a moment; the result is the same either
+# way, since each run reconciles against whatever is on disk by then.
+_sync_lock = threading.RLock()
+
+
 def full_sync() -> None:
+    with _sync_lock:
+        _full_sync()
+
+
+def _full_sync() -> None:
     global _last_sync
     _conflicts.clear()
     if not content_files.content_root().exists():
