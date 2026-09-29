@@ -602,6 +602,48 @@ they would link to something the reader may not be looking at.
 A group that doesn't start with a heading, or is never closed, is shown as
 ordinary text.
 
+### Snippets and variables
+
+Write something once and use it on every page.
+
+**Variables** are `{{name}}`, defined in a `_variables.yml`:
+
+```yaml
+# content/<project>/_variables.yml   (versioned: content/<project>/<version>/_variables.yml)
+product: DocuWaves
+port: 8091
+download:
+  de: https://example.com/de/download
+  en: https://example.com/en/download
+```
+
+`content/_variables.yml` holds values for the whole site; a project's own
+file wins over it. Two are built in: `{{project}}` (the project's name) and,
+in a versioned project, `{{version}}` (the label of the version being read —
+a frozen 2.0 keeps saying 2.0). Variables work everywhere, code blocks
+included. A name that isn't defined is left exactly as written, and
+`${{ … }}` is never touched, so GitHub Actions, Helm or Jinja examples stay
+intact; write `\{{name}}` to show the braces themselves.
+
+**Snippets** are Markdown files in `_snippets/` next to the categories (or
+`content/_snippets/` for the whole site), included on a line of their own:
+
+```markdown
+<!-- snippet: prerequisites -->
+```
+
+That reads `_snippets/prerequisites.md` — or `prerequisites.<lang>.md` first,
+on a multilingual site. A snippet can use variables and include other
+snippets. On GitHub the comment is invisible. An unknown snippet is left out
+for readers and shown as a warning in the editor's preview.
+
+Both are filled in for **readers** — the page, preview links, search result
+snippets, the page description, the chat, webhooks and the link check — and
+are frozen with a version like the rest of its content. The files, the
+editor and the MCP read tool keep the source, since that is what gets
+edited. Search *matches* the page's own text: a word that only appears
+inside a snippet or a variable doesn't find the page.
+
 ### Diagrams
 
 A fenced code block tagged `mermaid` is rendered as a diagram instead of as

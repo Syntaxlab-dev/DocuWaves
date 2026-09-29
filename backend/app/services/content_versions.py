@@ -368,6 +368,13 @@ def rejection_reason(project_slug: str, version_id: str, label: str, raw: str = 
     return None
 
 
+# DocuWaves' own files that belong to ONE version rather than the project:
+# a frozen 2.0 keeps the snippets and variable values it was released with
+# (see snippets.py). Spelled out here rather than imported, because this
+# module sits below snippets.py.
+VERSIONED_OWN_FILES = {"_snippets", "_variables.yml"}
+
+
 def _content_entries(project_slug: str) -> list[Path]:
     """What a freeze snapshots: everything in the version's content
     directory that isn't one of DocuWaves' own underscore-prefixed files
@@ -378,7 +385,7 @@ def _content_entries(project_slug: str) -> list[Path]:
     directory = content_dir(project_slug, writable_version(project_slug))
     if not directory.is_dir():
         return []
-    return sorted(p for p in directory.iterdir() if not p.name.startswith("_"))
+    return sorted(p for p in directory.iterdir() if not p.name.startswith("_") or p.name in VERSIONED_OWN_FILES)
 
 
 def would_move(project_slug: str) -> list[str]:

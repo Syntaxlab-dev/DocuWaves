@@ -49,7 +49,7 @@ import threading
 
 import requests
 
-from app.services import pages_store, projects_store, prose, site_languages
+from app.services import pages_store, projects_store, prose, site_languages, snippets
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -178,7 +178,7 @@ def find_sources(question: str, language: str, project_slug: str = "", version: 
 
 def _page_text(hit: dict) -> str:
     page = pages_store.get_page(hit["page_id"])
-    body = page["markdown_content"] if page else ""
+    body = snippets.resolve(page["markdown_content"], hit["project_slug"], page["version"], page["language"]) if page else ""
     return prose.clip(prose.to_prose(body), _SOURCE_CHARS)
 
 

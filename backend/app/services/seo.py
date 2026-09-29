@@ -62,6 +62,7 @@ from app.services import (
     prose,
     site_branding,
     site_languages,
+    snippets,
 )
 from app.settings import settings
 
@@ -459,7 +460,8 @@ def _page_meta(base: str, route: Route, lang: str, branding: dict) -> Meta | Non
     meta = _defaults(base, lang, branding, noindex=False)
     meta.title = page["title"]
     meta.og_type = "article"
-    meta.description = _summarize(page["markdown_content"]) or meta.description
+    body = snippets.resolve(page["markdown_content"], project["slug"], page["version"], page["language"])
+    meta.description = _summarize(body) or meta.description
     # The language actually SERVED, which is not always the one in the URL:
     # a page with no translation yet is served in the best language there is
     # (with a notice on the page saying so). og:locale and inLanguage

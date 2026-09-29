@@ -37,6 +37,7 @@ from app.services import (
     projects_store,
     site_branding,
     site_languages,
+    snippets,
 )
 from app.services.client_address import client_address
 
@@ -230,7 +231,9 @@ def public_get_page(
     return {
         "project": project,
         "category": category,
-        "page": page,
+        # Snippets and variables filled in (services/snippets.py) -- the
+        # reader gets the page, not its template.
+        "page": snippets.resolve_page(page, project_slug),
         # The date this page's file last changed in the content repo -- ""
         # when there is no repo, no commit for it, or nothing knowable, in
         # which case the page simply carries no such line.
@@ -324,7 +327,8 @@ def public_preview(token: str):
     return {
         "project": project,
         "category": category,
-        "page": page,
+        # mark_missing: whoever reads a preview is who can still fix it.
+        "page": snippets.resolve_page(page, link["project_slug"], mark_missing=True),
         # So the page can say how long it is readable for, rather than
         # simply stopping one day with a 404 the reader has to guess at.
         "expires_at": link["expires_at"],

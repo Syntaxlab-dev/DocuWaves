@@ -26,6 +26,8 @@ const ROWS: { key: string; syntax: string }[] = [
   { key: "cheat.quote", syntax: "> note" },
   { key: "cheat.callout", syntax: "> [!TIP]\n> Text" },
   { key: "cheat.tabs", syntax: "<!-- tabs -->\n#### macOS\n…\n#### Linux\n…\n<!-- /tabs -->" },
+  { key: "cheat.variable", syntax: "{{version}}" },
+  { key: "cheat.snippet", syntax: "<!-- snippet: name -->" },
   { key: "cheat.codeTitle", syntax: "```python title=\"app.py\"\n…\n```" },
   { key: "cheat.table", syntax: "| a | b |\n|---|---|\n| 1 | 2 |" },
   { key: "cheat.rule", syntax: "---" },

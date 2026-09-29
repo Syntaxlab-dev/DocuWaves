@@ -70,8 +70,11 @@ def notify(event: str, page: dict, project: dict, category: dict | None = None) 
 
 
 def _event_data(event: str, page: dict, project: dict, category: dict | None) -> dict:
-    from app.services import prose  # local: prose is heavier and only needed here
+    from app.services import prose, snippets  # local: only needed here
 
+    body = snippets.resolve(
+        page.get("markdown_content", ""), project.get("slug", ""), page.get("version", ""), page.get("language", "")
+    )
     return {
         "event": event,
         "occurred_at": datetime.now(timezone.utc).isoformat(),
@@ -80,7 +83,7 @@ def _event_data(event: str, page: dict, project: dict, category: dict | None) ->
             "slug": page.get("slug", ""),
             "language": page.get("language", ""),
             "version": page.get("version", ""),
-            "summary": prose.first_paragraph(page.get("markdown_content", ""), _SUMMARY_CHARS),
+            "summary": prose.first_paragraph(body, _SUMMARY_CHARS),
             "url": page_url(page, project),
         },
         "project": {"name": project.get("name", ""), "slug": project.get("slug", "")},

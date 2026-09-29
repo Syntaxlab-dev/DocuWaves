@@ -620,6 +620,9 @@ export const api = {
   // Admin: content repo
   contentRepoStatus: () => request<ContentRepoStatus>("/api/admin/content-repo/status"),
   contentRepoSync: () => request("/api/admin/content-repo/sync", { method: "POST" }),
+  /** The Markdown as readers will get it: snippets and variables filled in. */
+  resolveMarkdown: (data: { project_slug: string; version: string; language: string; markdown: string }) =>
+    request<{ markdown: string }>("/api/admin/resolve-markdown", { method: "POST", body: JSON.stringify(data) }),
 
   // Admin: projects
   adminListProjects: () => request<{ projects: Project[] }>("/api/admin/projects"),
