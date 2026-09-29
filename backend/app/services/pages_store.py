@@ -21,9 +21,10 @@ mechanisms:
 - Postgres: to_tsvector('simple', title || ' ' || content) computed live
   in the query (no materialized tsvector column/trigger -- simpler, and
   fast enough at the row counts a self-hosted docs tool actually holds)
-  matched against plainto_tsquery('simple', %s), which safely tokenizes
-  arbitrary user input as a parameterized value (no injection risk, unlike
-  hand-building an FTS5 MATCH string).
+  matched against to_tsquery('simple', %s) built by _pg_prefix_query() from
+  word characters only (so user input can't carry tsquery syntax), passed
+  as a parameterized value. Both backends match terms as PREFIXES, so a
+  half-typed word finds the page (see _fts5_query).
 'simple' text search config on the Postgres side deliberately skips
 English-specific stemming, matching FTS5's own non-stemming default --
 keeps search behavior close to identical between the two backends.
@@ -47,6 +48,7 @@ row's language is '', requested == default == '', and each of these
 functions reduces to exactly the query it ran before.
 """
 
+import re
 import threading
 import hashlib
 from datetime import datetime, timezone
@@ -830,7 +832,22 @@ def _fts5_query(raw: str) -> str | None:
     terms = [t for t in terms if t]
     if not terms:
         return None
-    return " OR ".join(f'"{t}"' for t in terms)
+    # `"term"*` is FTS5's prefix query: "instal" finds "installation". Search
+    # runs as the reader types (the quick search), and nobody types a whole
+    # word before looking -- with exact tokens only, every half-typed query
+    # found nothing. A single character stays exact: as a prefix it would
+    # match nearly every page.
+    return " OR ".join(f'"{t}"*' if len(t) >= 2 else f'"{t}"' for t in terms)
+
+
+def _pg_prefix_query(raw: str) -> str | None:
+    """The Postgres side of the same idea: `term:*` is a prefix match in a
+    tsquery. Built from word characters only, so nothing a reader types can
+    be tsquery syntax; terms are AND'ed, as plainto_tsquery did before."""
+    terms = re.findall(r"\w+", raw.lower())
+    if not terms:
+        return None
+    return " & ".join(f"{t}:*" if len(t) >= 2 else t for t in terms)
 
 
 # Language filter for search, shared by both backends' queries below (only
@@ -946,14 +963,17 @@ def search(
             JOIN projects pr ON pr.id = p.project_id
             JOIN categories c ON c.id = p.category_id
             WHERE p.published = TRUE
-              AND to_tsvector('simple', p.title || ' ' || p.markdown_content) @@ plainto_tsquery('simple', %s)
+              AND to_tsvector('simple', p.title || ' ' || p.markdown_content) @@ to_tsquery('simple', %s)
               {_language_filter(priority, "%s", "TRUE")}
 {_version_filter(pairs, "%s")}
-            ORDER BY ts_rank(to_tsvector('simple', p.title || ' ' || p.markdown_content), plainto_tsquery('simple', %s)) DESC
+            ORDER BY ts_rank(to_tsvector('simple', p.title || ' ' || p.markdown_content), to_tsquery('simple', %s)) DESC
             LIMIT %s
         """
+        pg_query = _pg_prefix_query(query)
+        if pg_query is None:
+            return []
         with db.get_connection() as conn:
-            rows = conn.execute(sql, (query, *language_params, *version_params, query, limit)).fetchall()
+            rows = conn.execute(sql, (pg_query, *language_params, *version_params, pg_query, limit)).fetchall()
     else:
         fts_query = _fts5_query(query)
         if fts_query is None:
