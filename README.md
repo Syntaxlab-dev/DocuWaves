@@ -637,6 +637,13 @@ on a multilingual site. A snippet can use variables and include other
 snippets. On GitHub the comment is invisible. An unknown snippet is left out
 for readers and shown as a warning in the editor's preview.
 
+Both can be managed in the admin UI too: **Snippets & variables** next to
+**Versions** above a project, for the version you are looking at or — with
+the switch at the top — for the whole site. Every save is a commit, like
+any other edit; variables are checked before they are written (a value
+YAML would read as `true`/`false`, a name with a space) and a frozen
+version's are shown but not editable.
+
 Both are filled in for **readers** — the page, preview links, search result
 snippets, the page description, the chat, webhooks and the link check — and
 are frozen with a version like the rest of its content. The files, the

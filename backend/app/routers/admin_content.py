@@ -208,6 +208,86 @@ def admin_resolve_markdown(body: ResolveIn):
     }
 
 
+def _snippet_scope(project: str, version: str, *, writing: bool) -> tuple[str, str]:
+    """(project_slug, version) for a snippets/variables call. "" as the
+    project is the whole site. For a project, a blank version means the one
+    being edited -- NOT the one readers get by default, which can be a frozen
+    release -- and a write to a frozen version is refused like any other."""
+    if not project:
+        return "", ""
+    if projects_store.get_project_by_slug(project) is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    version = _admin_version(project, version)
+    if writing:
+        content_versions.ensure_writable(project, version)
+    return project, version
+
+
+@router.get("/snippets", summary="The snippets and variables of a project version, or of the whole site")
+def admin_list_snippets(project: str = "", version: str = ""):
+    slug, resolved = _snippet_scope(project, version, writing=False)
+    return {
+        "variables": snippets.read_variables_text(slug, resolved),
+        "snippets": snippets.list_snippets(slug, resolved),
+        "frozen": bool(slug) and content_versions.is_frozen(slug, resolved),
+    }
+
+
+class VariablesIn(BaseModel):
+    project: str = ""
+    version: str = ""
+    text: str
+
+
+@router.put("/variables", summary="Replace the variables file of a project version or the site")
+def admin_write_variables(body: VariablesIn, request: Request):
+    _require_content_repo()
+    slug, resolved = _snippet_scope(body.project, body.version, writing=True)
+    try:
+        paths = snippets.write_variables(slug, resolved, body.text)
+        git_content_repo.commit_and_push(paths, "Update variables", _author(request))
+    except snippets.InvalidSnippet as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
+class SnippetIn(BaseModel):
+    project: str = ""
+    version: str = ""
+    language: str = ""
+    content: str
+
+
+@router.put("/snippets/{name}", summary="Create or replace one snippet")
+def admin_write_snippet(name: str, body: SnippetIn, request: Request):
+    _require_content_repo()
+    slug, resolved = _snippet_scope(body.project, body.version, writing=True)
+    try:
+        paths = snippets.write_snippet(slug, resolved, name, body.language, body.content)
+        git_content_repo.commit_and_push(paths, f"Update snippet {name}", _author(request))
+    except snippets.InvalidSnippet as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
+@router.delete("/snippets/{name}", summary="Delete one snippet")
+def admin_delete_snippet(name: str, request: Request, project: str = "", version: str = "", language: str = ""):
+    _require_content_repo()
+    slug, resolved = _snippet_scope(project, version, writing=True)
+    try:
+        paths = snippets.delete_snippet(slug, resolved, name, language)
+        git_content_repo.commit_and_push(paths, f"Delete snippet {name}", _author(request))
+    except snippets.InvalidSnippet as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
 # ---- Projects ----
 
 

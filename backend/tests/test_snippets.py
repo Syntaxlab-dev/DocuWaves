@@ -129,3 +129,90 @@ def test_the_preview_route_accepts_only_versions_and_languages_that_exist(repo, 
         with pytest.raises(HTTPException) as refused:
             admin_content.admin_resolve_markdown(admin_content.ResolveIn(project_slug="demo", markdown="", **bad))
         assert refused.value.status_code == 400
+
+
+# ---- Managing them from the admin UI ----
+
+
+class TestManaging:
+    @pytest.fixture
+    def commits(self, repo, monkeypatch):
+        made = []
+        monkeypatch.setattr(admin_content, "_require_content_repo", lambda: None)
+        monkeypatch.setattr(admin_content.projects_store, "get_project_by_slug", lambda slug: {"slug": slug})
+        monkeypatch.setattr(admin_content.site_languages, "languages", lambda: ["de", "en"])
+        monkeypatch.setattr(site_languages, "languages", lambda: ["de", "en"])
+        monkeypatch.setattr(site_languages, "is_multilingual", lambda: True)
+        monkeypatch.setattr(
+            admin_content.git_content_repo, "commit_and_push", lambda paths, message, author: made.append((paths, message))
+        )
+        return made
+
+    def request(self):
+        from starlette.requests import Request
+
+        return Request({"type": "http", "method": "PUT", "path": "/", "headers": [], "session": {"username": "michel"}})
+
+    def test_a_snippet_is_written_listed_and_deleted_with_a_commit_each(self, commits):
+        body = admin_content.SnippetIn(project="demo", language="en", content="Hello {{project}}")
+        admin_content.admin_write_snippet("greeting", body, self.request())
+        listed = admin_content.admin_list_snippets(project="demo")["snippets"]
+        assert listed == [{"name": "greeting", "language": "en", "content": "Hello {{project}}\n"}]
+        assert commits[-1] == (["content/demo/_snippets/greeting.en.md"], "Update snippet greeting")
+        assert resolve("<!-- snippet: greeting -->", language="en") == "Hello Demo"
+
+        admin_content.admin_delete_snippet("greeting", self.request(), project="demo", language="en")
+        assert admin_content.admin_list_snippets(project="demo")["snippets"] == []
+
+    def test_site_scope_writes_to_the_content_root(self, commits):
+        admin_content.admin_write_variables(admin_content.VariablesIn(text="support: help@example.com"), self.request())
+        assert commits[-1][0] == ["content/_variables.yml"]
+        assert resolve("{{support}}") == "help@example.com"
+
+    def test_emptying_the_variables_removes_the_file(self, commits, tmp_path):
+        admin_content.admin_write_variables(admin_content.VariablesIn(project="demo", text="a: 1"), self.request())
+        admin_content.admin_write_variables(admin_content.VariablesIn(project="demo", text="  "), self.request())
+        assert not (tmp_path / "content/demo/_variables.yml").exists()
+
+    @pytest.mark.parametrize(
+        "text, says",
+        [
+            ("a: [1", "line"),
+            ("- just\n- a list", "one variable per line"),
+            ("bad name: x", "can't be a variable name"),
+            ("flag: yes", "Put quotes"),
+            ("nested:\n  de: [1, 2]", "Put quotes"),
+        ],
+    )
+    def test_variables_that_would_not_work_are_refused_with_a_reason(self, commits, text, says):
+        with pytest.raises(HTTPException) as refused:
+            admin_content.admin_write_variables(admin_content.VariablesIn(project="demo", text=text), self.request())
+        assert refused.value.status_code == 400 and says in refused.value.detail
+        assert commits == []
+
+    @pytest.mark.parametrize("name", ["../escape", "-dash", "has space", ".hidden"])
+    def test_a_snippet_name_can_not_become_a_path(self, commits, name):
+        with pytest.raises(HTTPException) as refused:
+            admin_content.admin_write_snippet(name, admin_content.SnippetIn(project="demo", content="x"), self.request())
+        assert refused.value.status_code == 400
+
+    def test_an_unknown_language_is_refused(self, commits):
+        with pytest.raises(HTTPException):
+            admin_content.admin_write_snippet(
+                "x", admin_content.SnippetIn(project="demo", language="xx", content="x"), self.request()
+            )
+
+    def test_a_frozen_version_is_read_only(self, commits, repo):
+        repo("demo/_versions.yml", "default: current\nversions:\n  - id: v2.0\n    label: '2.0'\n")
+        repo("demo/v2.0/_snippets/a.md", "A")
+        assert admin_content.admin_list_snippets(project="demo", version="v2.0")["frozen"] is True
+        with pytest.raises(content_versions.FrozenVersionError):
+            admin_content.admin_write_snippet(
+                "a", admin_content.SnippetIn(project="demo", version="v2.0", content="B"), self.request()
+            )
+
+    def test_a_blank_version_writes_where_the_editor_writes_not_where_readers_land(self, commits, repo, tmp_path):
+        # default: v2.0 -- readers land on the frozen release by default.
+        repo("demo/_versions.yml", "default: v2.0\nversions:\n  - id: v2.0\n    label: '2.0'\n")
+        admin_content.admin_write_snippet("a", admin_content.SnippetIn(project="demo", content="A"), self.request())
+        assert (tmp_path / "content/demo/current/_snippets/a.md").exists()
