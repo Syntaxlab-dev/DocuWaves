@@ -153,6 +153,23 @@ you want to keep — delete `./data/content-repo` so it is cloned fresh, which
 discards what is in it. Whichever you choose, you choose it; nothing here
 decides it for you.
 
+### Running the published image instead of building
+
+Every push to `main` that passes the test suite is published to
+`ghcr.io/syntaxlab-dev/docuwaves` -- a push whose tests fail publishes
+nothing. Three kinds of tag:
+
+| Tag | What it is | Use it for |
+|---|---|---|
+| `latest` | whatever `main` was at its last green push | trying things out |
+| `<short sha>`, e.g. `96f8185` | exactly one commit, never moved | pinning a production instance |
+| `<version>`, e.g. `1.2.0` | a release, from a `v1.2.0` git tag | pinning a production instance |
+
+Pin production to a version or a sha, not `latest`: `latest` changes under
+you the next time the container is recreated, so an update happens when a
+server restarts rather than when you decide to update. To update, change the
+tag deliberately and recreate the container.
+
 ## Content repo structure
 
 This is the on-disk convention DocuWaves reads and writes (and the shape a
