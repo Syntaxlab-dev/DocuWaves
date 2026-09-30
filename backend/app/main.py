@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
-from app.routers import admin_content, api_tokens, auth, mcp, public_content, sitemap, users
+from app.routers import admin_content, api_tokens, auth, feeds, mcp, public_content, sitemap, users
 from app.services import content_sync, content_versions, db, git_content_repo, seo, session_registry_store, session_secret
 from app.settings import settings
 
@@ -140,6 +140,8 @@ app.include_router(public_content.router)
 # before the catch-all SPA route below (which would otherwise 404 the first
 # as a scanner path and hand the second the app shell).
 app.include_router(sitemap.router)
+# /feed.xml and /p/<project>/feed.xml: root paths too, see routers/feeds.py.
+app.include_router(feeds.router)
 
 
 @app.api_route("/health", methods=["GET", "HEAD"], summary="Health check", description="Confirms the database is reachable -- used by Docker's own HEALTHCHECK.")

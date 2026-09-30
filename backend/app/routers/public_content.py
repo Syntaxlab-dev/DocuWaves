@@ -37,6 +37,7 @@ from app.services import (
     projects_store,
     site_branding,
     site_languages,
+    changelog,
     search_suggest,
     snippets,
 )
@@ -373,6 +374,20 @@ def public_search(
         if fixed:
             return {"results": fixed, "corrected": corrected}
     return {"results": results, "corrected": None}
+
+
+@router.get(
+    "/changelog",
+    summary="Recently published and updated pages",
+    description="Newest first, from the content repo's history: a page that went live (`new`) or whose title "
+    "or text changed while published (`updated`). Default version of each project, the reader's language, "
+    "published pages only; no authors or commit messages. `project` narrows it to one project.",
+)
+def public_changelog(
+    lang: str | None = _LANG_QUERY,
+    project: str | None = Query(default=None, max_length=200),
+):
+    return {"entries": changelog.entries(_language(lang), project or "")}
 
 
 @router.get(

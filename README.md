@@ -950,6 +950,28 @@ two in a longer one; swapped letters count as one), and the page says so —
 are never suggested. The same correction helps the chat find its sources
 when a question has a typo in it.
 
+## What's new: changelog and RSS
+
+`/changes` lists what is new in the docs, newest first and grouped by day —
+`/p/<project>/changes` for one project; both are linked from the home and
+project pages. The same list is an RSS feed at `/feed.xml` and
+`/p/<project>/feed.xml` (add `?lang=en` for another language on a
+multilingual site), and every page announces the site feed in its `<head>`,
+so a feed reader finds it from wherever someone subscribes. Point a
+Slack/Discord/Mattermost feed integration at it to get the docs' news in a
+channel without configuring webhooks.
+
+It is built from the content repo's history, and only two things count:
+
+- **New** — a page went live (created published, or a draft published)
+- **Updated** — a published page's title or text changed
+
+Reordering, a review note, frontmatter edits and anything done to a draft
+are not news and don't appear. Each page appears once, with its latest
+change; only pages that are published now, in each project's default
+version, are listed. Commit messages and authors never appear — like the
+"last updated" line, the public side says when, not who or why.
+
 ## Search engines and link previews
 
 The reader-facing site is a single-page app, which used to mean the server

@@ -51,6 +51,9 @@ export function PublicHome() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-semibold">{siteText(site, "name", lang)}</h1>
       {subtitle && <p className="mt-1 text-[var(--muted)]">{subtitle}</p>}
+      <Link to={path("/changes")} className="mt-2 inline-block text-sm text-[var(--accent)] hover:underline">
+        {t("changes.link")} →
+      </Link>
 
       {projects === null && <p className="mt-8 text-[var(--muted)]">{t("common.loading")}</p>}
       {projects !== null && projects.length === 0 && <p className="mt-8 text-[var(--muted)]">{t("home.empty")}</p>}
