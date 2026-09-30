@@ -552,6 +552,21 @@ export type FeedbackSummary = {
   last_vote: string;
 };
 
+/** One entry of the public changelog (backend services/changelog.py). */
+export interface ChangelogEntry {
+  kind: "new" | "updated";
+  /** YYYY-MM-DD */
+  date: string;
+  timestamp: string;
+  title: string;
+  summary: string;
+  page_slug: string;
+  language: string;
+  project_slug: string;
+  project_name: string;
+  category_name: string;
+}
+
 /** One file in a `_snippets/` directory (see services/snippets.py). */
 export interface SnippetFile {
   name: string;
@@ -930,6 +945,13 @@ export const api = {
     }>(`/api/public/projects/${projectSlug}/pages/${pageSlug}${contentQuery(lang, version)}`),
   /** `project`+`version` scope the search to the docs the reader is standing
    *  in; without them it covers each project's default version. */
+  changelog: (lang?: string, project?: string) => {
+    const params = new URLSearchParams();
+    if (lang) params.set("lang", lang);
+    if (project) params.set("project", project);
+    const query = params.toString();
+    return request<{ entries: ChangelogEntry[] }>(`/api/public/changelog${query ? `?${query}` : ""}`);
+  },
   search: (q: string, lang?: string, project?: string, version?: string) => {
     const scope = project ? `&project=${encodeURIComponent(project)}` : "";
     // `corrected`: the query that was actually searched, when a word in it

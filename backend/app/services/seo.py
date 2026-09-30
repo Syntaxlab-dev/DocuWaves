@@ -239,6 +239,9 @@ class Meta:
     # somewhere else -- see _page_meta.
     alternates: list[tuple[str, str]] = field(default_factory=list)
     structured: list[dict] = field(default_factory=list)
+    # The changelog's RSS feed, announced on every page so a feed reader (or
+    # a browser extension) finds it from whatever page someone subscribes on.
+    feed_url: str = ""
 
 
 def _language(lang: str) -> str:
@@ -314,6 +317,7 @@ def _defaults(base: str, lang: str, branding: dict, noindex: bool) -> Meta:
         language=lang,
         document_language=lang,
         noindex=noindex,
+        feed_url=f"{base}/feed.xml" + (f"?lang={lang}" if lang and lang != site_languages.default_language() else ""),
     )
 
 
@@ -623,6 +627,10 @@ def render_head(meta: Meta) -> str:
         lines.append(f'<link rel="canonical" href="{_attr(meta.canonical)}" />')
     for code, url in meta.alternates:
         lines.append(f'<link rel="alternate" hreflang="{_attr(code)}" href="{_attr(url)}" />')
+    if meta.feed_url:
+        lines.append(
+            f'<link rel="alternate" type="application/rss+xml" title="{_attr(meta.site_name)}" href="{_attr(meta.feed_url)}" />'
+        )
 
     lines.append(_tag("property", "og:type", meta.og_type))
     lines.append(_tag("property", "og:site_name", meta.site_name))

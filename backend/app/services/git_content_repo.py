@@ -927,3 +927,75 @@ def _last_modified_map(repo: git.Repo) -> dict[str, str]:
         elif line and current:
             dates.setdefault(line, current)
     return dates
+
+
+# ---- What changed lately (the public changelog) ----
+
+# How far back the changelog looks. Enough for months of normal editing;
+# bounded because this is walked for a public URL.
+RECENT_COMMITS = 400
+
+
+def head_sha() -> str:
+    """HEAD's full sha, or "" with no repo/commits -- a cache key for readers
+    of history that live outside this module (see services/changelog.py)."""
+    repo = _read_repo()
+    return repo.head.commit.hexsha if repo is not None else ""
+
+
+def recent_file_changes(prefix: str, max_commits: int = RECENT_COMMITS) -> list[dict]:
+    """Every file under `prefix` touched by the newest `max_commits` commits,
+    newest first: `{sha, parent, date, status, path}`, one entry per file per
+    commit. ONE git invocation. `parent` is "" for a root commit; `status` is
+    git's A/M/D letter. Renames are not detected: a moved page shows up as
+    the new path being added, which is what it is to a reader of its URL."""
+    repo = _read_repo()
+    if repo is None:
+        return []
+    return _cached(repo, ("recent_file_changes", prefix, max_commits), lambda: _recent(repo, prefix, max_commits))
+
+
+def _recent(repo: git.Repo, prefix: str, max_commits: int) -> list[dict]:
+    try:
+        output = repo.git.execute(
+            [
+                "git",
+                "-c",
+                "core.quotePath=false",
+                "log",
+                f"-n{max_commits}",
+                "--first-parent",
+                f"--pretty=format:{_LOG_MARKER}%H%x1f%P%x1f%aI",
+                "--name-status",
+                "--no-renames",
+                "--",
+                prefix,
+            ],
+        )
+    except git.GitCommandError:
+        return []
+
+    changes: list[dict] = []
+    sha = parent = date = ""
+    for line in output.splitlines():
+        if line.startswith(_LOG_MARKER):
+            sha, parents, date = (line[1:].split("\x1f") + ["", "", ""])[:3]
+            parent = parents.split(" ")[0] if parents else ""
+        elif line and sha:
+            status, _, path = line.partition("\t")
+            if path:
+                changes.append({"sha": sha, "parent": parent, "date": date, "status": status[:1], "path": path})
+    return changes
+
+
+def blob_text(sha: str, path: str) -> str | None:
+    """A file's text at a commit, through GitPython's long-lived cat-file
+    process rather than one `git show` per call -- the changelog reads two
+    versions of each of dozens of files. None when it isn't there."""
+    repo = _read_repo()
+    if repo is None or not sha:
+        return None
+    try:
+        return (repo.commit(sha).tree / path).data_stream.read().decode("utf-8", errors="replace")
+    except (KeyError, ValueError, git.GitError):
+        return None

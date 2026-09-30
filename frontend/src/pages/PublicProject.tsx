@@ -12,7 +12,7 @@ import { useDocumentTitle } from "@/lib/site";
 export function PublicProject() {
   const { projectSlug, version } = useParams<{ projectSlug: string; version: string }>();
   const { t } = useI18n();
-  const { lang } = useContentLang();
+  const { lang, path } = useContentLang();
   const docPath = useDocPath();
   // The nav endpoint returns this project plus every category and its
   // published pages, which is a superset of what the tiles need -- so the
@@ -44,6 +44,12 @@ export function PublicProject() {
         <h1 className="text-2xl font-semibold">{nav.project.name}</h1>
       </div>
       {nav.project.description && <p className="mt-1 text-[var(--muted)]">{nav.project.description}</p>}
+      <Link
+        to={path(`/p/${nav.project.slug}/changes`)}
+        className="mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+      >
+        {t("changes.link")} →
+      </Link>
 
       <h2 className="mt-8 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
         {t("project.categories")}
