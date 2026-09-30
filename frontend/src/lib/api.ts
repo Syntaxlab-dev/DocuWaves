@@ -552,6 +552,25 @@ export type FeedbackSummary = {
   last_vote: string;
 };
 
+/** A project (or one category) in reading order, for the print view. */
+export interface Book {
+  project: Project;
+  versions: VersionInfo | null;
+  categories: {
+    name: string;
+    slug: string;
+    icon: string;
+    pages: {
+      title: string;
+      slug: string;
+      language: string;
+      version: string;
+      fallback: boolean;
+      markdown_content: string;
+    }[];
+  }[];
+}
+
 /** One entry of the public changelog (backend services/changelog.py). */
 export interface ChangelogEntry {
   kind: "new" | "updated";
@@ -945,6 +964,14 @@ export const api = {
     }>(`/api/public/projects/${projectSlug}/pages/${pageSlug}${contentQuery(lang, version)}`),
   /** `project`+`version` scope the search to the docs the reader is standing
    *  in; without them it covers each project's default version. */
+  publicGetBook: (projectSlug: string, lang?: string, version?: string, category?: string) => {
+    const params = new URLSearchParams();
+    if (lang) params.set("lang", lang);
+    if (version) params.set("version", version);
+    if (category) params.set("category", category);
+    const query = params.toString();
+    return request<Book>(`/api/public/projects/${encodeURIComponent(projectSlug)}/book${query ? `?${query}` : ""}`);
+  },
   changelog: (lang?: string, project?: string) => {
     const params = new URLSearchParams();
     if (lang) params.set("lang", lang);

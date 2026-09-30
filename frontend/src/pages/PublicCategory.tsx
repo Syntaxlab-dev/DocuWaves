@@ -17,7 +17,7 @@ export function PublicCategory() {
     version: string;
   }>();
   const { t } = useI18n();
-  const { lang } = useContentLang();
+  const { lang, path } = useContentLang();
   const docPath = useDocPath();
   const { nav, status } = useProjectNav(projectSlug, lang, version);
 
@@ -62,6 +62,15 @@ export function PublicCategory() {
         {category.icon && <span className="text-2xl">{category.icon}</span>}
         <h1 className="text-2xl font-semibold">{category.name}</h1>
       </div>
+      <Link
+        to={path(
+          `/p/${nav.project.slug}/print?category=${encodeURIComponent(category.slug)}` +
+            (version ? `&version=${encodeURIComponent(version)}` : ""),
+        )}
+        className="mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+      >
+        {t("book.linkCategory")} →
+      </Link>
 
       <div className="mt-6 flex flex-col divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         {category.pages.map((p) => (

@@ -950,6 +950,24 @@ two in a longer one; swapped letters count as one), and the page says so —
 are never suggested. The same correction helps the chat find its sources
 when a question has a typo in it.
 
+## Printing and PDF
+
+Every page prints cleanly on its own — navigation removed, a paper-friendly
+palette even in dark mode, and the page's address as text and QR code at the
+bottom, so a printout leads back to the live version.
+
+For a whole manual, **PDF / print** on a project page (or **Chapter as PDF**
+on a category page) opens `/p/<project>/print`: a cover with the project,
+version and date, a table of contents, and every published page on a fresh
+sheet in the sidebar's order. The button becomes active once every diagram
+has rendered and every image has loaded; choose **Save as PDF** in the print
+dialog. The contents and all links stay clickable in the PDF, and tabs print
+with every tab shown under its name.
+
+The browser does the PDF on purpose: nothing to install or run on the
+server, no fonts to ship, and diagrams, formulas and code come out exactly
+as the site renders them, because it is the site's own rendering.
+
 ## What's new: changelog and RSS
 
 `/changes` lists what is new in the docs, newest first and grouped by day —

@@ -137,6 +137,15 @@ body {
    meant for paper.
    --------------------------------------------------------------------------- */
 @media print {
+  /* The whole-project print view (pages/PrintBook.tsx): a cover on its own
+     sheet, the contents on the next, then every page starting a fresh one. */
+  .print-hide { display: none !important; }
+  .book { max-width: none; padding: 0; }
+  .book-cover { break-after: page; padding-top: 30vh; }
+  .book-toc { break-after: page; }
+  .book-toc a { color: inherit; text-decoration: none; }
+  .book-page { break-before: page; }
+
   /* Tabs: paper has no tabs to click, so every panel prints under its name. */
   .markdown-body .tabs-list { display: none; }
   .markdown-body .tabs-panel[hidden] { display: block; }
@@ -349,3 +358,10 @@ body {
 .code-block.has-title pre { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 .code-block.has-title .code-copy { top: 3.2rem; }
 .code-language { flex-shrink: 0; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; }
+
+/* ---- Whole-project print view, on screen: see pages/PrintBook.tsx ---- */
+@media screen {
+  .book-cover { padding: 2rem 0 3rem; border-bottom: 1px solid var(--border); }
+  .book-toc { padding: 2rem 0; border-bottom: 1px solid var(--border); }
+  .book-page { padding: 2.5rem 0; border-bottom: 1px solid var(--border); }
+}

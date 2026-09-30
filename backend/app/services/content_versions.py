@@ -86,7 +86,7 @@ _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 # the rest would collide with a fixed segment of a reading URL
 # (/p/<project>/<version>/c/<category>, .../pages/<page>) or with the assets
 # folder that sits inside every version directory.
-_RESERVED_IDS = {CURRENT_ID, "assets", "c", "pages", "changes", "feed.xml"}
+_RESERVED_IDS = {CURRENT_ID, "assets", "c", "pages", "changes", "feed.xml", "print"}
 
 _MAX_ID_LENGTH = 40
 _MAX_LABEL_LENGTH = 60
