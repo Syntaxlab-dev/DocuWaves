@@ -50,6 +50,12 @@ export function PublicProject() {
       >
         {t("changes.link")} →
       </Link>
+      <Link
+        to={path(`/p/${nav.project.slug}/print${version ? `?version=${encodeURIComponent(version)}` : ""}`)}
+        className="ml-4 mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+      >
+        {t("book.link")} →
+      </Link>
 
       <h2 className="mt-8 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
         {t("project.categories")}

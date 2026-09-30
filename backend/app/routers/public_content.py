@@ -181,6 +181,58 @@ def public_get_project_nav(project_slug: str, lang: str | None = _LANG_QUERY, ve
     }
 
 
+_BOOK_MAX_PAGES = 1000
+
+
+@router.get(
+    "/projects/{project_slug}/book",
+    summary="A whole project (or one category) in reading order, for printing as one document",
+    description="Every published page of one version, in the reader's language, in the sidebar's order, with "
+    "its Markdown -- snippets and variables filled in, as on the page itself. What the print view renders and "
+    "the browser saves as PDF. `category` narrows it to one category.",
+)
+def public_get_book(
+    project_slug: str,
+    lang: str | None = _LANG_QUERY,
+    version: str | None = _VERSION_QUERY,
+    category: str | None = Query(default=None, max_length=200),
+):
+    language = _language(lang)
+    project = projects_store.get_project_by_slug(project_slug, language)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    resolved = _version(project_slug, version)
+    categories = categories_store.list_categories(project["id"], language, resolved)
+    if category:
+        categories = [c for c in categories if c["slug"] == category]
+        if not categories:
+            raise HTTPException(status_code=404, detail="Category not found.")
+
+    listed = pages_store.list_project_pages(project["id"], published_only=True, language=language, version=resolved)
+    by_category: dict[int, list[dict]] = {}
+    for entry in listed[:_BOOK_MAX_PAGES]:
+        by_category.setdefault(entry["category_id"], []).append(entry)
+
+    chapters = []
+    for c in categories:
+        pages = []
+        for entry in by_category.get(c["id"], []):
+            page = pages_store.get_page(entry["id"])
+            if page is None or not page["published"]:
+                continue
+            pages.append({
+                "title": page["title"],
+                "slug": page["slug"],
+                "language": page["language"],
+                "version": page["version"],
+                "fallback": entry.get("fallback", False),
+                "markdown_content": snippets.resolve(page["markdown_content"], project_slug, page["version"], page["language"]),
+            })
+        if pages:
+            chapters.append({"name": c["name"], "slug": c["slug"], "icon": c.get("icon", ""), "pages": pages})
+    return {"project": project, "versions": _versions_payload(project_slug, resolved), "categories": chapters}
+
+
 @router.get("/projects/{project_slug}/categories/{category_slug}")
 def public_get_category(
     project_slug: str, category_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
