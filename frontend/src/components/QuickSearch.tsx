@@ -37,12 +37,13 @@ export function QuickSearch({
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [corrected, setCorrected] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const requestId = useRef(0);
   const listId = useId();
-  const terms = useMemo(() => termsOf(query), [query]);
+  const terms = useMemo(() => termsOf(corrected ?? query), [corrected, query]);
 
   // Fresh every time it opens: yesterday's query in an input you just
   // summoned to ask something new is one more thing to delete first.
@@ -57,6 +58,7 @@ export function QuickSearch({
     const q = query.trim();
     if (!open || q.length < 2) {
       setResults([]);
+      setCorrected(null);
       setLoading(false);
       return;
     }
@@ -70,6 +72,7 @@ export function QuickSearch({
           // land on top of the one for "installation".
           if (id !== requestId.current) return;
           setResults(r.results.slice(0, MAX_HITS));
+          setCorrected(r.corrected ?? null);
           setActive(0);
         })
         .catch(() => id === requestId.current && setResults([]))
@@ -148,6 +151,11 @@ export function QuickSearch({
           <kbd className="rounded border border-[var(--border)] px-1.5 py-0.5 text-[10px] text-[var(--muted)]">Esc</kbd>
         </div>
 
+        {corrected && results.length > 0 && (
+          <p className="px-4 pt-2 text-xs text-[var(--muted)]">
+            {t("search.resultsFor")} „{corrected}“
+          </p>
+        )}
         {results.length > 0 && (
           <ul id={listId} role="listbox" className="max-h-[55vh] overflow-y-auto p-2">
             {results.map((r, index) => (

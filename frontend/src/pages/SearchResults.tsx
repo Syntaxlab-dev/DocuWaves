@@ -21,7 +21,10 @@ export function SearchResults() {
   const { t } = useI18n();
   const { lang, path } = useContentLang();
   const [results, setResults] = useState<SearchResult[] | null>(null);
-  const terms = useMemo(() => termsOf(q), [q]);
+  const [corrected, setCorrected] = useState<string | null>(null);
+  // Highlight what was actually found, which is the corrected words when
+  // there was a typo -- the typo itself appears nowhere in the results.
+  const terms = useMemo(() => termsOf(corrected ?? q), [corrected, q]);
 
   useDocumentTitle(t("search.title"));
 
@@ -34,7 +37,11 @@ export function SearchResults() {
     // Searching in one language is searching one set of pages: the reader's
     // own, plus the pages that exist only in the site's default language.
     // Switching language re-runs the same query against the other set.
-    api.search(q, lang, project || undefined, version || undefined).then((r) => setResults(r.results));
+    setCorrected(null);
+    api.search(q, lang, project || undefined, version || undefined).then((r) => {
+      setResults(r.results);
+      setCorrected(r.corrected ?? null);
+    });
   }, [q, lang, project, version]);
 
   const resultPath = (r: SearchResult) => searchResultPath(r, project, path);
@@ -44,8 +51,11 @@ export function SearchResults() {
     <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="text-2xl font-semibold">{t("search.title")}</h1>
       <p className="mt-1 text-[var(--muted)]">
-        {t("search.resultsFor")} "{q}"
+        {t("search.resultsFor")} "{corrected ?? q}"
       </p>
+      {corrected && (
+        <p className="mt-1 text-sm text-[var(--muted)]">{t("search.correctedFrom").replace("{query}", q)}</p>
+      )}
       {/* Said out loud, because a scoped search finding nothing and a global
           one finding nothing look identical otherwise -- and the reader is
           the only one who can widen it. */}

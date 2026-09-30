@@ -37,6 +37,7 @@ from app.services import (
     projects_store,
     site_branding,
     site_languages,
+    search_suggest,
     snippets,
 )
 from app.services.client_address import client_address
@@ -357,10 +358,21 @@ def public_search(
         # silently widening back out to a global search: the reader asked
         # for one project's docs.
         if row is None:
-            return {"results": []}
+            return {"results": [], "corrected": None}
         project_id = row["id"]
         resolved = _version(project, version)
-    return {"results": pages_store.search(q, language=_language(lang), project_id=project_id, version=resolved)}
+    language = _language(lang)
+    results = pages_store.search(q, language=language, project_id=project_id, version=resolved)
+    # A misspelled word matches nothing (see services/search_suggest.py).
+    # When the query has one, the corrected query runs instead -- it can
+    # only find more, never less -- and the response says what was searched,
+    # so the page can say so too.
+    corrected = search_suggest.correct(q)
+    if corrected:
+        fixed = pages_store.search(corrected, language=language, project_id=project_id, version=resolved)
+        if fixed:
+            return {"results": fixed, "corrected": corrected}
+    return {"results": results, "corrected": None}
 
 
 @router.get(

@@ -932,7 +932,9 @@ export const api = {
    *  in; without them it covers each project's default version. */
   search: (q: string, lang?: string, project?: string, version?: string) => {
     const scope = project ? `&project=${encodeURIComponent(project)}` : "";
-    return request<{ results: SearchResult[] }>(
+    // `corrected`: the query that was actually searched, when a word in it
+    // was misspelled (see backend services/search_suggest.py).
+    return request<{ results: SearchResult[]; corrected?: string | null }>(
       `/api/public/search?q=${encodeURIComponent(q)}${contentQuery(lang, version).replace("?", "&")}${scope}`,
     );
   },
