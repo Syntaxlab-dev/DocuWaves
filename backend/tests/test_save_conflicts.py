@@ -44,12 +44,25 @@ class TestStore:
     def nothing_written(self, monkeypatch):
         writes = []
         monkeypatch.setattr(pages_store, "get_page", lambda page_id: dict(PAGE))
-        # If the check did not stop the save, the first thing it would reach
-        # is looking up the project -- record that as "a write was attempted".
-        monkeypatch.setattr(pages_store.projects_store, "get_project", lambda *a: writes.append("project") or None)
-        # ...and stop it right there: with no category either, update_page
-        # returns None before touching a file or the database.
-        monkeypatch.setattr(pages_store.categories_store, "get_category", lambda *a: None)
+        # Looking things up is not writing: the check has to know whether a
+        # proposed version waits for approval (services/page_review.py) to
+        # know what the editor was looking at.
+        monkeypatch.setattr(pages_store.projects_store, "get_project", lambda *a: {"slug": "demo"})
+        monkeypatch.setattr(pages_store.categories_store, "get_category", lambda *a: {"id": 2, "slug": "c", "version": ""})
+        monkeypatch.setattr(pages_store, "pending_version", lambda *a: None)
+
+        # The first thing a save that got past the check does is make sure
+        # the version may be written -- record that as "a write was
+        # attempted", and stop it right there.
+        class Stop(Exception):
+            pass
+
+        def attempted(*a):
+            writes.append("write")
+            raise Stop()
+
+        monkeypatch.setattr(pages_store.content_versions, "ensure_writable", attempted)
+        self.Stop = Stop
         return writes
 
     def test_a_stale_revision_is_refused_before_anything_is_written(self, nothing_written):
@@ -59,13 +72,15 @@ class TestStore:
         assert nothing_written == []
 
     def test_the_current_revision_goes_through_to_the_write(self, nothing_written):
-        pages_store.update_page(7, "Installation", "installation", "mine", 2, "alice",
-                                expected_revision=pages_store.page_revision(PAGE))
-        assert nothing_written == ["project"]
+        with pytest.raises(self.Stop):
+            pages_store.update_page(7, "Installation", "installation", "mine", 2, "alice",
+                                    expected_revision=pages_store.page_revision(PAGE))
+        assert nothing_written == ["write"]
 
     def test_no_revision_means_no_check(self, nothing_written):
-        pages_store.update_page(7, "Installation", "installation", "mine", 2, "alice")
-        assert nothing_written == ["project"]
+        with pytest.raises(self.Stop):
+            pages_store.update_page(7, "Installation", "installation", "mine", 2, "alice")
+        assert nothing_written == ["write"]
 
 
 class TestRoute:

@@ -142,28 +142,32 @@ def _sync_projects(conn) -> None:
         values = (
             data["name"], _i18n(data["name_i18n"]), data["icon"], data["color"], data["image"],
             data["description"], _i18n(data["description_i18n"]), data["order"], 1 if data["private"] else 0,
+            1 if data["review_required"] else 0,
         )
         if slug in existing:
             project_id = existing[slug]
             conn.execute(
                 f"UPDATE projects SET name={p}, name_i18n={p}, icon={p}, color={p}, image={p}, description={p}, "
-                f"description_i18n={p}, sort_order={p}, private={p} WHERE id={p}",
+                f"description_i18n={p}, sort_order={p}, private={p}, review_required={p} WHERE id={p}",
                 (*values, project_id),
             )
         else:
-            columns = "name, name_i18n, slug, icon, color, image, description, description_i18n, sort_order, private"
+            columns = (
+                "name, name_i18n, slug, icon, color, image, description, description_i18n, sort_order, private, "
+                "review_required"
+            )
             # slug sits second in the tuple, matching its position in the
             # column list -- everything else keeps the shared `values` order.
             params = (values[0], values[1], slug, *values[2:])
             if db.is_postgres():
                 row = conn.execute(
-                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
                     params,
                 ).fetchone()
                 project_id = row[0]
             else:
                 cursor = conn.execute(
-                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})",
+                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p},{p})",
                     params,
                 )
                 project_id = cursor.lastrowid
@@ -264,6 +268,12 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
             if data is None:
                 continue
             published_value = data["published"] if db.is_postgres() else (1 if data["published"] else 0)
+            # The review state lives with the text under review: the
+            # proposed version in _pending/ when there is one, the page file
+            # itself otherwise (a draft, see services/page_review.py).
+            pending = content_files.read_pending(project_slug, category_slug, slug, language, version)
+            review_status = ((pending or data)["review"]).get("review_status", "")
+            has_pending = 1 if pending is not None else 0
             if (version, slug, language) in existing_pages:
                 page_id = existing_pages[(version, slug, language)]
                 conn.execute(
@@ -286,13 +296,13 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
                     # what the page says, so it must not move the date that
                     # claims the page changed.
                     f"UPDATE pages SET title={p}, markdown_content={p}, sort_order={p}, published={p}, "
-                    f"category_id={p}, reviewed_by={p}, reviewed_at={p}, "
+                    f"category_id={p}, reviewed_by={p}, reviewed_at={p}, review_status={p}, has_pending={p}, "
                     f"updated_at = CASE WHEN title <> {p} OR markdown_content <> {p} "
                     f"OR sort_order <> {p} OR published <> {p} OR category_id <> {p} "
                     f"THEN {p} ELSE updated_at END WHERE id={p}",
                     (
                         data["title"], data["markdown_content"], data["order"], published_value, category_id,
-                        data["reviewed_by"], data["reviewed_at"],
+                        data["reviewed_by"], data["reviewed_at"], review_status, has_pending,
                         data["title"], data["markdown_content"], data["order"], published_value, category_id,
                         datetime.now(timezone.utc).isoformat(),
                         page_id,
@@ -301,12 +311,12 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
             else:
                 columns = (
                     "project_id, category_id, title, slug, language, version, markdown_content, sort_order, "
-                    "published, reviewed_by, reviewed_at, created_at, updated_at"
+                    "published, reviewed_by, reviewed_at, review_status, has_pending, created_at, updated_at"
                 )
                 now = datetime.now(timezone.utc).isoformat()
                 params = (
                     project_id, category_id, data["title"], slug, language, version, data["markdown_content"],
-                    data["order"], published_value, data["reviewed_by"], data["reviewed_at"], now, now,
+                    data["order"], published_value, data["reviewed_by"], data["reviewed_at"], review_status, has_pending, now, now,
                 )
                 placeholders = ",".join([p] * len(params))
                 if db.is_postgres():

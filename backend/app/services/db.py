@@ -156,7 +156,9 @@ _SQLITE_SCHEMA = [
         sort_order INTEGER NOT NULL DEFAULT 0,
         -- 1 = only signed-in accounts see it (see services/visibility.py).
         -- INTEGER on both backends so one comparison works everywhere.
-        private INTEGER NOT NULL DEFAULT 0
+        private INTEGER NOT NULL DEFAULT 0,
+        -- 1 = nothing goes live without approval (services/page_review.py).
+        review_required INTEGER NOT NULL DEFAULT 0
     )
     """,
     # `version` is the documentation version a row belongs to (see
@@ -207,6 +209,10 @@ _SQLITE_SCHEMA = [
         -- one: the file in the content repo is where it actually lives.
         reviewed_by TEXT NOT NULL DEFAULT '',
         reviewed_at TEXT NOT NULL DEFAULT '',
+        -- The review WORKFLOW (services/page_review.py): '' | pending |
+        -- changes_requested, and whether proposed changes wait in _pending/.
+        review_status TEXT NOT NULL DEFAULT '',
+        has_pending INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(project_id, version, slug, language)
@@ -366,7 +372,9 @@ _POSTGRES_SCHEMA = [
         sort_order INTEGER NOT NULL DEFAULT 0,
         -- 1 = only signed-in accounts see it (see services/visibility.py).
         -- INTEGER on both backends so one comparison works everywhere.
-        private INTEGER NOT NULL DEFAULT 0
+        private INTEGER NOT NULL DEFAULT 0,
+        -- 1 = nothing goes live without approval (services/page_review.py).
+        review_required INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -399,6 +407,10 @@ _POSTGRES_SCHEMA = [
         -- its frontmatter like every other field on it.
         reviewed_by TEXT NOT NULL DEFAULT '',
         reviewed_at TEXT NOT NULL DEFAULT '',
+        -- The review WORKFLOW (services/page_review.py): '' | pending |
+        -- changes_requested, and whether proposed changes wait in _pending/.
+        review_status TEXT NOT NULL DEFAULT '',
+        has_pending INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         UNIQUE(project_id, version, slug, language)
@@ -542,6 +554,11 @@ def _rebuild_content_index(conn) -> None:
 _ADDED_COLUMNS = {
     "projects": {
         "private": "INTEGER NOT NULL DEFAULT 0",
+        "review_required": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "pages": {
+        "review_status": "TEXT NOT NULL DEFAULT ''",
+        "has_pending": "INTEGER NOT NULL DEFAULT 0",
     },
     "auth": {
         "role": "TEXT NOT NULL DEFAULT 'admin'",

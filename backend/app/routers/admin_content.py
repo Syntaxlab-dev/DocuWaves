@@ -35,6 +35,7 @@ from app.services import (
     editing_presence,
     link_check,
     page_feedback_store,
+    page_review,
     categories_store,
     content_assets,
     content_files,
@@ -326,6 +327,9 @@ class ProjectIn(BaseModel):
     # the website only; the files stay readable in the repo. Refused unless
     # the person saving says they know (the form asks).
     acknowledge_public_repo: bool = False
+    # Nothing in the project goes live without somebody else's approval
+    # (services/page_review.py).
+    review_required: bool = False
 
 
 def _refuse_private_on_public_repo(body: "ProjectIn", currently_private: bool = False) -> None:
@@ -354,6 +358,7 @@ def admin_create_project(body: ProjectIn, request: Request):
         project = projects_store.create_project(
             name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
             _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
+            body.review_required,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -376,6 +381,7 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
         updated = projects_store.update_project(
             project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
             _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
+            body.review_required,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -623,9 +629,12 @@ def admin_get_page(page_id: int):
     # the author to find out by clicking. Within this page's own VERSION:
     # the same slug in another version is another file, whose translations
     # say nothing about this one's.
+    # The PROPOSED text when changes wait for approval -- what the editor
+    # shows and the next save builds on (services/page_review.py).
+    view = page_review.editor_view(page)
     return {
-        **page,
-        "revision": pages_store.page_revision(page),
+        **view,
+        "revision": pages_store.page_revision(view),
         "languages": pages_store.page_languages(page["project_id"], page["slug"], page["version"]),
     }
 
@@ -648,6 +657,7 @@ def admin_find_page(project_slug: str, page_slug: str, language: str = "", versi
         raise HTTPException(status_code=404, detail="Page not found.")
     page = pages_store.get_page_by_slug(project["id"], page_slug, _page_language(language), resolved)
     if page is not None:
+        page = page_review.editor_view(page)
         page = {**page, "revision": pages_store.page_revision(page)}
     # `frozen` so the editor can open a frozen version's page read-only and
     # say why, instead of offering a Save button that the API then refuses.
@@ -754,6 +764,7 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
     # that invalidated it would be showing the one thing this rule exists to
     # prevent. Returned rather than re-fetched, so the editor needs no second
     # round trip to find out what it is now looking at.
+    view = page_review.editor_view(updated) if updated else None
     return {
         "ok": True,
         "id": updated["id"] if updated else page_id,
@@ -761,7 +772,10 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
         "reviewed_by": updated["reviewed_by"] if updated else "",
         "reviewed_at": updated["reviewed_at"] if updated else "",
         # What the next save from this editor has to name as its base.
-        "revision": pages_store.page_revision(updated) if updated else "",
+        "revision": pages_store.page_revision(view) if view else "",
+        # Whether the save went live or became a proposal waiting for
+        # approval, and where the review stands now.
+        "review": view["review"] if view else None,
     }
 
 
@@ -772,6 +786,9 @@ def admin_publish_page(page_id: int, published: bool, request: Request):
         raise HTTPException(status_code=404, detail="Page not found.")
     try:
         pages_store.set_published(page_id, published, _author(request))
+    except pages_store.ReviewRequiredError as exc:
+        # This project publishes through an approval: submit for review.
+        raise HTTPException(status_code=409, detail="review_required") from exc
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"ok": True}
@@ -803,6 +820,91 @@ def admin_review_page(page_id: int, body: ReviewIn, request: Request):
     if page is None:
         raise HTTPException(status_code=500, detail="The note was saved but could not be read back -- check the server log.")
     return {"reviewed_by": page["reviewed_by"], "reviewed_at": page["reviewed_at"]}
+
+
+# ---- Approval before publishing (services/page_review.py) ----
+
+
+class ReviewSubmitIn(BaseModel):
+    # What the reviewer should look at -- optional.
+    note: str = ""
+
+
+class ReviewDecisionIn(BaseModel):
+    # What should change -- optional, but a request for changes without one
+    # leaves the author guessing.
+    comment: str = ""
+
+
+_REVIEW_ERROR_STATUS = {"not_found": 404}
+
+
+def _review_action(action, *args):
+    _require_content_repo()
+    try:
+        return action(*args)
+    except page_review.ReviewError as exc:
+        raise HTTPException(status_code=_REVIEW_ERROR_STATUS.get(exc.code, 409), detail=exc.code) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+
+
+@router.get(
+    "/reviews",
+    summary="Everything waiting for approval, oldest first",
+    description="One entry per page and language whose text was submitted and not yet decided. `pending` says "
+    "whether it is a change to a live page (the live text stays until approval) or a draft that goes live with it.",
+)
+def admin_review_queue():
+    reviews = page_review.queue()
+    return {"reviews": reviews, "count": len(reviews)}
+
+
+@router.get(
+    "/pages/{page_id}/review/diff",
+    summary="What an approval would change",
+    description="The live text against the proposed one as a unified diff. For a draft, `live` is null and the "
+    "whole draft is new.",
+)
+def admin_review_diff(page_id: int):
+    try:
+        return page_review.diff(page_id)
+    except page_review.ReviewError as exc:
+        raise HTTPException(status_code=404, detail=exc.code) from exc
+
+
+@router.post("/pages/{page_id}/review/submit", summary="Submit this page (or its proposed changes) for approval")
+def admin_review_submit(page_id: int, body: ReviewSubmitIn, request: Request):
+    return _review_action(page_review.submit, page_id, _author(request), body.note)
+
+
+@router.post(
+    "/pages/{page_id}/review/approve",
+    summary="Approve and publish what was submitted",
+    description="Refused with 409 `own_change` for whoever last changed the text (four eyes). Open to read-only "
+    "accounts: reviewing is reading.",
+)
+def admin_review_approve(page_id: int, request: Request):
+    return _review_action(page_review.approve, page_id, _author(request))
+
+
+@router.post("/pages/{page_id}/review/request-changes", summary="Send the submission back with a comment")
+def admin_review_request_changes(page_id: int, body: ReviewDecisionIn, request: Request):
+    return _review_action(page_review.request_changes, page_id, _author(request), body.comment)
+
+
+@router.post("/pages/{page_id}/review/withdraw", summary="Take a submission back; the text stays")
+def admin_review_withdraw(page_id: int, request: Request):
+    return _review_action(page_review.withdraw, page_id, _author(request))
+
+
+@router.post(
+    "/pages/{page_id}/review/discard",
+    summary="Throw away the proposed changes to a live page",
+    description="The live page is untouched -- it never had them.",
+)
+def admin_review_discard(page_id: int, request: Request):
+    return _review_action(page_review.discard, page_id, _author(request))
 
 
 @router.post("/pages/{page_id}/move")

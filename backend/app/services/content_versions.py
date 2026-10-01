@@ -475,7 +475,9 @@ def freeze(project_slug: str, version_id: str, label: str) -> list[str]:
     # copytree, not a rewrite: the frozen directory is a byte-identical copy
     # of what current/ holds right now. Nothing here parses a page, so
     # nothing here can reformat one.
-    shutil.copytree(root / CURRENT_ID, root / version_id)
+    # Waiting revisions (`_pending/`, see page_review.py) stay behind: a
+    # frozen version can approve nothing.
+    shutil.copytree(root / CURRENT_ID, root / version_id, ignore=shutil.ignore_patterns("_pending"))
     touched += [_rel(p) for p in _files_under(root / version_id)]
 
     document["versions"] = [
