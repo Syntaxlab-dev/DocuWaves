@@ -1,6 +1,6 @@
 # Test-only dependencies. The runtime image installs requirements.txt and
 # nothing from here -- see the Dockerfile.
 -r requirements.txt
-pytest==8.4.2
+pytest==9.1.1
 # FastAPI/Starlette's TestClient -- the end-to-end tests drive the real app.
 httpx2==2.13.1
