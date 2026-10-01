@@ -40,6 +40,7 @@ from app.services import (
     changelog,
     search_suggest,
     snippets,
+    visibility,
 )
 from app.services.client_address import client_address
 
@@ -59,6 +60,16 @@ def _language(lang: str | None) -> str:
     if lang and lang in site_languages.languages():
         return lang
     return site_languages.default_language()
+
+
+def _visible_project(project_slug: str, language: str, request: Request | None) -> dict:
+    """The project, or the same 404 as for a slug that never existed -- for a
+    private project and a reader who is not signed in, too (see
+    services/visibility.py: a stranger must not even learn it exists)."""
+    project = projects_store.get_project_by_slug(project_slug, language)
+    if not visibility.can_see(project, request):
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
 
 
 def _version(project_slug: str, version: str | None) -> str:
@@ -97,16 +108,20 @@ def _versions_payload(project_slug: str, selected: str, available: list[str] | N
 
 
 @router.get("/projects")
-def public_list_projects(lang: str | None = _LANG_QUERY):
-    return {"projects": projects_store.list_projects(_language(lang), published_only=True)}
+def public_list_projects(request: Request, lang: str | None = _LANG_QUERY):
+    return {
+        "projects": projects_store.list_projects(
+            _language(lang), published_only=True, include_private=visibility.signed_in(request)
+        )
+    }
 
 
 @router.get("/projects/{project_slug}")
-def public_get_project(project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY):
+def public_get_project(
+    request: Request, project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
+):
     language = _language(lang)
-    project = projects_store.get_project_by_slug(project_slug, language)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    project = _visible_project(project_slug, language, request)
     resolved = _version(project_slug, version)
     categories = categories_store.list_categories(project["id"], language, resolved)
     # Only categories that actually have at least one published page are
@@ -130,11 +145,11 @@ def public_get_project(project_slug: str, lang: str | None = _LANG_QUERY, versio
     "for all of the project's pages, however many categories there are -- this is on the path of every "
     "single page view.",
 )
-def public_get_project_nav(project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY):
+def public_get_project_nav(
+    request: Request, project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
+):
     language = _language(lang)
-    project = projects_store.get_project_by_slug(project_slug, language)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    project = _visible_project(project_slug, language, request)
     resolved = _version(project_slug, version)
     versions = _versions_payload(project_slug, resolved)
 
@@ -192,15 +207,14 @@ _BOOK_MAX_PAGES = 1000
     "the browser saves as PDF. `category` narrows it to one category.",
 )
 def public_get_book(
+    request: Request,
     project_slug: str,
     lang: str | None = _LANG_QUERY,
     version: str | None = _VERSION_QUERY,
     category: str | None = Query(default=None, max_length=200),
 ):
     language = _language(lang)
-    project = projects_store.get_project_by_slug(project_slug, language)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    project = _visible_project(project_slug, language, request)
     resolved = _version(project_slug, version)
     categories = categories_store.list_categories(project["id"], language, resolved)
     if category:
@@ -235,12 +249,11 @@ def public_get_book(
 
 @router.get("/projects/{project_slug}/categories/{category_slug}")
 def public_get_category(
+    request: Request,
     project_slug: str, category_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
 ):
     language = _language(lang)
-    project = projects_store.get_project_by_slug(project_slug, language)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    project = _visible_project(project_slug, language, request)
     resolved = _version(project_slug, version)
     category = categories_store.get_category_by_slug(project["id"], category_slug, language, resolved)
     if category is None:
@@ -268,12 +281,11 @@ def public_get_category(
     "plus an honest notice instead of a 404 over a translation nobody has written yet.",
 )
 def public_get_page(
+    request: Request,
     project_slug: str, page_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
 ):
     language = _language(lang)
-    project = projects_store.get_project_by_slug(project_slug, language)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Project not found.")
+    project = _visible_project(project_slug, language, request)
     resolved = _version(project_slug, version)
     # published_only, not a published check on the result: an unfinished
     # draft in the reader's own language must not shadow the published
@@ -341,7 +353,10 @@ def public_chat(body: ChatIn, request: Request, lang: str | None = _LANG_QUERY):
         if not got_slot:
             raise HTTPException(status_code=503, detail="chat_busy", headers={"Retry-After": "10"})
         try:
-            return doc_chat.ask(question, _language(lang), body.project.strip(), body.version.strip())
+            return doc_chat.ask(
+                question, _language(lang), body.project.strip(), body.version.strip(),
+                include_private=visibility.signed_in(request),
+            )
         except doc_chat.ChatError as exc:
             # The reason is a short token the frontend turns into a sentence in
             # the reader's own language; the provider's own error text stays in
@@ -398,6 +413,7 @@ def public_preview(token: str):
     "is a project slug; both are ignored for an unversioned project, whose pages are the only pages it has.",
 )
 def public_search(
+    request: Request,
     q: str = Query(..., min_length=1, max_length=200),
     lang: str | None = _LANG_QUERY,
     project: str | None = Query(default=None, max_length=200, description="Project slug to scope the search to."),
@@ -407,6 +423,8 @@ def public_search(
     resolved: str | None = None
     if project:
         row = projects_store.get_project_by_slug(project)
+        if not visibility.can_see(row, request):
+            row = None
         # A stale or wrong project/version narrows to nothing rather than
         # silently widening back out to a global search: the reader asked
         # for one project's docs.
@@ -415,14 +433,19 @@ def public_search(
         project_id = row["id"]
         resolved = _version(project, version)
     language = _language(lang)
-    results = pages_store.search(q, language=language, project_id=project_id, version=resolved)
+    include_private = visibility.signed_in(request)
+    results = pages_store.search(
+        q, language=language, project_id=project_id, version=resolved, include_private=include_private
+    )
     # A misspelled word matches nothing (see services/search_suggest.py).
     # When the query has one, the corrected query runs instead -- it can
     # only find more, never less -- and the response says what was searched,
     # so the page can say so too.
     corrected = search_suggest.correct(q)
     if corrected:
-        fixed = pages_store.search(corrected, language=language, project_id=project_id, version=resolved)
+        fixed = pages_store.search(
+            corrected, language=language, project_id=project_id, version=resolved, include_private=include_private
+        )
         if fixed:
             return {"results": fixed, "corrected": corrected}
     return {"results": results, "corrected": None}
@@ -436,10 +459,13 @@ def public_search(
     "published pages only; no authors or commit messages. `project` narrows it to one project.",
 )
 def public_changelog(
+    request: Request,
     lang: str | None = _LANG_QUERY,
     project: str | None = Query(default=None, max_length=200),
 ):
-    return {"entries": changelog.entries(_language(lang), project or "")}
+    return {
+        "entries": changelog.entries(_language(lang), project or "", include_private=visibility.signed_in(request))
+    }
 
 
 @router.get(
@@ -468,13 +494,20 @@ def public_get_site():
     "page arrives here as `assets/x.png`. A project's or category's cover image (`image_url` on those "
     "objects) is served from here too, resolved the same way and by the same code.",
 )
-def public_get_asset(project_slug: str, asset_path: str):
+def public_get_asset(request: Request, project_slug: str, asset_path: str):
     """Unlike every other route in this router there's no published= filter,
     and that's deliberate: assets aren't secret, only PAGES are. Gating an
     image on whether some page happens to reference it from a draft would
     mean an author couldn't see their own image in the editor preview, while
     protecting nothing -- the file is already in the content repo, which is
-    the thing anyone with repo access can read anyway."""
+    the thing anyone with repo access can read anyway.
+
+    A PRIVATE project's files are the exception: its screenshots are its
+    content, so they follow its visibility (services/visibility.py). The
+    editor preview still sees them -- its requests carry the session."""
+    owner = projects_store.get_project_by_slug(project_slug)
+    if owner is not None and not visibility.can_see(owner, request):
+        raise HTTPException(status_code=404, detail="Asset not found.")
     path = content_assets.resolve_asset(project_slug, asset_path)
     if path is None:
         # One 404 for missing / wrong type / outside the project / no such
@@ -551,7 +584,7 @@ def public_feedback(body: FeedbackIn, request: Request):
 
     language = _language(body.language or None)
     project = projects_store.get_project_by_slug(body.project, language)
-    if project is None:
+    if not visibility.can_see(project, request):
         raise HTTPException(status_code=404, detail="Project not found.")
     resolved = _version(body.project, body.version or None)
     # published_only: a vote is a reader's vote, and a reader can only have

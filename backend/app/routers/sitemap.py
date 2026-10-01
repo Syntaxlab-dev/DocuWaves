@@ -155,7 +155,8 @@ def _entries(base: str):
     # published_only, matching the public project list: a project with
     # nothing published has no page a crawler could reach, and listing its
     # landing URL would offer a search engine an empty page.
-    for project in projects_store.list_projects(published_only=True):
+    # Never a private project: crawlers do not sign in (services/visibility.py).
+    for project in projects_store.list_projects(published_only=True, include_private=False):
         yield from _project_entries(base, project, dates, languages)
 
 

@@ -27,10 +27,10 @@ class TestRoleResolution:
             assert users_store.normalize_role(role) == role
 
     @pytest.mark.parametrize("value", ["superuser", "root", "ADMIN", "", "owner", "editor "])
-    def test_anything_else_resolves_down_to_viewer(self, value):
+    def test_anything_else_resolves_down_to_reader(self, value):
         """Never up. A typo, an invented role in a hand-edited row, or a
         value from a future version must not grant anything."""
-        assert users_store.normalize_role(value) == users_store.VIEWER
+        assert users_store.normalize_role(value) == users_store.READER
 
     def test_the_account_that_predates_roles_is_an_admin(self):
         """The database column's DEFAULT is what migrates the single account

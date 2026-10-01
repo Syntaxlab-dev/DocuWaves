@@ -117,6 +117,18 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         if not path.startswith("/api/"):
             return await call_next(request)
 
+        if path.startswith("/api/public/"):
+            response = await call_next(request)
+            # A signed-in reader may be shown PRIVATE projects
+            # (services/visibility.py), so the same URL answers differently
+            # per person: never store a signed-in answer anywhere shared, and
+            # tell every cache the answer depends on the cookie.
+            if request.session.get("authenticated"):
+                response.headers["Cache-Control"] = "private, no-store"
+            vary = response.headers.get("Vary")
+            response.headers["Vary"] = f"{vary}, Cookie" if vary else "Cookie"
+            return response
+
         if path.startswith(_EXEMPT_PREFIXES):
             return await call_next(request)
 
@@ -201,6 +213,12 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         # looking it up a second time.
         request.state.user = user
 
+        # A reader account reads private projects on the public site and
+        # nothing else; the admin API (drafts, history, reports) is closed to
+        # it entirely. /api/auth/ -- who am I, sign out, change my password --
+        # is exempt above and so stays open.
+        if path.startswith("/api/admin") and not users_store.may_open_admin(role):
+            return JSONResponse({"detail": "reader_account"}, status_code=403)
         if path.startswith(_ADMIN_ONLY_PREFIXES) and not users_store.is_admin(role):
             return JSONResponse(
                 {"detail": "This part of the admin area is for administrators."},

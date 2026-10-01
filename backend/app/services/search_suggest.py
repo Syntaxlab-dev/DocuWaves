@@ -15,8 +15,9 @@ search then runs on the corrected text, and the response says so, so the
 reader sees "results for Installation" rather than wondering why their word
 isn't highlighted anywhere.
 
-PUBLISHED pages only. A suggestion is text from the docs; drawn from drafts,
-it would put words on the public site that nobody has published yet.
+PUBLISHED pages of PUBLIC projects only. A suggestion is text from the docs;
+drawn from drafts or from a private project, it would put words on the public
+site that are not meant for it.
 
 The vocabulary is rebuilt when the pages change (a cheap fingerprint of the
 table is checked per search) and otherwise kept in memory: a few thousand
@@ -114,7 +115,8 @@ def _fingerprint() -> tuple:
     published = "TRUE" if db.is_postgres() else "1"
     with db.get_connection() as conn:
         row = conn.execute(
-            f"SELECT COUNT(*), COALESCE(MAX(updated_at), ''), COALESCE(MAX(id), 0) FROM pages WHERE published = {published}"
+            f"SELECT COUNT(*), COALESCE(MAX(updated_at), ''), COALESCE(MAX(id), 0) FROM pages "
+            f"WHERE published = {published} AND project_id NOT IN (SELECT id FROM projects WHERE private = 1)"
         ).fetchone()
     return tuple(row)
 
@@ -123,7 +125,12 @@ def _build() -> Vocabulary:
     published = "TRUE" if db.is_postgres() else "1"
     counts: Counter = Counter()
     with db.get_connection() as conn:
-        rows = conn.execute(f"SELECT title, markdown_content FROM pages WHERE published = {published}").fetchall()
+        # Public projects only: suggestions are shared by every reader, so a
+        # word from a private project must never become one (visibility.py).
+        rows = conn.execute(
+            f"SELECT title, markdown_content FROM pages WHERE published = {published} "
+            "AND project_id NOT IN (SELECT id FROM projects WHERE private = 1)"
+        ).fetchall()
     for title, body in rows:
         for word in _WORD_RE.findall(f"{title} {body}".lower()):
             if _MIN_LENGTH - 1 <= len(word) <= _MAX_LENGTH and not word.isdigit():

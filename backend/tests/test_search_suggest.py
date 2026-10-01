@@ -69,9 +69,14 @@ class TestCorrect:
 
 def test_drafts_are_not_in_the_vocabulary(monkeypatch):
     conn = sqlite3.connect(":memory:")
-    conn.execute("CREATE TABLE pages (id INTEGER, title TEXT, markdown_content TEXT, published INTEGER, updated_at TEXT)")
-    conn.execute("INSERT INTO pages VALUES (1, 'Installation', 'Öffentlich', 1, 'a')")
-    conn.execute("INSERT INTO pages VALUES (2, 'Geheimprojekt', 'Unveröffentlicht', 0, 'b')")
+    conn.execute("CREATE TABLE projects (id INTEGER, private INTEGER)")
+    conn.execute("INSERT INTO projects VALUES (1, 0), (2, 1)")
+    conn.execute(
+        "CREATE TABLE pages (id INTEGER, project_id INTEGER, title TEXT, markdown_content TEXT, published INTEGER, updated_at TEXT)"
+    )
+    conn.execute("INSERT INTO pages VALUES (1, 1, 'Installation', 'Öffentlich', 1, 'a')")
+    conn.execute("INSERT INTO pages VALUES (2, 1, 'Geheimprojekt', 'Unveröffentlicht', 0, 'b')")
+    conn.execute("INSERT INTO pages VALUES (3, 2, 'Interna', 'Vertraulich', 1, 'c')")
 
     @contextmanager
     def connection():
@@ -82,6 +87,8 @@ def test_drafts_are_not_in_the_vocabulary(monkeypatch):
     built = search_suggest._build()
     assert built.knows("installation")
     assert not built.knows("geheimprojekt")
+    # Published, but in a private project: not a word anyone gets suggested.
+    assert not built.knows("vertraulich")
 
 
 class TestRoute:
@@ -90,6 +97,7 @@ class TestRoute:
         queries = []
 
         def search(q, **kw):
+            assert kw.get("include_private") is False  # not signed in
             queries.append(q)
             return [{"title": "Installation"}] if "installation" in q else []
 
@@ -98,9 +106,9 @@ class TestRoute:
         return queries
 
     def test_the_corrected_query_is_searched_and_named(self, searched):
-        result = public_content.public_search(q="instalation", lang=None, project=None, version=None)
+        result = public_content.public_search(None, q="instalation", lang=None, project=None, version=None)
         assert result == {"results": [{"title": "Installation"}], "corrected": "installation"}
 
     def test_a_correct_query_is_searched_once(self, searched):
-        result = public_content.public_search(q="installation", lang=None, project=None, version=None)
+        result = public_content.public_search(None, q="installation", lang=None, project=None, version=None)
         assert result["corrected"] is None and searched == ["installation"]

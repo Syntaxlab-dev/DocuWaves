@@ -364,7 +364,10 @@ def _project_context(route: Route, lang: str) -> tuple[dict, str, str] | None:
     project doesn't have. Both mirror routers/public_content.py exactly: an
     unknown version is a 404 there, never a silent fall back to current."""
     project = projects_store.get_project_by_slug(route.project, lang)
-    if project is None:
+    # A private project's title and description must not reach a crawler or a
+    # link preview: to the server-rendered head it does not exist. The page
+    # itself still renders for a signed-in reader, from the API.
+    if project is None or project.get("private"):
         return None
     default = content_versions.default_version(route.project)
     if route.version and route.version not in content_versions.version_ids(route.project):

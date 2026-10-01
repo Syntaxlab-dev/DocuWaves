@@ -941,6 +941,7 @@ def search(
     language: str | None = None,
     project_id: int | None = None,
     version: str | None = None,
+    include_private: bool = False,
 ) -> list[dict]:
     """Published pages only, in ONE language (see _LANGUAGE_FILTER) and in
     ONE version per project (see _version_filter): the version being read
@@ -958,6 +959,10 @@ def search(
     stemming configuration to get wrong per language (both backends already
     search unstemmed, see this module's docstring)."""
     query = query.strip()
+    # Private projects (services/visibility.py) only when the caller says so
+    # -- the default is the safe one, so a new caller that forgets the flag
+    # misses results rather than leaking them.
+    private_filter = "" if include_private else "AND pr.private = 0"
     if not query:
         return []
     priority = _priority(language)
@@ -977,7 +982,7 @@ def search(
             FROM pages p
             JOIN projects pr ON pr.id = p.project_id
             JOIN categories c ON c.id = p.category_id
-            WHERE p.published = TRUE
+            WHERE p.published = TRUE {private_filter}
               AND to_tsvector('simple', p.title || ' ' || p.markdown_content) @@ to_tsquery('simple', %s)
               {_language_filter(priority, "%s", "TRUE")}
 {_version_filter(pairs, "%s")}
@@ -1000,7 +1005,7 @@ def search(
             JOIN pages p ON p.id = pages_fts.rowid
             JOIN projects pr ON pr.id = p.project_id
             JOIN categories c ON c.id = p.category_id
-            WHERE pages_fts MATCH ? AND p.published = 1
+            WHERE pages_fts MATCH ? AND p.published = 1 {private_filter}
               {_language_filter(priority, "?", "1")}
 {_version_filter(pairs, "?")}
             ORDER BY bm25(pages_fts)

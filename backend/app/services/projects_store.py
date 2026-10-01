@@ -46,16 +46,17 @@ def _row_to_dict(row, language: str = "") -> dict:
         "sort_order": row[8],
         "image": row[9],
         "image_url": content_assets.project_cover_url(row[3], row[9]),
+        "private": bool(row[10]),
     }
 
 
 # `image` appended rather than slotted in beside `icon`/`color`: every index
 # above is a positional read in _row_to_dict(), and the new column is the one
 # thing here that has no reason to renumber them.
-_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order, image"
+_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order, image, private"
 
 
-def list_projects(language: str = "", published_only: bool = False) -> list[dict]:
+def list_projects(language: str = "", published_only: bool = False, include_private: bool = True) -> list[dict]:
     # Ordered by the DEFAULT language's name, not the reader's: the tile
     # order on the homepage is a property of the site, and a list that
     # reshuffles itself when a reader switches language would make the same
@@ -69,15 +70,21 @@ def list_projects(language: str = "", published_only: bool = False) -> list[dict
     # is also the only way to keep a project (a private scratchpad, a draft
     # set of docs) off the public site at all. The admin list is unfiltered,
     # so nothing disappears from the place it is managed from.
+    #
+    # include_private=False is what every anonymous reader's list passes
+    # (see services/visibility.py); the admin list keeps the default.
     p = "%s" if db.is_postgres() else "?"
-    where = ""
+    conditions: list[str] = []
     params: tuple = ()
     if published_only:
         published = "TRUE" if db.is_postgres() else "1"
-        where = (
-            f" WHERE EXISTS (SELECT 1 FROM pages WHERE pages.project_id = projects.id "
+        conditions.append(
+            "EXISTS (SELECT 1 FROM pages WHERE pages.project_id = projects.id "
             f"AND pages.published = {published})"
         )
+    if not include_private:
+        conditions.append("private = 0")
+    where = f" WHERE {' AND '.join(conditions)}" if conditions else ""
     with db.get_connection() as conn:
         rows = conn.execute(
             f"SELECT {_COLUMNS} FROM projects{where} ORDER BY sort_order, name", params
@@ -127,9 +134,12 @@ def create_project(
     name_i18n: dict[str, str] | None = None,
     description_i18n: dict[str, str] | None = None,
     image: str = "",
+    private: bool = False,
 ) -> dict:
     order = _next_order()
-    paths = content_files.write_project(slug, name, icon, color, image, description, order, name_i18n, description_i18n)
+    paths = content_files.write_project(
+        slug, name, icon, color, image, description, order, name_i18n, description_i18n, private
+    )
     git_content_repo.commit_and_push(paths, f"Add project: {name}", author)
     content_sync.full_sync()
     return get_project_by_slug(slug)
@@ -146,6 +156,7 @@ def update_project(
     name_i18n: dict[str, str] | None = None,
     description_i18n: dict[str, str] | None = None,
     image: str = "",
+    private: bool = False,
 ) -> dict | None:
     current = get_project(project_id)
     if current is None:
@@ -154,7 +165,7 @@ def update_project(
     if slug != current["slug"]:
         paths += content_files.rename_project(current["slug"], slug)
     paths += content_files.write_project(
-        slug, name, icon, color, image, description, current["sort_order"], name_i18n, description_i18n
+        slug, name, icon, color, image, description, current["sort_order"], name_i18n, description_i18n, private
     )
     git_content_repo.commit_and_push(paths, f"Update project: {name}", author)
     content_sync.full_sync()
@@ -170,7 +181,7 @@ def _rewrite(project: dict, order: int) -> list[str]:
     reorder."""
     return content_files.write_project(
         project["slug"], project["name"], project["icon"], project["color"], project["image"],
-        project["description"], order, project["name_i18n"], project["description_i18n"],
+        project["description"], order, project["name_i18n"], project["description_i18n"], project["private"],
     )
 
 

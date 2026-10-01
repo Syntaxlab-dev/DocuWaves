@@ -6,8 +6,12 @@ asked for it", which was right at the time and is why the migration is as
 small as it is: one table gained three columns, and the account that already
 existed became the first admin.
 
-THREE ROLES, AND WHY EXACTLY THREE
+FOUR ROLES
 
+    reader   reads the documentation, including PRIVATE projects (see
+             services/visibility.py), on the public site. Never the admin
+             area: no drafts, no history, nothing about how the docs are
+             made. This is the colleague who should read the internal docs.
     viewer   reads the admin area: drafts, page history, which translations
              exist. Changes nothing. This is the reviewer -- the person who
              is asked whether a page is correct and who should not be able
@@ -30,11 +34,13 @@ nothing. Nothing is lost by deleting: the content repo attributes commits by
 NAME, so everything that person wrote keeps their name on it, forever, with
 no row in this table required.
 
-WHAT AN ACCOUNT IS NOT. There is no reader account, and there will not be
-one: the documentation is public, and the way to show somebody one
-unpublished page is a preview link (see preview_links_store.py). Adding an
-account for reading would be inventing a login for a site that does not have
-one.
+WHY THERE IS A READER ACCOUNT NOW. This docstring used to say there would
+never be one, because the documentation was public and a login for reading
+would be a login for a site that has none. Private projects changed the
+premise: a project can now be readable by signed-in accounts only, and
+somebody who should read it without seeing drafts needs an account that is
+exactly that. Showing ONE unpublished page to somebody without any account
+is still what a preview link is for (see preview_links_store.py).
 
 bcrypt hashes are stored as-is -- a bcrypt hash is designed to be safe to
 store (one-way, salted, deliberately slow to brute-force).
@@ -46,10 +52,12 @@ from datetime import datetime, timezone
 
 from app.services import db
 
+READER = "reader"
 VIEWER = "viewer"
 EDITOR = "editor"
 ADMIN = "admin"
-ROLES = (VIEWER, EDITOR, ADMIN)
+# Least to most powerful -- the order IS the meaning (see rank()).
+ROLES = (READER, VIEWER, EDITOR, ADMIN)
 
 # The role an account gets when nothing says otherwise -- which is the case
 # for exactly one account, the one that existed before roles did, and it has
@@ -94,7 +102,19 @@ def normalize_role(role: str) -> str:
     resolve DOWN, never up: a hand-edited row saying `role: superuser` must
     not be read as more than admin, and a typo must not silently grant
     anything."""
-    return role if role in ROLES else VIEWER
+    return role if role in ROLES else READER
+
+
+def rank(role: str) -> int:
+    """Position from least (reader) to most powerful (admin). A role change
+    to a lower rank signs the account out (routers/users.py)."""
+    return ROLES.index(normalize_role(role))
+
+
+def may_open_admin(role: str) -> bool:
+    """Everybody but a reader. A reader's account exists to read private
+    projects on the public site; the admin area shows drafts and history."""
+    return normalize_role(role) != READER
 
 
 def may_write(role: str) -> bool:

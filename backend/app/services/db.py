@@ -153,7 +153,10 @@ _SQLITE_SCHEMA = [
         image TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
         description_i18n TEXT NOT NULL DEFAULT '',
-        sort_order INTEGER NOT NULL DEFAULT 0
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        -- 1 = only signed-in accounts see it (see services/visibility.py).
+        -- INTEGER on both backends so one comparison works everywhere.
+        private INTEGER NOT NULL DEFAULT 0
     )
     """,
     # `version` is the documentation version a row belongs to (see
@@ -360,7 +363,10 @@ _POSTGRES_SCHEMA = [
         image TEXT NOT NULL DEFAULT '',
         description TEXT NOT NULL DEFAULT '',
         description_i18n TEXT NOT NULL DEFAULT '',
-        sort_order INTEGER NOT NULL DEFAULT 0
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        -- 1 = only signed-in accounts see it (see services/visibility.py).
+        -- INTEGER on both backends so one comparison works everywhere.
+        private INTEGER NOT NULL DEFAULT 0
     )
     """,
     """
@@ -534,6 +540,9 @@ def _rebuild_content_index(conn) -> None:
 # rows that already exist get the default, and for `role` that default is
 # exactly right -- the account that predates roles is the admin.
 _ADDED_COLUMNS = {
+    "projects": {
+        "private": "INTEGER NOT NULL DEFAULT 0",
+    },
     "auth": {
         "role": "TEXT NOT NULL DEFAULT 'admin'",
         "created_at": "TEXT NOT NULL DEFAULT ''",

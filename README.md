@@ -1093,14 +1093,54 @@ curl -s https://docs.example.com/robots.txt | tail -1
 That last line is the same base URL every canonical tag on the site is built
 from. If it says `http://` or names an internal host, set `PUBLIC_BASE_URL`.
 
+## Private projects
+
+A project can be **private**: only signed-in accounts see it — any role,
+the Reader role included. For everybody else it does not exist: its pages,
+search results, changelog entries, images and PDF view answer with the same
+404 as a project that was never there.
+
+```yaml
+# content/<project>/_project.yml
+name: Internal handbook
+visibility: private
+```
+
+Only the exact word `private` counts; anything else (or no line at all) is
+public, so a typo never hides docs nobody meant to hide.
+
+Some places never show a private project, signed in or not, because the ones
+reading them never sign in or are shared with everybody:
+
+- the **RSS feeds** and the **sitemap**,
+- the **typo suggestions** of the search (built from public projects only),
+- **webhooks** (Discord, Slack, …) — the channel's members are unknown,
+- the **page description** in the HTML head that link previews and search
+  engines read.
+
+The chat answers a signed-in reader from private pages too, and a stranger
+from public ones only. Answers to signed-in readers are sent with
+`Cache-Control: private, no-store`, so no proxy or CDN keeps a copy.
+
+> [!WARNING]
+> **Private is about the website, not the files.** A private project's
+> pages are ordinary files in the content repository. If that repository is
+> public — on GitHub, say — everything in it is readable there, private
+> projects included. Keep the content repository private, or keep internal
+> docs on an instance whose repository is.
+
+A preview link still works for its one page, private project or not: it
+was made by somebody who could see the page, for somebody who should.
+
 ## Accounts and roles
 
 The first person to open a new instance creates the first account, and it is
 an administrator. Everyone after that is created by an administrator under
-**Accounts**, with one of three roles:
+**Accounts**, with one of four roles:
 
 | Role | May |
 |---|---|
+| **Reader** | Read the documentation, including **private projects**, on the public site. Never the admin area. |
 | **Read** | Open the admin area and see everything in it — drafts, page history, which translations exist, the feedback and broken-link reports. Change nothing. |
 | **Write** | All of the documentation: projects, categories, pages, images, versions, review notes, preview links. |
 | **Manage** | The above, plus the instance itself: other accounts, API tokens, branding, diagnostics and the export. |
@@ -1110,8 +1150,9 @@ asked whether a page is right, who should be able to read the draft and its
 history and *not* able to quietly fix it in passing. (For showing one draft
 to somebody with no account at all, use a preview link instead.)
 
-There is no reader account and there will not be one: the documentation is
-public, so an account for reading would be a login for a site that has none.
+The **Reader** role exists for private projects (below): a colleague who
+should read the internal docs, but has no business seeing drafts and page
+history. Every other role can read private projects too.
 
 **How it is enforced.** In one place — the middleware in front of every
 `/api/` route — and by two rules rather than by a list of endpoints:
@@ -1123,11 +1164,13 @@ public, so an account for reading would be a login for a site that has none.
 - **The manage rule is a short list of path prefixes**: accounts, tokens,
   branding, diagnostics, export. Each is authority over the *instance*
   rather than over its documentation.
+- **The reader rule is the admin prefix**: a Reader is refused everything
+  under `/api/admin/`.
 
 The role is read from the database on every request, not from the session
 cookie — so a role that was taken away is taken away now, for sessions that
-are already open. Lowering a role or deleting an account also signs that
-person out, so they are returned to the login screen rather than left
+are already open. Lowering a role (any step down) or deleting an account also
+signs that person out, so they are returned to the login screen rather than left
 clicking around a UI that has quietly started answering 403.
 
 **Two things that cannot happen.** An instance cannot be left with no

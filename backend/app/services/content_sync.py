@@ -141,29 +141,29 @@ def _sync_projects(conn) -> None:
             continue
         values = (
             data["name"], _i18n(data["name_i18n"]), data["icon"], data["color"], data["image"],
-            data["description"], _i18n(data["description_i18n"]), data["order"],
+            data["description"], _i18n(data["description_i18n"]), data["order"], 1 if data["private"] else 0,
         )
         if slug in existing:
             project_id = existing[slug]
             conn.execute(
                 f"UPDATE projects SET name={p}, name_i18n={p}, icon={p}, color={p}, image={p}, description={p}, "
-                f"description_i18n={p}, sort_order={p} WHERE id={p}",
+                f"description_i18n={p}, sort_order={p}, private={p} WHERE id={p}",
                 (*values, project_id),
             )
         else:
-            columns = "name, name_i18n, slug, icon, color, image, description, description_i18n, sort_order"
+            columns = "name, name_i18n, slug, icon, color, image, description, description_i18n, sort_order, private"
             # slug sits second in the tuple, matching its position in the
             # column list -- everything else keeps the shared `values` order.
             params = (values[0], values[1], slug, *values[2:])
             if db.is_postgres():
                 row = conn.execute(
-                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
                     params,
                 ).fetchone()
                 project_id = row[0]
             else:
                 cursor = conn.execute(
-                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p})",
+                    f"INSERT INTO projects ({columns}) VALUES ({p},{p},{p},{p},{p},{p},{p},{p},{p},{p})",
                     params,
                 )
                 project_id = cursor.lastrowid
