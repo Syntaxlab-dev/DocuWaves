@@ -1,6 +1,6 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Languages, Moon, Search, Sun } from "lucide-react";
+import { Languages, LogIn, LogOut, Moon, Search, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
@@ -11,6 +11,8 @@ import { DocChat } from "@/components/DocChat";
 import { QuickSearch, useQuickSearchShortcut } from "@/components/QuickSearch";
 import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 export function PublicLayout() {
   const { t, lang: uiLang, setLang: setUiLang } = useI18n();
@@ -115,6 +117,7 @@ export function PublicLayout() {
           {/* Next to the language switcher, and on the same terms: it
               renders only where there is something to switch. */}
           <VersionSwitcher />
+          <AccountControl />
           {contentLang.multilingual ? (
             <ContentLanguageSwitcher />
           ) : (
@@ -201,5 +204,52 @@ function ContentLanguageSwitcher() {
         </Link>
       ))}
     </div>
+  );
+}
+
+/**
+ * "Sign in" / "Sign out" for reading private projects (backend
+ * services/visibility.py). Offered only when the instance HAS private
+ * projects -- a purely public docs site stays without a login button.
+ * Signing out reloads the page, so private content goes the moment the
+ * session does rather than lingering in what is already on screen.
+ */
+function AccountControl() {
+  const { t } = useI18n();
+  const { site } = useSite();
+  const { status } = useAuth();
+  const { path } = useContentLang();
+  const location = useLocation();
+
+  if (status?.authenticated) {
+    async function signOut() {
+      try {
+        await api.logout();
+      } finally {
+        window.location.reload();
+      }
+    }
+    return (
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={signOut}
+        title={t("auth.signedInAs").replace("{name}", status.username ?? "")}
+        aria-label={t("auth.signOut")}
+      >
+        <LogOut className="h-4 w-4" />
+        <span className="hidden md:inline">{t("auth.signOut")}</span>
+      </Button>
+    );
+  }
+  if (!site.sign_in || location.pathname.endsWith("/login")) return null;
+  const next = encodeURIComponent(location.pathname + location.search);
+  return (
+    <Button variant="ghost" size="sm" asChild>
+      <Link to={path(`/login?next=${next}`)} aria-label={t("auth.signIn")}>
+        <LogIn className="h-4 w-4" />
+        <span className="hidden md:inline">{t("auth.signIn")}</span>
+      </Link>
+    </Button>
   );
 }

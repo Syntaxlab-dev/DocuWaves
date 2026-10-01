@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,9 +9,22 @@ import { api, ApiError, type OidcStatus } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 
-export function Login({ setupRequired }: { setupRequired: boolean }) {
+export function Login({
+  setupRequired,
+  next,
+  embedded = false,
+}: {
+  setupRequired: boolean;
+  /** Where to go once signed in -- set by the public /login page, so a
+   *  reader who signed in from a private project's page lands back on it.
+   *  Already checked to be a path on this site (see PublicLogin). */
+  next?: string;
+  /** Inside the public layout rather than a screen of its own. */
+  embedded?: boolean;
+}) {
   const { t } = useI18n();
   const { refresh } = useAuth();
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -38,6 +52,7 @@ export function Login({ setupRequired }: { setupRequired: boolean }) {
         await api.login(username, password);
       }
       await refresh();
+      if (next) navigate(next, { replace: true });
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("login.failed"));
     } finally {
@@ -46,7 +61,13 @@ export function Login({ setupRequired }: { setupRequired: boolean }) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--bg)] px-4">
+    <div
+      className={
+        embedded
+          ? "flex items-center justify-center px-4 py-16"
+          : "flex min-h-screen items-center justify-center bg-[var(--bg)] px-4"
+      }
+    >
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-[var(--ink)]">
@@ -91,7 +112,11 @@ export function Login({ setupRequired }: { setupRequired: boolean }) {
                 type="button"
                 variant="outline"
                 className="w-full"
-                onClick={() => (window.location.href = "/api/auth/oidc/login")}
+                onClick={() =>
+                  (window.location.href = next
+                    ? `/api/auth/oidc/login?next=${encodeURIComponent(next)}`
+                    : "/api/auth/oidc/login")
+                }
               >
                 <LogIn className="h-4 w-4" />
                 {t("login.oidcPrefix")}

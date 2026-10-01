@@ -140,7 +140,7 @@ class TestSignedIn:
     def test_signed_in_answers_are_never_cached_in_shared_caches(self, world):
         r = client(world, READER).get("/api/public/projects/intern/pages/plan")
         assert r.headers["cache-control"] == "private, no-store"
-        assert "Cookie" in r.headers["vary"]
+        assert r.headers["vary"].lower().count("cookie") == 1
         anonymous = client(world).get("/api/public/projects")
         assert "Cookie" in anonymous.headers["vary"]
 
@@ -209,3 +209,95 @@ def test_the_flag_round_trips_through_the_project_file(tmp_path, monkeypatch):
     assert "visibility" not in (tmp_path / "content/p/_project.yml").read_text()
     write(tmp_path / "content", "q/_project.yml", "name: Q\nvisibility: privat\n")  # a typo is public
     assert content_files.read_project("q")["private"] is False
+
+
+# ---- Part 2: sign-in link, exposure check, the guard, the SSO return ----
+
+
+def test_the_site_offers_sign_in_only_when_there_is_something_private(world):
+    assert client(world).get("/api/public/site").json()["sign_in"] is True
+
+
+class TestRepoExposure:
+    @pytest.mark.parametrize(
+        "configured, anonymous, shown",
+        [
+            ("https://x-access-token:SECRET@github.com/acme/docs.git", "https://github.com/acme/docs.git", "github.com/acme/docs"),
+            ("git@github.com:acme/docs.git", "https://github.com/acme/docs.git", "github.com/acme/docs"),
+            ("ssh://git@git.example.com:2222/me/docs.git", "https://git.example.com/me/docs.git", "git.example.com/me/docs"),
+            ("https://user:pw@forgejo.local:3000/me/docs", "https://forgejo.local:3000/me/docs", "forgejo.local/me/docs"),
+        ],
+    )
+    def test_the_probe_never_carries_a_credential(self, configured, anonymous, shown):
+        from app.services import repo_exposure
+
+        assert repo_exposure.anonymous_url(configured) == anonymous
+        assert repo_exposure.display_location(configured) == shown
+        assert "SECRET" not in repo_exposure.anonymous_url(configured)
+
+    @pytest.mark.parametrize(
+        "code, stderr, verdict",
+        [
+            (0, "", "public"),
+            (128, "fatal: could not read Username for 'https://github.com': terminal prompts disabled", "private"),
+            (128, "remote: Repository not found.", "private"),
+            (128, "fatal: unable to access: The requested URL returned error: 403", "private"),
+            (128, "fatal: unable to access: Could not resolve host: x.invalid", "unknown"),
+        ],
+    )
+    def test_answers_are_classified(self, code, stderr, verdict):
+        from app.services import repo_exposure
+
+        assert repo_exposure.classify(code, stderr) == verdict
+
+    def test_a_local_only_instance_has_nothing_to_expose(self, monkeypatch):
+        from app.services import repo_exposure
+
+        monkeypatch.setattr(settings, "content_repo_url", "")
+        assert repo_exposure.check() == {"remote": "", "visibility": None}
+
+
+class TestPrivateOnAPublicRepo:
+    def body(self, **kw):
+        from app.routers import admin_content
+
+        return admin_content.ProjectIn(name="Intern", **kw)
+
+    def test_refused_unless_acknowledged(self, monkeypatch):
+        from fastapi import HTTPException
+
+        from app.routers import admin_content
+
+        monkeypatch.setattr(admin_content.repo_exposure, "is_public", lambda: True)
+        with pytest.raises(HTTPException) as refused:
+            admin_content._refuse_private_on_public_repo(self.body(private=True))
+        assert refused.value.status_code == 409 and refused.value.detail.startswith("public_repo")
+        admin_content._refuse_private_on_public_repo(self.body(private=True, acknowledge_public_repo=True))
+        admin_content._refuse_private_on_public_repo(self.body(private=False))
+        # Already private: an ordinary save does not ask again.
+        admin_content._refuse_private_on_public_repo(self.body(private=True), currently_private=True)
+
+    def test_a_private_repo_needs_no_acknowledgement(self, monkeypatch):
+        from app.routers import admin_content
+
+        monkeypatch.setattr(admin_content.repo_exposure, "is_public", lambda: False)
+        admin_content._refuse_private_on_public_repo(self.body(private=True))
+
+
+@pytest.mark.parametrize(
+    "target, expected",
+    [
+        ("/p/intern/pages/plan", "/p/intern/pages/plan"),
+        ("/de/p/x?lang=de#a", "/de/p/x?lang=de#a"),
+        ("//evil.example", "/"),
+        ("https://evil.example", "/"),
+        ("/\\evil.example", "/"),
+        ("javascript:alert(1)", "/"),
+        ("/a\r\nLocation: x", "/"),
+        ("", "/"),
+    ],
+)
+def test_sso_only_returns_to_a_page_on_this_site(target, expected):
+    from app.routers.auth import safe_next
+
+    assert safe_next(target) == expected

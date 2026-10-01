@@ -125,8 +125,13 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
             # tell every cache the answer depends on the cookie.
             if request.session.get("authenticated"):
                 response.headers["Cache-Control"] = "private, no-store"
-            vary = response.headers.get("Vary")
-            response.headers["Vary"] = f"{vary}, Cookie" if vary else "Cookie"
+            # With a session, Starlette's SessionMiddleware (the outer layer)
+            # adds `Vary: Cookie` itself on the way out; without one, nothing
+            # would -- and the anonymous answer is exactly the one a shared
+            # cache must not hand to a signed-in reader.
+            vary = response.headers.get("Vary", "")
+            if not request.session and "cookie" not in vary.lower():
+                response.headers["Vary"] = f"{vary}, Cookie" if vary else "Cookie"
             return response
 
         if path.startswith(_EXEMPT_PREFIXES):

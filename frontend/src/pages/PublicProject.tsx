@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CoverImage } from "@/components/CoverImage";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
+import { PrivateBadge } from "@/components/PrivateBadge";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
@@ -42,6 +43,7 @@ export function PublicProject() {
       <div className="flex items-center gap-2">
         {nav.project.icon && <span className="text-2xl">{nav.project.icon}</span>}
         <h1 className="text-2xl font-semibold">{nav.project.name}</h1>
+        {nav.project.private && <PrivateBadge />}
       </div>
       {nav.project.description && <p className="mt-1 text-[var(--muted)]">{nav.project.description}</p>}
       <Link

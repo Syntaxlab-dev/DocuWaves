@@ -1132,6 +1132,29 @@ from public ones only. Answers to signed-in readers are sent with
 A preview link still works for its one page, private project or not: it
 was made by somebody who could see the page, for somebody who should.
 
+**Making a project private.** In the admin area, under the project's
+**Visibility**: *Public* or *Private*. The project then carries a lock badge
+for everybody who can see it.
+
+**Signing in to read.** As soon as an instance has a private project, the
+header offers **Sign in** (and a 404 page offers it too, for somebody who
+was sent a link). It opens `/login` — the same form as the admin area, SSO
+included — and returns the reader to the page they came from. A Reader
+account that opens `/admin` is told what the account is for instead of being
+shown an admin UI it may not use. On an instance without private projects
+there is no sign-in button at all. (That is the one thing a stranger can tell:
+*that* there are private docs, never which.)
+
+**The repository check.** Because private docs in a public repository are
+not private, DocuWaves asks the content repo's remote what a stranger could:
+`git ls-remote` with **no credentials** (the token is stripped, git may not
+prompt). The admin status bar then says where the content lives — *on this
+server only* or *also at github.com/…* — and whether that remote is
+**readable by anybody**, in red if private projects exist. Making a project
+private while the remote is public needs an explicit confirmation, in the
+form and in the API. The answer is cached for an hour; "unknown" means the
+remote could not be asked (network, a host without https).
+
 ## Accounts and roles
 
 The first person to open a new instance creates the first account, and it is
