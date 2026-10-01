@@ -1184,7 +1184,6 @@ name: Handbook
 review: required
 ```
 
-(or tick "Approval required" in the project's settings in the admin area).
 Only the exact words `review: required` switch it on; without them the
 project works exactly as before.
 
