@@ -32,6 +32,7 @@ from starlette.concurrency import run_in_threadpool
 from app.services import (
     backup,
     diagnostics,
+    editing_presence,
     link_check,
     page_feedback_store,
     categories_store,
@@ -545,6 +546,71 @@ class PageIn(BaseModel):
 )
 def admin_list_pages(category_id: int):
     return {"pages": pages_store.list_all_pages(category_id)}
+
+
+# ---- Who is editing what (services/editing_presence.py) ----
+
+
+class PresenceIn(BaseModel):
+    tab: str
+    dirty: bool = False
+
+
+def _presence_key(page_id: int) -> str:
+    page = pages_store.get_page(page_id)
+    project = projects_store.get_project(page["project_id"]) if page else None
+    if page is None or project is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    return editing_presence.page_key(project["slug"], page)
+
+
+def _username(request: Request) -> str:
+    user = getattr(request.state, "user", None)
+    return user["username"] if user else ""
+
+
+@router.post(
+    "/pages/{page_id}/presence",
+    summary="Heartbeat: this browser tab has the page open in the editor",
+    description="Sent every ~20 s by an open editor; answers with everybody ELSE who has the page open. "
+    "An entry not refreshed for a minute disappears. Not a lock -- a warning.",
+)
+def admin_page_presence(page_id: int, body: PresenceIn, request: Request):
+    if not editing_presence.valid_tab(body.tab):
+        raise HTTPException(status_code=400, detail="Invalid tab id.")
+    key = _presence_key(page_id)
+    editing_presence.heartbeat(key, body.tab, _username(request), body.dirty)
+    return {"others": editing_presence.others(key, body.tab, _username(request))}
+
+
+@router.get(
+    "/pages/{page_id}/presence",
+    summary="Who has the page open in the editor (without announcing yourself)",
+    description="For a read-only account, whose editor never sends a heartbeat but should still see who is "
+    "working on the page.",
+)
+def admin_page_presence_read(page_id: int, request: Request, tab: str = ""):
+    return {"others": editing_presence.others(_presence_key(page_id), tab, _username(request))}
+
+
+@router.delete("/pages/{page_id}/presence", summary="This tab closed the editor")
+def admin_page_presence_leave(page_id: int, tab: str = ""):
+    if editing_presence.valid_tab(tab):
+        editing_presence.leave(_presence_key(page_id), tab)
+    return {"ok": True}
+
+
+@router.get(
+    "/categories/{category_id}/presence",
+    summary="Which pages of a category somebody has open in the editor",
+)
+def admin_category_presence(category_id: int):
+    category = categories_store.get_category(category_id)
+    project = projects_store.get_project(category["project_id"]) if category else None
+    if category is None or project is None:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    keys = {p["id"]: editing_presence.page_key(project["slug"], p) for p in pages_store.list_all_pages(category_id)}
+    return {"pages": {str(k): v for k, v in editing_presence.on_pages(keys).items()}}
 
 
 @router.get("/pages/{page_id}")

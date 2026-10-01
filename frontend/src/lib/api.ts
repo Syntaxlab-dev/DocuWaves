@@ -586,6 +586,18 @@ export interface Book {
   }[];
 }
 
+/** Somebody else with the same page open in the editor (backend
+ *  services/editing_presence.py). */
+export interface PresenceEntry {
+  username: string;
+  /** Unix seconds -- when they opened it. */
+  since: number;
+  seconds: number;
+  dirty: boolean;
+  /** The caller's own account, in another browser tab. */
+  same_account: boolean;
+}
+
 /** One entry of the public changelog (backend services/changelog.py). */
 export interface ChangelogEntry {
   kind: "new" | "updated";
@@ -677,6 +689,20 @@ export const api = {
   // Admin: content repo
   contentRepoStatus: () => request<ContentRepoStatus>("/api/admin/content-repo/status"),
   contentRepoSync: () => request("/api/admin/content-repo/sync", { method: "POST" }),
+  adminPresenceBeat: (pageId: number, tab: string, dirty: boolean) =>
+    request<{ others: PresenceEntry[] }>(`/api/admin/pages/${pageId}/presence`, {
+      method: "POST",
+      body: JSON.stringify({ tab, dirty }),
+    }),
+  adminPresenceRead: (pageId: number, tab: string) =>
+    request<{ others: PresenceEntry[] }>(`/api/admin/pages/${pageId}/presence?tab=${encodeURIComponent(tab)}`),
+  /** keepalive: also sent while the tab is being closed. */
+  adminPresenceLeave: (pageId: number, tab: string) =>
+    request(`/api/admin/pages/${pageId}/presence?tab=${encodeURIComponent(tab)}`, { method: "DELETE", keepalive: true }),
+  adminCategoryPresence: (categoryId: number) =>
+    request<{ pages: Record<string, { username: string; dirty: boolean }[]> }>(
+      `/api/admin/categories/${categoryId}/presence`,
+    ),
   adminListSnippets: (project: string, version: string) =>
     request<{ variables: string; snippets: SnippetFile[]; frozen: boolean }>(
       `/api/admin/snippets?project=${encodeURIComponent(project)}&version=${encodeURIComponent(version)}`,

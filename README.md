@@ -545,6 +545,24 @@ Browsers that refuse storage entirely (a private window, a full quota, site
 data blocked) simply get no drafts; the editor works exactly as it did
 before this existed.
 
+### Who else is editing
+
+Open a page in the editor while somebody else has it open, and a note above
+the editor says so: *"Michel is editing this page right now (for 5 min) —
+with unsaved changes."* The page list marks pages that are open elsewhere
+with a pencil. Your own second browser tab counts too ("You also have this
+page open in another tab"), because its save would overwrite this one just
+the same.
+
+It is a warning, never a lock — anybody can still save, and a save made on
+top of text that changed in the meantime is refused anyway (you are asked
+before anything is overwritten). Each open editor checks in every 20
+seconds; one that stops (a closed laptop, a crashed browser) disappears
+after a minute, and closing the editor removes it at once. Read-only
+accounts see who is there without being announced themselves. Nothing of
+this is stored: it lives in the server's memory and is rebuilt within 20
+seconds after a restart.
+
 ### Callouts
 
 GitHub's own syntax, so the content repo reads the same on GitHub:
