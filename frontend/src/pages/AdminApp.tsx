@@ -46,6 +46,7 @@ import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
+import { PrivateBadge } from "@/components/PrivateBadge";
 import {
   api,
   ApiError,
@@ -566,6 +567,7 @@ function RepoStatusBar({
           get the button -- but it keeps the bar, because which branch and
           which commit this instance is on is exactly what a reviewer wants
           to see. */}
+      <RepoExposure status={status} />
       {!local && canSync && (
         <Button variant="outline" size="sm" className="ml-auto" onClick={onSync} disabled={syncing}>
           <RefreshCw className={`h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
@@ -573,6 +575,42 @@ function RepoStatusBar({
         </Button>
       )}
     </div>
+  );
+}
+
+/**
+ * Where the content lives, and -- for a remote -- whether anybody can read
+ * it (backend services/repo_exposure.py). The loud case is a PUBLIC remote
+ * while there are private projects: their files are readable there no
+ * matter what the website hides. That is the one mistake with private
+ * projects that nothing on the site itself would ever show.
+ */
+function RepoExposure({ status }: { status: ContentRepoStatus }) {
+  const { t } = useI18n();
+  const exposure = status.exposure;
+  if (!exposure) return null;
+  if (!exposure.remote) {
+    return <span className="text-xs text-[var(--muted)]">· {t("admin.repoOnlyHere")}</span>;
+  }
+  const where = t("admin.repoAlsoAt").replace("{remote}", exposure.remote);
+  if (exposure.visibility === "public") {
+    const danger = exposure.private_projects > 0;
+    return (
+      <span
+        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+          danger ? "bg-red-500/15 text-red-600 dark:text-red-400" : "bg-amber-500/15 text-amber-700 dark:text-amber-400"
+        }`}
+        role={danger ? "alert" : undefined}
+      >
+        {where} — {t("admin.repoExposurePublic")}
+        {danger && <> · {t("admin.repoExposureDanger").replace("{count}", String(exposure.private_projects))}</>}
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs text-[var(--muted)]">
+      · {where} ({t(exposure.visibility === "private" ? "admin.repoExposurePrivate" : "admin.repoExposureUnknown")})
+    </span>
   );
 }
 
@@ -1678,10 +1716,31 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
   );
   const [image, setImage] = useState(project?.image ?? "");
   const [imageUrl, setImageUrl] = useState<string | null>(project?.image_url ?? null);
+  const [isPrivate, setIsPrivate] = useState(project?.private ?? false);
+  const [acknowledged, setAcknowledged] = useState(false);
+  // Whether the content repo is readable by anybody (backend
+  // services/repo_exposure.py). Asked here rather than passed in: the form
+  // is the one place where the answer changes what may be saved.
+  const [publicRepo, setPublicRepo] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api
+      .contentRepoStatus()
+      .then((s) => setPublicRepo(s.exposure?.visibility === "public" ? s.exposure.remote : null))
+      .catch(() => setPublicRepo(null));
+  }, []);
+
+  // Turning a project private on a public repo hides it on the website only;
+  // the backend refuses that without an explicit acknowledgement.
+  const needsAck = isPrivate && !project?.private && publicRepo !== null;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (needsAck && !acknowledged) {
+      toast.error(t("admin.publicRepoAckRequired"));
+      return;
+    }
     const resolvedName = fromFieldValues(name, languages, site.default_language);
     const resolvedDescription = fromFieldValues(description, languages, site.default_language);
     const data = {
@@ -1692,6 +1751,8 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
       image,
       description: resolvedDescription.text,
       description_i18n: resolvedDescription.i18n,
+      private: isPrivate,
+      acknowledge_public_repo: needsAck && acknowledged,
     };
     setSaving(true);
     try {
@@ -1732,6 +1793,29 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
           setImageUrl(url);
         }}
       />
+      <fieldset className="flex flex-col gap-1.5 rounded-md border border-[var(--border)] p-2">
+        <legend className="px-1 text-xs font-medium text-[var(--muted)]">{t("admin.visibility")}</legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" name="visibility" checked={!isPrivate} onChange={() => setIsPrivate(false)} />
+          {t("admin.visibilityPublic")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" name="visibility" checked={isPrivate} onChange={() => setIsPrivate(true)} />
+          {t("admin.visibilityPrivate")}
+        </label>
+        {isPrivate && <p className="text-xs text-[var(--muted)]">{t("admin.visibilityHint")}</p>}
+        {isPrivate && publicRepo !== null && (
+          <div className="rounded-md border border-red-400/60 bg-red-500/10 p-2 text-xs text-red-600 dark:text-red-400" role="alert">
+            <p>{t("admin.publicRepoWarning").replace("{remote}", publicRepo)}</p>
+            {needsAck && (
+              <label className="mt-1.5 flex items-start gap-2">
+                <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
+                {t("admin.publicRepoAck")}
+              </label>
+            )}
+          </div>
+        )}
+      </fieldset>
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={saving}>
           {t("admin.save")}
@@ -1816,6 +1900,7 @@ function ProjectsPanel({
               <button type="button" onClick={() => onSelect(p)} className="flex flex-1 items-center gap-2 text-left">
                 {p.icon && <span>{p.icon}</span>}
                 {p.name}
+                {p.private && <PrivateBadge compact />}
               </button>
               {!readOnly && (
                 <>

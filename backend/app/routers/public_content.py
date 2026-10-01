@@ -482,7 +482,15 @@ def public_get_site():
     # be a worse answer than one extra key here. It carries no key and no
     # secret -- whether the feature is on, and which model answers, which is
     # what a reader is entitled to know before typing a question into it.
-    return {**site_branding.read_branding(), "chat": doc_chat.public_status()}
+    #
+    # `sign_in`: whether the header offers "Sign in" -- only when there is
+    # something to sign in FOR, so a purely public site stays without one.
+    # It says that private docs exist, never which (services/visibility.py).
+    return {
+        **site_branding.read_branding(),
+        "chat": doc_chat.public_status(),
+        "sign_in": bool(visibility.private_project_ids()),
+    }
 
 
 @router.get(

@@ -7,6 +7,8 @@ export type LocalizedText = Record<string, string>;
 
 export interface Project {
   id: number;
+  /** Only signed-in accounts see it (backend services/visibility.py). */
+  private: boolean;
   name: string;
   name_i18n: LocalizedText;
   slug: string;
@@ -261,7 +263,7 @@ export interface SearchResult {
  *  backend decides all of this in one place (backend/app/auth_guard.py);
  *  everything the frontend does with a role is about not OFFERING a button
  *  that would be refused. */
-export type Role = "viewer" | "editor" | "admin";
+export type Role = "reader" | "viewer" | "editor" | "admin";
 
 export interface AuthStatus {
   setup_required: boolean;
@@ -344,6 +346,9 @@ export interface SiteBranding {
   /** Present on the PUBLIC branding response only -- it describes the
    *  instance's environment (env vars), not the `_site.yml` the admin form
    *  edits, so the admin response does not carry it. */
+  /** Whether there are private projects -- only then does the header offer
+   *  "Sign in". */
+  sign_in?: boolean;
   chat?: ChatStatus;
 }
 
@@ -484,6 +489,13 @@ export interface ContentRepoStatus {
   branch: string | null;
   last_commit: { sha: string; message: string; date: string } | null;
   error: string | null;
+  /** Can the remote be read by anybody? (backend services/repo_exposure.py)
+   *  visibility is null on a local-only instance -- nothing to expose. */
+  exposure?: {
+    remote: string;
+    visibility: "public" | "private" | "unknown" | null;
+    private_projects: number;
+  };
 }
 
 /** The admin forms' write shapes. `*_i18n` is sent only by a multilingual
@@ -499,6 +511,9 @@ export interface ProjectInput {
   image?: string;
   name_i18n?: LocalizedText;
   description_i18n?: LocalizedText;
+  private?: boolean;
+  /** Required to make a project private while the content repo is public. */
+  acknowledge_public_repo?: boolean;
 }
 
 export interface CategoryInput {

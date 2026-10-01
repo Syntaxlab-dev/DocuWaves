@@ -32,7 +32,7 @@ import { formatIsoDate } from "@/lib/dates";
 export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void; onSelfChanged: () => void }) {
   const { t, lang: uiLang } = useI18n();
   const [users, setUsers] = useState<User[] | null>(null);
-  const [roles, setRoles] = useState<Role[]>(["viewer", "editor", "admin"]);
+  const [roles, setRoles] = useState<Role[]>(["reader", "viewer", "editor", "admin"]);
   const [me, setMe] = useState("");
   const [minLength, setMinLength] = useState(8);
   const [newName, setNewName] = useState("");
@@ -138,7 +138,7 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
       <CardContent>
         <p className="mb-3 text-sm text-[var(--muted)]">{t("users.intro")}</p>
 
-        <dl className="mb-4 grid gap-1 text-xs text-[var(--muted)] sm:grid-cols-3">
+        <dl className="mb-4 grid gap-1 text-xs text-[var(--muted)] sm:grid-cols-2 lg:grid-cols-4">
           {roles.map((role) => (
             <div key={role} className="rounded-lg border border-[var(--border)] px-2.5 py-1.5">
               <dt className="font-medium text-[var(--ink)]">{t(`users.role.${role}` as never)}</dt>

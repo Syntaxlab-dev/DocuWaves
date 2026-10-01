@@ -41,12 +41,14 @@ from app.services import (
     content_versions,
     git_content_repo,
     page_templates,
+    repo_exposure,
     pages_store,
     preview_links_store,
     projects_store,
     site_branding,
     site_languages,
     snippets,
+    visibility,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -154,7 +156,15 @@ def admin_content_repo_status():
     # appears is the hardest kind of problem to chase in a file-backed CMS --
     # the file is right there in the repo -- so the reason belongs somewhere
     # the operator already looks.
-    return {**git_content_repo.status(), "conflicts": content_sync.conflicts()}
+    #
+    # `exposure`: whether the remote can be read by anybody, and how many
+    # private projects that would expose (services/repo_exposure.py) -- the
+    # one mistake with private projects that nothing on the website shows.
+    return {
+        **git_content_repo.status(),
+        "conflicts": content_sync.conflicts(),
+        "exposure": {**repo_exposure.check(), "private_projects": len(visibility.private_project_ids())},
+    }
 
 
 @router.post(
@@ -311,6 +321,19 @@ class ProjectIn(BaseModel):
     description_i18n: dict[str, str] = {}
     # Only signed-in accounts see a private project (services/visibility.py).
     private: bool = False
+    # Making a project private while the content repo is PUBLIC hides it on
+    # the website only; the files stay readable in the repo. Refused unless
+    # the person saving says they know (the form asks).
+    acknowledge_public_repo: bool = False
+
+
+def _refuse_private_on_public_repo(body: "ProjectIn", currently_private: bool = False) -> None:
+    if body.private and not currently_private and not body.acknowledge_public_repo and repo_exposure.is_public():
+        raise HTTPException(
+            status_code=409,
+            detail="public_repo: The content repository is public, so this project's files stay readable "
+            "there even when the project is private on the website.",
+        )
 
 
 @router.get("/projects")
@@ -321,6 +344,7 @@ def admin_list_projects():
 @router.post("/projects")
 def admin_create_project(body: ProjectIn, request: Request):
     _require_content_repo()
+    _refuse_private_on_public_repo(body)
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required.")
@@ -341,6 +365,8 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
     project = projects_store.get_project(project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
+    existing = projects_store.get_project(project_id)
+    _refuse_private_on_public_repo(body, bool(existing and existing.get("private")))
     name = body.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="Name is required.")

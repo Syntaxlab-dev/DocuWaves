@@ -52,6 +52,18 @@ def _start_session(request: Request, username: str) -> None:
     session_registry_store.create(session_id, username, _client_ip(request), request.headers.get("user-agent", ""))
 
 
+def safe_next(target: str | None) -> str:
+    """Where to send somebody after signing in: a path on THIS site, or "/".
+    It must start with exactly one slash -- that alone rules out a scheme
+    (`https:`, `javascript:`) and a protocol-relative `//host` -- and may not
+    contain a backslash (browsers read it as a slash) or a line break. So a
+    crafted sign-in link cannot become a redirect to somebody else's site."""
+    target = (target or "").strip()
+    if not target.startswith("/") or target.startswith("//") or any(c in target for c in "\\\r\n"):
+        return "/"
+    return target[:500]
+
+
 @router.get("/status", summary="Auth status")
 def auth_status(request: Request):
     if not users_store.is_configured():
@@ -143,7 +155,7 @@ def oidc_status():
 
 
 @router.get("/oidc/login", summary="Start an SSO login")
-def oidc_login(request: Request):
+def oidc_login(request: Request, next: str = ""):
     if not oidc_client.is_enabled():
         raise HTTPException(status_code=404, detail="OIDC is not configured.")
     try:
@@ -154,6 +166,9 @@ def oidc_login(request: Request):
     request.session["oidc_state"] = auth_request["state"]
     request.session["oidc_nonce"] = auth_request["nonce"]
     request.session["oidc_code_verifier"] = auth_request["code_verifier"]
+    # Where the reader was when they chose to sign in -- a private project's
+    # page, typically -- so SSO brings them back there instead of to "/".
+    request.session["oidc_next"] = safe_next(next)
     return RedirectResponse(auth_request["url"])
 
 
@@ -163,6 +178,7 @@ def oidc_callback(request: Request):
     if error:
         return RedirectResponse("/?oidc_login=failed")
 
+    next_url = safe_next(request.session.pop("oidc_next", "/"))
     expected_state = request.session.pop("oidc_state", None)
     nonce = request.session.pop("oidc_nonce", None)
     code_verifier = request.session.pop("oidc_code_verifier", None)
@@ -186,7 +202,7 @@ def oidc_callback(request: Request):
     bound = users_store.get_user_by_oidc_subject(subject)
     if bound is not None:
         _start_session(request, bound["username"])
-        return RedirectResponse("/")
+        return RedirectResponse(next_url)
 
     username = oidc_client.username_from_claims(claims)
     if not username:
@@ -202,7 +218,7 @@ def oidc_callback(request: Request):
         users_store.create_first_admin(username, secrets.token_urlsafe(32))
         users_store.bind_oidc_subject(username, subject)
         _start_session(request, username)
-        return RedirectResponse("/")
+        return RedirectResponse(next_url)
 
     # Already configured: the OIDC username must match an account that
     # exists here, or the login is rejected. Anyone who can authenticate
@@ -223,4 +239,4 @@ def oidc_callback(request: Request):
         return RedirectResponse("/?oidc_login=failed")
     users_store.bind_oidc_subject(username, subject)
     _start_session(request, username)
-    return RedirectResponse("/")
+    return RedirectResponse(next_url)

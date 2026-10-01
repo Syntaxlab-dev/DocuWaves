@@ -13,6 +13,7 @@ import { PublicPage } from "@/pages/PublicPage";
 import { SearchResults } from "@/pages/SearchResults";
 import { ChangesPage } from "@/pages/ChangesPage";
 import { PrintBook } from "@/pages/PrintBook";
+import { PublicLogin } from "@/pages/PublicLogin";
 import { PreviewPage } from "@/pages/PreviewPage";
 import { AdminGate } from "@/pages/AdminGate";
 import { NotFound } from "@/components/NotFound";
@@ -42,6 +43,7 @@ const readingRoutes = [
   { path: "", element: <PublicHome /> },
   { path: "search", element: <SearchResults /> },
   { path: "changes", element: <ChangesPage /> },
+  { path: "login", element: <PublicLogin /> },
   // Above p/:projectSlug/:version in effect: a literal segment outranks a
   // parameter, and "changes" is a reserved version id (content_versions.py).
   { path: "p/:projectSlug/changes", element: <ChangesPage /> },

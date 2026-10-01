@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { api, type Project } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CoverImage } from "@/components/CoverImage";
+import { PrivateBadge } from "@/components/PrivateBadge";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
@@ -100,6 +101,7 @@ export function PublicHome() {
                   <div className="flex items-center gap-2">
                     {p.icon && <span className="text-xl">{p.icon}</span>}
                     <CardTitle className="text-base font-semibold text-[var(--ink)]">{p.name}</CardTitle>
+                    {p.private && <PrivateBadge compact />}
                   </div>
                 </CardHeader>
                 {p.description && <CardContent className="text-sm text-[var(--muted)]">{p.description}</CardContent>}
