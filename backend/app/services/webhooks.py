@@ -64,6 +64,10 @@ def notify(event: str, page: dict, project: dict, category: dict | None = None) 
     """Queue one event for every configured URL. Returns at once."""
     if event not in EVENTS or event not in settings.webhook_events or not settings.webhook_urls:
         return
+    # Never about a private project: the channel's members are unknown
+    # (services/visibility.py).
+    if project.get("private"):
+        return
     data = _event_data(event, page, project, category)
     for url in settings.webhook_urls:
         _pool.submit(_deliver, url, event, data)

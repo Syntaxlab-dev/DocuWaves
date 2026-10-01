@@ -141,7 +141,10 @@ def set_role(username: str, body: RoleIn, request: Request):
             status_code=409,
             detail="This is the only administrator left. Make somebody else an administrator first.",
         )
-    if not users_store.is_admin(role) and users_store.is_admin(user["role"]):
+    # Any step DOWN signs the account out everywhere -- the middleware would
+    # refuse the lost rights on the next request anyway, but a UI that has
+    # quietly started answering 403 is worse than the login screen.
+    if users_store.rank(role) < users_store.rank(user["role"]):
         session_registry_store.revoke_for_user(username)
     return users_store.get_user(username)
 

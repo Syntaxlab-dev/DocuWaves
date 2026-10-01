@@ -35,7 +35,7 @@ def stores(monkeypatch):
 
 
 def book(**kw):
-    return pc.public_get_book("demo", lang=None, version=None, category=kw.get("category"))
+    return pc.public_get_book(None, "demo", lang=None, version=None, category=kw.get("category"))
 
 
 def test_chapters_in_order_with_resolved_text_and_no_empty_chapter():
@@ -50,7 +50,7 @@ def test_one_category():
 
 def test_unknown_project_or_category_is_a_404():
     with pytest.raises(HTTPException):
-        pc.public_get_book("nope", lang=None, version=None, category=None)
+        pc.public_get_book(None, "nope", lang=None, version=None, category=None)
     with pytest.raises(HTTPException):
         book(category="nope")
 

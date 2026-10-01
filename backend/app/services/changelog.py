@@ -44,7 +44,7 @@ def _published_pages() -> dict[str, dict]:
     with db.get_connection() as conn:
         rows = conn.execute(
             "SELECT p.title, p.slug, p.language, p.version, p.markdown_content, "
-            "pr.slug, pr.name, pr.name_i18n, c.slug, c.name, c.name_i18n "
+            "pr.slug, pr.name, pr.name_i18n, c.slug, c.name, c.name_i18n, pr.private "
             "FROM pages p JOIN projects pr ON pr.id = p.project_id JOIN categories c ON c.id = p.category_id "
             f"WHERE p.published = {true}"
         ).fetchall()
@@ -60,6 +60,7 @@ def _published_pages() -> dict[str, dict]:
             "title": r[0], "slug": r[1], "language": r[2], "version": r[3], "markdown_content": r[4],
             "project_slug": project_slug, "project_name": r[6], "project_name_i18n": r[7],
             "category_slug": r[8], "category_name": r[9], "category_name_i18n": r[10],
+            "private": bool(r[11]),
         }
         pages[seo.page_file(project_slug, r[8], r[1], r[2], r[3])] = page
     return pages
@@ -115,11 +116,14 @@ def _all() -> list[dict]:
         return _cache[1]
 
 
-def entries(language: str = "", project_slug: str = "", limit: int = 50) -> list[dict]:
+def entries(language: str = "", project_slug: str = "", limit: int = 50, include_private: bool = False) -> list[dict]:
     """The changelog as a reader in `language` sees it, newest first,
-    optionally for one project."""
+    optionally for one project. Private projects only for a signed-in reader
+    (services/visibility.py) -- never in a feed, which passes the default."""
     out = []
     for entry in _all():
+        if entry.get("private") and not include_private:
+            continue
         if project_slug and entry["project_slug"] != project_slug:
             continue
         # On a multilingual site each language has its own changelog: a

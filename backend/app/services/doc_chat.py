@@ -152,7 +152,9 @@ class ChatError(RuntimeError):
     operator's provider and should not be shown its error body."""
 
 
-def find_sources(question: str, language: str, project_slug: str = "", version: str = "") -> list[dict]:
+def find_sources(
+    question: str, language: str, project_slug: str = "", version: str = "", include_private: bool = False
+) -> list[dict]:
     """The pages this question will be answered from.
 
     Scoped exactly the way the reader's own search is: published pages only,
@@ -164,13 +166,16 @@ def find_sources(question: str, language: str, project_slug: str = "", version: 
     project_id = None
     if project_slug:
         project = projects_store.get_project_by_slug(project_slug, language)
-        if project is not None:
+        # A private project the asker may not see is treated as unknown:
+        # the question is answered from public docs only.
+        if project is not None and (include_private or not project.get("private")):
             project_id = project["id"]
     scope = {
         "limit": _SOURCE_LIMIT,
         "language": language,
         "project_id": project_id,
         "version": version if project_id is not None else None,
+        "include_private": include_private,
     }
     # A typo in the question must not cost the answer its sources -- the
     # model would then honestly say the docs don't cover it. Same correction
@@ -291,7 +296,9 @@ def _post_chat(messages: list[dict]) -> str:
         raise ChatError("provider_error") from exc
 
 
-def ask(question: str, language: str, project_slug: str = "", version: str = "") -> dict:
+def ask(
+    question: str, language: str, project_slug: str = "", version: str = "", include_private: bool = False
+) -> dict:
     """The whole thing: search, prompt, call, and the sources to link to.
 
     A question with no matching pages does NOT reach the model. There is
@@ -304,7 +311,7 @@ def ask(question: str, language: str, project_slug: str = "", version: str = "")
     if not is_enabled():
         raise ChatError("not_configured")
 
-    hits = find_sources(question, language, project_slug, version)
+    hits = find_sources(question, language, project_slug, version, include_private)
     if not hits:
         return {"answer": "", "sources": [], "no_sources": True}
 

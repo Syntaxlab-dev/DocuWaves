@@ -106,6 +106,8 @@ def site_feed(request: Request, lang: str | None = Query(default=None, max_lengt
 def project_feed(project_slug: str, request: Request, lang: str | None = Query(default=None, max_length=20)):
     language = _language(lang)
     project = projects_store.get_project_by_slug(project_slug, language)
-    if project is None:
+    # A private project has no feed: feed readers never sign in, and what is
+    # in a feed reader stays there (services/visibility.py).
+    if project is None or project.get("private"):
         raise HTTPException(status_code=404, detail="Project not found.")
     return _response(feed_xml(seo.public_base_url(request), language, project))

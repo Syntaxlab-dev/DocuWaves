@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.services import login_throttle, oidc_client, session_registry_store, users_store
+from app.services import login_throttle, oidc_client, session_registry_store, users_store, visibility
 from app.services.client_address import client_address
 from app.services.same_origin import is_same_origin
 
@@ -56,7 +56,10 @@ def _start_session(request: Request, username: str) -> None:
 def auth_status(request: Request):
     if not users_store.is_configured():
         return {"setup_required": True, "authenticated": False, "username": None}
-    authenticated = bool(request.session.get("authenticated"))
+    # The same check the public site uses to show private projects
+    # (services/visibility.py): a revoked or signed-out session is not
+    # "authenticated" just because the cookie still says so.
+    authenticated = visibility.signed_in(request)
     # The role comes from the account, not from the session: it is what the
     # UI hides controls by, and a UI that kept showing yesterday's role
     # would offer buttons the middleware then refuses. (The middleware is

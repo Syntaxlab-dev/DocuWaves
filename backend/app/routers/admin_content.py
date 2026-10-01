@@ -309,6 +309,8 @@ class ProjectIn(BaseModel):
     # default language's value and is what the slug is derived from.
     name_i18n: dict[str, str] = {}
     description_i18n: dict[str, str] = {}
+    # Only signed-in accounts see a private project (services/visibility.py).
+    private: bool = False
 
 
 @router.get("/projects")
@@ -326,7 +328,7 @@ def admin_create_project(body: ProjectIn, request: Request):
     try:
         project = projects_store.create_project(
             name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
-            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(),
+            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -346,7 +348,7 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
     try:
         updated = projects_store.update_project(
             project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
-            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(),
+            _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc

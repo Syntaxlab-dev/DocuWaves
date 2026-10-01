@@ -292,7 +292,7 @@ def search(arguments: dict, _token: dict) -> dict:
         # Scoping to a project also scopes to ONE of its versions, or the
         # same page would come back once per frozen release.
         version = _version(project, arguments.get("version"))
-    results = pages_store.search(query, limit=limit, language=language, project_id=project_id, version=version)
+    results = pages_store.search(query, limit=limit, language=language, project_id=project_id, version=version, include_private=True)
     return {
         "query": query,
         "count": len(results),

@@ -192,6 +192,12 @@ def read_project(slug: str) -> dict | None:
         "description": description,
         "description_i18n": description_i18n,
         "order": int(data.get("order", 0)),
+        # Only the exact word counts. Anything else -- missing, a typo,
+        # `visibility: public` -- is public, which is what every project was
+        # before this existed. A typo must not hide docs nobody meant to hide;
+        # the admin form writes the exact word, so a project made private
+        # there is private.
+        "private": str(data.get("visibility", "")).strip().lower() == "private",
     }
 
 
@@ -205,6 +211,7 @@ def write_project(
     order: int,
     name_i18n: dict[str, str] | None = None,
     description_i18n: dict[str, str] | None = None,
+    private: bool = False,
 ) -> list[str]:
     """The two i18n mappings default to None so every existing caller (and
     every single-language install) writes exactly the plain `name: My
@@ -229,6 +236,11 @@ def write_project(
         data["image"] = image
     data["description"] = site_languages.to_yaml_value(description, description_i18n or {}, default_lang)
     data["order"] = order
+    # Written only when private, for the reason `image` is: an existing repo
+    # gains no line on its next save, and a public project's file looks
+    # exactly as it always did.
+    if private:
+        data["visibility"] = "private"
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return [_rel(path)]
 
