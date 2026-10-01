@@ -30,6 +30,7 @@ import {
   RotateCcw,
   Sun,
   History,
+  PencilLine,
   Puzzle,
   Lock,
   Trash2,
@@ -47,6 +48,8 @@ import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
 import { PrivateBadge } from "@/components/PrivateBadge";
+import { PresenceBanner } from "@/components/PresenceBanner";
+import { useEditingPresence } from "@/lib/presence";
 import {
   api,
   ApiError,
@@ -2212,6 +2215,26 @@ function PagesPanel({
   const { site } = useSite();
   const multilingual = site.languages.length > 1;
   const groups = groupPages(pages, site.default_language);
+  // Which of these pages somebody has open in the editor right now
+  // (services/editing_presence.py), refreshed every 30 s.
+  const categoryId = pages[0]?.category_id ?? null;
+  const { status: auth } = useAuth();
+  const [editing, setEditing] = useState<Record<string, { username: string; dirty: boolean }[]>>({});
+  useEffect(() => {
+    if (categoryId === null) return;
+    let alive = true;
+    const load = () =>
+      api
+        .adminCategoryPresence(categoryId)
+        .then((r) => alive && setEditing(r.pages))
+        .catch(() => {});
+    load();
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [categoryId]);
 
   async function onDelete(id: number) {
     if (!confirm(t("admin.deleteConfirm"))) return;
@@ -2244,6 +2267,22 @@ function PagesPanel({
               >
                 {group.title}
               </button>
+              {(() => {
+                // Others only: your own open editor is not news to you.
+                const names = [...group.variants.values()]
+                  .flatMap((v) => editing[String(v.id)] ?? [])
+                  .filter((n) => n.username !== auth?.username);
+                if (names.length === 0) return null;
+                const label = t("presence.listMark").replace(
+                  "{names}",
+                  [...new Set(names.map((n) => n.username))].join(", "),
+                );
+                return (
+                  <span className="inline-flex items-center text-amber-600 dark:text-amber-400" title={label} aria-label={label}>
+                    <PencilLine className="h-3.5 w-3.5" />
+                  </span>
+                );
+              })()}
 
               {/* Which languages this page exists in, and which are still
                   missing -- one row of codes, each a link into the editor
@@ -2471,6 +2510,11 @@ function PageEditor({
   // save on top of someone else's newer change is refused, not silent.
   const [revision, setRevision] = useState("");
   const [dirty, setDirty] = useState(false);
+  const { canWrite: accountCanWrite } = usePermissions();
+  // Who else has this page open (services/editing_presence.py). Only an
+  // account that may save announces itself; a frozen version or a
+  // read-only account just sees who is there.
+  const presence = useEditingPresence(loadedId, dirty, accountCanWrite && !readOnly);
   /** Bumped to re-run the load below when nothing about WHICH page is open
    *  has changed but its content has -- restoring an older version writes a
    *  new one straight into the content repo, so the text in this editor is
@@ -3091,6 +3135,8 @@ function PageEditor({
           </span>
         </div>
       )}
+
+      <PresenceBanner others={presence} />
 
       {draftOffer && (
         <DraftBanner
