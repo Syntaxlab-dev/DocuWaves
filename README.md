@@ -569,6 +569,23 @@ accounts see who is there without being announced themselves. Nothing of
 this is stored: it lives in the server's memory and is rebuilt within 20
 seconds after a restart.
 
+### The visual editor
+
+Pages can be written **visually** — a toolbar for headings, bold, lists,
+tables, links, code blocks and images, pasted screenshots included — or in
+**Markdown**: **Visual | Markdown** next to the editor's tabs, remembered per
+browser, Visual by default. Either way the file is Markdown; the visual
+editor (Milkdown, MIT, on the same remark parser the site renders with) reads
+and writes it.
+
+Before a page opens visually it is converted there and back and compared
+with the original as the document a reader sees; if anything would be lost,
+it opens in the Markdown editor instead, with a note. What saving visually
+may change is spelling, not content — `-` bullets, `*` emphasis, a blank line
+between blocks; every page in `docs/` comes back unchanged apart from blank
+lines, which `npm test` in `frontend/` checks. The editor is loaded only when
+it is opened, so readers never download it.
+
 ### Callouts
 
 GitHub's own syntax, so the content repo reads the same on GitHub:

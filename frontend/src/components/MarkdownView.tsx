@@ -341,7 +341,7 @@ const urlTransform = (url: string, key: string, node: { tagName?: string }): str
  *  `#anchor` is already a complete address and must survive untouched. */
 const ABSOLUTE_SRC = /^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i;
 
-function resolveImageSrc(src: string, projectSlug?: string, categorySlug?: string, versionDir?: string): string {
+export function resolveImageSrc(src: string, projectSlug?: string, categorySlug?: string, versionDir?: string): string {
   if (!src || !projectSlug || ABSOLUTE_SRC.test(src)) return src;
 
   // A query string or fragment is carried over verbatim; only the path part
