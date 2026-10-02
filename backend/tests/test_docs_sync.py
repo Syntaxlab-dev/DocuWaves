@@ -220,3 +220,52 @@ def test_a_docuwaves_content_folder_imports_as_it_is(world):
     assert [(c["slug"], c["name"], c["icon"]) for c in cats] == [
         ("getting-started", "Getting started", "🚀"), ("writing", "Writing", "✍️"),
     ]
+
+
+class TestReleaseTags:
+    def push_tag(self, world, files, value, version, label=""):
+        client = TestClient(world["app"])
+        query = f"ref={version}&version={version}" + (f"&label={label}" if label else "")
+        return client.post(f"/api/sync/alt?{query}", content=make_zip(files), headers={"Authorization": f"Bearer {value}"})
+
+    def test_a_tag_freezes_the_synced_docs_as_a_version(self, world):
+        from app.services import content_versions
+        value = token()
+        r = self.push_tag(world, DOCS, value, "v1.0")
+        assert r.status_code == 200, r.text
+        assert r.json()["version"] == {"id": "v1.0", "label": "1.0", "frozen": True}
+        assert "v1.0" in content_versions.version_ids("alt")
+        assert (world["content"] / "alt/v1.0/setup/install.md").exists()
+        assert (world["content"] / "alt/current/_sync.yml").exists()
+        assert world["repo"].head.commit.message.startswith("Freeze version 1.0 from v1.0")
+
+        # The next push changes current/, never the release.
+        push(world, {**DOCS, "docs/setup/install.md": "# Installation\n\nNeuer Text.\n"}, value, ref="main1")
+        assert "Neuer Text." in (world["content"] / "alt/current/setup/install.md").read_text()
+        assert "Neuer Text." not in (world["content"] / "alt/v1.0/setup/install.md").read_text()
+
+    def test_the_same_tag_twice_is_left_alone(self, world):
+        value = token()
+        self.push_tag(world, DOCS, value, "v1.0")
+        again = self.push_tag(world, DOCS, value, "v1.0")
+        assert again.status_code == 200 and again.json()["version"]["frozen"] is False
+
+    def test_a_bad_version_is_refused_before_anything_is_written(self, world):
+        value = token()
+        before = commits(world)
+        r = self.push_tag(world, DOCS, value, "../escape")
+        assert r.status_code == 400
+        assert commits(world) == before
+
+    def test_a_released_page_has_no_edit_link(self, world):
+        value = token()
+        client = TestClient(world["app"])
+        client.post("/api/sync/alt?ref=v1&version=v1.0&repo=https://github.com/acme/app",
+                    content=make_zip(DOCS), headers={"Authorization": f"Bearer {value}"})
+        chef = TestClient(world["app"])
+        chef.post("/api/auth/login", json={"username": "chef", "password": "chef-passwort-123"}, headers=ORIGIN)
+        project = projects_store.get_project_by_slug("alt")
+        frozen = pages_store.get_page_by_slug(project["id"], "install", version="v1.0")
+        current = pages_store.get_page_by_slug(project["id"], "install", version="current")
+        assert chef.get(f"/api/admin/pages/{frozen['id']}").json()["source_edit_url"] == ""
+        assert chef.get(f"/api/admin/pages/{current['id']}").json()["source_edit_url"].endswith("/docs/setup/install.md")

@@ -397,7 +397,7 @@ def rejection_reason(project_slug: str, version_id: str, label: str, raw: str = 
 # a frozen 2.0 keeps the snippets and variable values it was released with
 # (see snippets.py). Spelled out here rather than imported, because this
 # module sits below snippets.py.
-VERSIONED_OWN_FILES = {"_snippets", "_variables.yml"}
+VERSIONED_OWN_FILES = {"_snippets", "_variables.yml", "_sync.yml"}
 
 
 def _content_entries(project_slug: str) -> list[Path]:
