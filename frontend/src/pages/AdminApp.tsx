@@ -52,6 +52,7 @@ import { SnippetsCard } from "@/components/SnippetsCard";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { PresenceBanner } from "@/components/PresenceBanner";
 import { DiffView } from "@/components/DiffView";
+import { ImportCard } from "@/components/ImportCard";
 import { UiLanguageToggle } from "@/components/UiLanguageToggle";
 import { ReviewMark, ReviewPanel, ReviewQueueCard } from "@/components/ReviewWorkflow";
 import { useEditingPresence } from "@/lib/presence";
@@ -208,6 +209,7 @@ export function AdminApp() {
   // The approval queue (services/page_review.py): its count in the header,
   // re-read after every save so it never claims work that was just done.
   const [showReviews, setShowReviews] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [reviewCount, setReviewCount] = useState(0);
   const [reviewsKey, setReviewsKey] = useState(0);
   /** A queue entry being opened: the project, then the category, then the
@@ -420,6 +422,8 @@ export function AdminApp() {
           { key: "diagnostics", label: t("diag.title"), onClick: () => setShowDiagnostics((v) => !v) },
         ]
       : []),
+    // Importing writes a whole project, so only for accounts that may write.
+    ...(canWrite ? [{ key: "import", label: t("import.title"), onClick: () => setShowImport((v) => !v) }] : []),
     { key: "account", label: t("admin.account"), onClick: () => setShowAccount((v) => !v) },
   ];
 
@@ -522,6 +526,23 @@ export function AdminApp() {
           <AdminInsightsCard onClose={() => setShowInsights(false)} onCreatePage={startPageFromGap} />
         )}
         {showDiagnostics && <AdminDiagnosticsCard onClose={() => setShowDiagnostics(false)} />}
+        {showImport && (
+          <ImportCard
+            projects={projects}
+            onClose={() => setShowImport(false)}
+            onImported={(slug) => {
+              setShowImport(false);
+              setEditing(null);
+              setSelectedCategory(null);
+              // Straight into the imported project: its drafts are the
+              // next thing to look at.
+              api.adminListProjects().then((r) => {
+                setProjects(r.projects);
+                setSelectedProject(r.projects.find((p) => p.slug === slug) ?? null);
+              });
+            }}
+          />
+        )}
         {showReviews && (
           <ReviewQueueCard
             refreshKey={reviewsKey}

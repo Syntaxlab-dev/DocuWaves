@@ -148,6 +148,20 @@ export interface Page extends PageSummary {
   has_pending?: boolean;
 }
 
+/** What an import would do, or did (backend services/importer.py). */
+export interface ImportSummary {
+  tool: "markdown" | "mkdocs" | "gitbook" | "docusaurus" | "obsidian";
+  project: { slug: string; name: string; new: boolean };
+  categories: { slug: string; name: string; exists: boolean; pages: { title: string; slug: string; source: string }[] }[];
+  pages: number;
+  assets: number;
+  skipped: { path: string; reason: string }[];
+  warnings: { source: string; message: string }[];
+}
+
+/** Where an import goes: an existing project, or a new one by name. */
+export type ImportTarget = { project: string } | { name: string };
+
 /** One search that found nothing, tallied (backend services/search_gaps.py):
  *  the words, never who searched. */
 export interface SearchGap {
@@ -909,6 +923,13 @@ export const api = {
   adminReviewDiscard: (id: number) =>
     request<EditorPage>(`/api/admin/pages/${id}/review/discard`, { method: "POST" }),
 
+  adminImportPreview: (file: File, target: ImportTarget) =>
+    upload<ImportSummary>(`/api/admin/import/preview?${new URLSearchParams(target).toString()}`, file),
+  adminImport: (file: File, target: ImportTarget) =>
+    upload<ImportSummary>(
+      `/api/admin/import?${new URLSearchParams({ ...target, filename: file.name }).toString()}`,
+      file,
+    ),
   adminSearchGaps: () => request<{ enabled: boolean; gaps: SearchGap[] }>("/api/admin/search-gaps"),
   adminForgetSearchGap: (id: number) =>
     request<{ cleared: number }>(`/api/admin/search-gaps/${id}`, { method: "DELETE" }),

@@ -34,6 +34,7 @@ from app.services import (
     diagnostics,
     editing_presence,
     link_check,
+    importer,
     page_feedback_store,
     page_review,
     categories_store,
@@ -1233,6 +1234,66 @@ def _asset_info(project_slug: str, filename: str, size: int, version: str) -> di
         "project_path": content_assets.project_relative_path(filename, version),
         "url": content_assets.public_url(project_slug, filename, version),
     }
+
+
+# ---- Import (services/importer.py) ----
+
+
+async def _read_import_body(request: Request) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > importer.MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"The archive is larger than {importer.MAX_UPLOAD_BYTES // (1024 * 1024)} MB.",
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _import_target(project: str, name: str) -> dict:
+    if bool(project.strip()) == bool(name.strip()):
+        raise HTTPException(status_code=400, detail="Name either an existing project or a new project, not both.")
+    return {"project_slug": project.strip(), "new_project_name": name.strip()}
+
+
+@router.post(
+    "/import/preview",
+    summary="What importing this ZIP would do -- writes nothing",
+    description="The body is the ZIP itself (at most 50 MB). `project` = an existing project's slug, or `name` = "
+    "the name of a new one. Answers with the categories and pages it would create, the images it would copy, "
+    "and everything it could not take over.",
+)
+async def admin_import_preview(request: Request, project: str = "", name: str = ""):
+    target = _import_target(project, name)
+    data = await _read_import_body(request)
+    try:
+        result = await run_in_threadpool(importer.plan, data, **target)
+    except importer.ImportError_ as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.summary()
+
+
+@router.post(
+    "/import",
+    summary="Import a ZIP of Markdown files -- every page as a draft, one commit",
+    description="Same body and parameters as the preview. Nothing is overwritten: names that are taken get `-2`. "
+    "Reverting the commit undoes the import.",
+)
+async def admin_import(request: Request, project: str = "", name: str = "", filename: str = ""):
+    _require_content_repo()
+    target = _import_target(project, name)
+    data = await _read_import_body(request)
+    try:
+        return await run_in_threadpool(
+            importer.apply, data, _author(request), archive_name=filename.strip()[:120], **target
+        )
+    except importer.ImportError_ as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
 
 
 async def _read_capped_body(request: Request) -> bytes | None:
