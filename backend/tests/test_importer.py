@@ -259,3 +259,10 @@ class TestEndpoints:
     def test_a_read_only_account_cannot_import(self, world):
         r = self.client(world, CLARA).post("/api/admin/import/preview?name=X", content=make_zip(PLAIN), headers=ORIGIN)
         assert r.status_code == 403
+
+
+def test_a_github_callout_keeps_its_kind(world):
+    importer.apply(make_zip({"a.md": "# A\n\n> [!CAUTION]\n> Rot.\n\n> [!danger] Obsidian\n> Auch rot.\n"}), "chef", new_project_name="Gh")
+    text = full_page("gh", "a")["markdown_content"]
+    assert "> [!CAUTION]\n> Rot." in text
+    assert "> [!CAUTION]\n> **Obsidian**" in text

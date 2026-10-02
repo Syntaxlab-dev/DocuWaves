@@ -23,6 +23,8 @@ RECOGNISED TOOLS, by what is in the archive:
   / `_category_.json`, `:::tip` containers, MDX `import` lines dropped;
 - Obsidian (`.obsidian/`): `[[wiki links]]`, `![[embeds]]`, `> [!info]`
   callouts;
+- Confluence (an HTML space export): converted to Markdown first, see
+  services/import_confluence.py;
 - anything else: plain Markdown, numbered prefixes (`01-intro.md`) order it.
 
 TWO STEPS, the same code: `plan()` reads the archive and says what WOULD
@@ -52,6 +54,7 @@ import yaml
 
 from app.services import (
     categories_store,
+    import_confluence,
     content_assets,
     content_files,
     content_sync,
@@ -155,6 +158,10 @@ def _wanted(path: str) -> bool:
         return False
     if name in _NAV_FILES or name.startswith("docusaurus.config."):
         return True
+    if lower.endswith((".html", ".htm")):
+        # Read for Confluence exports (services/import_confluence.py); in any
+        # other archive plan() lists them as not taken over.
+        return not any(p.startswith(".") for p in parts)
     if lower.endswith(MARKDOWN_EXTENSIONS):
         return not any(p.startswith(".") for p in parts)
     return posixpath.splitext(lower)[1] in content_assets.CONTENT_TYPES and not any(p.startswith(".") for p in parts)
@@ -332,8 +339,19 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
     """What an import would do. Writes nothing. Exactly one of the two:
     an existing project's slug, or the name of the project to create."""
     files, names, skipped = read_archive(data)
-    layout = detect(files, names)
     warnings: list[dict] = []
+    html = [p for p in files if p.lower().endswith((".html", ".htm"))]
+    if html and import_confluence.looks_like(files):
+        files, order, notes = import_confluence.convert(files)
+        layout = _Layout("confluence", "", order, {})
+        for note in notes:
+            source, _, message = note.partition(": ")
+            warnings.append({"source": source, "message": message})
+    else:
+        for path in html:
+            files.pop(path)
+            skipped.append({"path": path, "reason": "HTML is only imported from a Confluence export"})
+        layout = detect(files, names)
 
     root_prefix = f"{layout.root}/" if layout.root else ""
     markdown = sorted(
@@ -544,6 +562,7 @@ _KINDS = {
     "danger": "CAUTION", "error": "CAUTION", "failure": "CAUTION", "fail": "CAUTION", "missing": "CAUTION",
     "bug": "CAUTION",
 }
+_GITHUB_KINDS = {"NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"}
 # Docusaurus spells it the other way round: its `caution` is a warning, its
 # `danger` the red one.
 _GITBOOK_KINDS = {"info": "NOTE", "success": "TIP", "warning": "WARNING", "danger": "CAUTION"}
@@ -633,7 +652,10 @@ def _blocks(markdown: str, context: _Context) -> list[str]:
 
         obsidian = _OBSIDIAN_CALLOUT.match(line)
         if obsidian:
-            kind = _KINDS.get(obsidian.group(1).lower(), "NOTE")
+            # GitHub's own five kinds are already what DocuWaves renders --
+            # only Obsidian's extra ones (info, danger, ...) are mapped.
+            written = obsidian.group(1).upper()
+            kind = written if written in _GITHUB_KINDS else _KINDS.get(obsidian.group(1).lower(), "NOTE")
             out.append(f"> [!{kind}]")
             if obsidian.group(2).strip():
                 out.append(f"> **{obsidian.group(2).strip()}**")
@@ -777,6 +799,8 @@ def convert(markdown: str, context: _Context) -> str:
 def apply(data: bytes, author: str, *, archive_name: str = "", project_slug: str = "", new_project_name: str = "") -> dict:
     """Runs plan() and writes the result: drafts only, one commit."""
     result = plan(data, project_slug=project_slug, new_project_name=new_project_name)
+    # The assets' bytes. Every converter keeps attachments at their archive
+    # paths, so the plain read is where they are.
     files, _, _ = read_archive(data)
     if not result.new_project:
         content_versions.ensure_writable(result.project_slug, result.version)
