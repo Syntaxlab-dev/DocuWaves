@@ -106,6 +106,10 @@ class Settings:
     # check included -- stops answering until they come back.
     chat_max_concurrent: int = max(1, int(os.environ.get("CHAT_MAX_CONCURRENT", "4")))
 
+    # The gaps radar (services/search_gaps.py): searches that found nothing,
+    # tallied for the admin's "Insights". On unless switched off.
+    search_gaps_enabled: bool = os.environ.get("SEARCH_GAPS", "on").strip().lower() not in ("off", "0", "false", "no")
+
     # Which header carries the reader's real address, when there is more
     # than one proxy in front of DocuWaves (e.g. CF-Connecting-IP behind
     # Cloudflare). Blank = the rightmost X-Forwarded-For entry, which is

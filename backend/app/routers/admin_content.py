@@ -44,6 +44,7 @@ from app.services import (
     git_content_repo,
     page_templates,
     repo_exposure,
+    search_gaps,
     pages_store,
     preview_links_store,
     projects_store,
@@ -1515,6 +1516,26 @@ def admin_clear_feedback(project_slug: str, page_slug: str):
     nobody can read any more, and leaving them makes the new page look bad
     for a fault it no longer has."""
     return {"cleared": page_feedback_store.clear(project_slug, page_slug)}
+
+
+@router.get(
+    "/search-gaps",
+    summary="What readers searched for and did not find",
+    description="A tally of searches that found nothing -- the words, the language and project, how often, first "
+    "and last day; never who searched (services/search_gaps.py). `enabled` false when SEARCH_GAPS=off.",
+)
+def admin_search_gaps(limit: int = 50):
+    return {"enabled": search_gaps.is_enabled(), "gaps": search_gaps.top(limit)}
+
+
+@router.delete("/search-gaps/{gap_id}", summary="Forget one search, e.g. once a page covers it")
+def admin_forget_search_gap(gap_id: int):
+    return {"cleared": search_gaps.forget(gap_id)}
+
+
+@router.delete("/search-gaps", summary="Clear the whole list")
+def admin_clear_search_gaps():
+    return {"cleared": search_gaps.forget()}
 
 
 @router.get("/link-check", summary="Links in published pages that no longer resolve")

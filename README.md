@@ -968,6 +968,32 @@ two in a longer one; swapped letters count as one), and the page says so —
 are never suggested. The same correction helps the chat find its sources
 when a question has a typo in it.
 
+### What readers searched for and did not find
+
+A search that finds nothing is the clearest hint that a page is missing, so
+DocuWaves keeps a tally of them: **Insights** in the admin area lists the
+search words with how often they were searched, most searched first. One
+click starts a new page with those words as its title (pick the category,
+the editor opens); another removes the entry once a page covers it.
+
+What is stored is deliberately little: the words (lower-cased, at most 100
+characters), the language and project, a count, and the first and last day.
+No address, no account, no time of day, nothing that links two searches.
+Entries not seen for 90 days are dropped, and the list can be cleared at any
+time. Not counted at all:
+
+- searches by signed-in accounts and searches inside a private project;
+- search-as-you-type (Ctrl/⌘+K) -- only the full results page counts, or
+  every half-typed word would be a "gap";
+- anything that looks like an e-mail address or a long number (customer,
+  order or phone numbers), the things people most often paste into a box.
+
+It is on by default. `SEARCH_GAPS=off` switches it off entirely; nothing is
+written then. If you run the site for the public, your privacy policy can
+say: *"Search terms that return no results are stored anonymously and in
+aggregate -- without IP address or account -- for up to 90 days, to find
+missing documentation."* The list is not part of the export.
+
 ## Printing and PDF
 
 Every page prints cleanly on its own — navigation removed, a paper-friendly

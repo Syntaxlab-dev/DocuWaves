@@ -148,6 +148,20 @@ export interface Page extends PageSummary {
   has_pending?: boolean;
 }
 
+/** One search that found nothing, tallied (backend services/search_gaps.py):
+ *  the words, never who searched. */
+export interface SearchGap {
+  id: number;
+  query: string;
+  language: string;
+  /** "" when the search was not scoped to a project. */
+  project_slug: string;
+  hits: number;
+  /** YYYY-MM-DD */
+  first_seen: string;
+  last_seen: string;
+}
+
 export type ReviewStatus = "" | "pending" | "changes_requested";
 
 /** Where a page stands in the review workflow (backend
@@ -895,6 +909,11 @@ export const api = {
   adminReviewDiscard: (id: number) =>
     request<EditorPage>(`/api/admin/pages/${id}/review/discard`, { method: "POST" }),
 
+  adminSearchGaps: () => request<{ enabled: boolean; gaps: SearchGap[] }>("/api/admin/search-gaps"),
+  adminForgetSearchGap: (id: number) =>
+    request<{ cleared: number }>(`/api/admin/search-gaps/${id}`, { method: "DELETE" }),
+  adminClearSearchGaps: () => request<{ cleared: number }>("/api/admin/search-gaps", { method: "DELETE" }),
+
   adminListPreviewLinks: (id: number) =>
     request<{ links: PreviewLink[]; max_links: number; max_days: number; default_days: number }>(
       `/api/admin/pages/${id}/preview-links`,
@@ -1114,8 +1133,11 @@ export const api = {
     const query = params.toString();
     return request<{ entries: ChangelogEntry[] }>(`/api/public/changelog${query ? `?${query}` : ""}`);
   },
-  search: (q: string, lang?: string, project?: string, version?: string) => {
-    const scope = project ? `&project=${encodeURIComponent(project)}` : "";
+  /** `record`: count this search for the gaps radar if it finds nothing --
+   *  the results page only, never search-as-you-type (backend
+   *  services/search_gaps.py). */
+  search: (q: string, lang?: string, project?: string, version?: string, record = false) => {
+    const scope = (project ? `&project=${encodeURIComponent(project)}` : "") + (record ? "&record=true" : "");
     // `corrected`: the query that was actually searched, when a word in it
     // was misspelled (see backend services/search_suggest.py).
     return request<{ results: SearchResult[]; corrected?: string | null }>(
