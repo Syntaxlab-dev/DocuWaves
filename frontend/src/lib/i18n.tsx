@@ -27,6 +27,8 @@ const de = {
   "nav.toDarkMode": "Zur dunklen Ansicht wechseln",
   "nav.toLightMode": "Zur hellen Ansicht wechseln",
   "nav.language": "Sprache",
+  "nav.openMenu": "Menü öffnen",
+  "nav.closeMenu": "Menü schließen",
   "admin.insights": "Auswertung",
   "users.title": "Konten",
   "users.intro":
@@ -589,6 +591,8 @@ const en: Dict = {
   "nav.toDarkMode": "Switch to dark theme",
   "nav.toLightMode": "Switch to light theme",
   "nav.language": "Language",
+  "nav.openMenu": "Open menu",
+  "nav.closeMenu": "Close menu",
   "admin.insights": "Insights",
   "users.title": "Accounts",
   "users.intro":
