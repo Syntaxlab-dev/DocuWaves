@@ -62,6 +62,8 @@ than whenever the person happens to log in again. An account that has been
 deleted while logged in fails the same lookup and is signed out.
 """
 
+import re
+
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -80,6 +82,12 @@ _BEARER = "bearer "
 
 # Reading. Everything else is a change, and a viewer may not make one.
 _READ_METHODS = ("GET", "HEAD")
+
+# The two changes a read-only account MAY make: deciding on a page somebody
+# submitted for approval. Reviewing is reading -- often the people best
+# placed to check a text are the ones who should not be editing it -- and
+# the decision changes no word of it (services/page_review.py).
+_REVIEW_DECISION_RE = re.compile(r"^/api/admin/pages/\d+/review/(approve|request-changes)$")
 
 # Prefixes only an admin may touch, by ANY method -- a viewer's GET included.
 # Each one is authority over the instance rather than over its documentation:
@@ -229,7 +237,8 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
                 {"detail": "This part of the admin area is for administrators."},
                 status_code=403,
             )
-        if request.method not in _READ_METHODS and not users_store.may_write(role):
+        reviewing = request.method == "POST" and _REVIEW_DECISION_RE.match(path) is not None
+        if request.method not in _READ_METHODS and not users_store.may_write(role) and not reviewing:
             return JSONResponse(
                 {"detail": "Your account can read the admin area but not change anything."},
                 status_code=403,

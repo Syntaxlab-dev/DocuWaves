@@ -198,6 +198,9 @@ def read_project(slug: str) -> dict | None:
         # the admin form writes the exact word, so a project made private
         # there is private.
         "private": str(data.get("visibility", "")).strip().lower() == "private",
+        # Same rule: only the exact word. `review: required` means nothing in
+        # this project goes live without somebody else's approval.
+        "review_required": str(data.get("review", "")).strip().lower() == "required",
     }
 
 
@@ -212,6 +215,7 @@ def write_project(
     name_i18n: dict[str, str] | None = None,
     description_i18n: dict[str, str] | None = None,
     private: bool = False,
+    review_required: bool = False,
 ) -> list[str]:
     """The two i18n mappings default to None so every existing caller (and
     every single-language install) writes exactly the plain `name: My
@@ -241,6 +245,8 @@ def write_project(
     # exactly as it always did.
     if private:
         data["visibility"] = "private"
+    if review_required:
+        data["review"] = "required"
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return [_rel(path)]
 
@@ -455,6 +461,7 @@ def read_page(project_slug: str, category_slug: str, slug: str, language: str = 
         "reviewed_at": str(post.metadata.get("reviewed_at", "") or ""),
         "markdown_content": post.content,
         "language": language,
+        "review": review_from(post.metadata),
     }
 
 
@@ -499,8 +506,15 @@ def write_page(
     version: str = "",
     reviewed_by: str = "",
     reviewed_at: str = "",
+    review: "dict | object" = None,
 ) -> list[str]:
-    """`reviewed_by`/`reviewed_at` are the page's review note, and both being
+    """`review` is the page's REVIEW-WORKFLOW state (services/page_review.py)
+    -- a different thing from the review NOTE below. Left out, whatever
+    state the file already holds is kept: six places rewrite a page file
+    (save, publish, the note, reorder, restore, ...) and a reorder must not
+    silently drop a submission. Pass a dict to set it, {} to clear it.
+
+    `reviewed_by`/`reviewed_at` are the page's review note, and both being
     set is what makes one exist -- a name with no date, or a date with no
     name, is half a statement and is written as no statement at all.
 
@@ -519,10 +533,13 @@ def write_page(
     caller here expects."""
     path = _page_path_for_write(project_slug, category_slug, slug, language, version)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if review is None:
+        review = review_from(frontmatter.loads(path.read_text(encoding="utf-8")).metadata) if path.exists() else {}
     metadata = {"title": title, "order": order, "published": published}
     if reviewed_by and reviewed_at:
         metadata["reviewed_by"] = reviewed_by
         metadata["reviewed_at"] = str(reviewed_at)
+    metadata.update(_review_metadata(review))
     post = frontmatter.Post(markdown_content, **metadata)
     path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
     return [_rel(path)]
@@ -547,6 +564,7 @@ def page_variant_paths(project_slug: str, category_slug: str, slug: str, version
 
 def delete_page(project_slug: str, category_slug: str, slug: str, version: str = "") -> list[str]:
     paths = page_variant_paths(project_slug, category_slug, slug, version)
+    paths += pending_variant_paths(project_slug, category_slug, slug, version)
     touched = [_rel(p) for p in paths]
     for path in paths:
         path.unlink()
@@ -578,12 +596,15 @@ def relocate_page(
         return []
     new_directory = project_content_dir(project_slug, version) / new_category_slug
     moves: list[tuple[Path, Path]] = []
-    for old_path in old_paths:
+    # A waiting revision (services/page_review.py) moves with its page, into
+    # the new category's own `_pending/`.
+    for old_path in old_paths + pending_variant_paths(project_slug, old_category_slug, old_slug, version):
         _, code = site_languages.parse_page_filename(old_path.stem)
         # Keeps each variant's own naming: a `<slug>.md` stays unsuffixed,
         # a `<slug>.de.md` stays `.de`.
         name = f"{new_slug}.{code}.md" if code else f"{new_slug}.md"
-        new_path = new_directory / name
+        target = new_directory / PENDING_DIRNAME if old_path.parent.name == PENDING_DIRNAME else new_directory
+        new_path = target / name
         if new_path.exists():
             return []  # something is already there -- refuse the whole move rather than half of it
         moves.append((old_path, new_path))
@@ -591,7 +612,85 @@ def relocate_page(
     new_directory.mkdir(parents=True, exist_ok=True)
     touched: list[str] = []
     for old_path, new_path in moves:
+        new_path.parent.mkdir(parents=True, exist_ok=True)
         touched.append(_rel(old_path))
         old_path.rename(new_path)
         touched.append(_rel(new_path))
     return touched
+
+
+# ---- Review workflow: state in frontmatter, waiting revisions beside the page ----
+#
+# See services/page_review.py for the workflow itself. Here only the files:
+# the state keys a page (or a waiting revision) carries, and where a waiting
+# revision of a PUBLISHED page lives -- `<category>/_pending/<page file>`,
+# beside the live file it would replace, and invisible to everything that
+# lists pages (list_page_variants() reads the category's own `*.md` only).
+
+PENDING_DIRNAME = "_pending"
+REVIEW_KEYS = (
+    "review_status",  # "" (none) | pending | changes_requested
+    "review_submitted_by",
+    "review_submitted_at",
+    "review_note",  # what the author asked the reviewer to look at
+    "review_comment",  # what the reviewer asked to change
+    "review_decided_by",
+    "review_changed_by",  # who last changed the text -- may not approve it
+)
+
+
+def review_from(metadata: dict) -> dict:
+    return {k: str(metadata.get(k) or "") for k in REVIEW_KEYS if metadata.get(k)}
+
+
+def _review_metadata(review: dict) -> dict:
+    """Only the keys that say something, in a fixed order: a page with no
+    review state gets no review lines at all."""
+    return {k: str(review[k]) for k in REVIEW_KEYS if review.get(k)}
+
+
+def pending_path(project_slug: str, category_slug: str, slug: str, language: str, version: str = "") -> Path:
+    directory = project_content_dir(project_slug, version) / category_slug / PENDING_DIRNAME
+    return directory / site_languages.page_filename(slug, language)
+
+
+def pending_variant_paths(project_slug: str, category_slug: str, slug: str, version: str = "") -> list[Path]:
+    directory = project_content_dir(project_slug, version) / category_slug / PENDING_DIRNAME
+    if not directory.is_dir():
+        return []
+    return [p for p in sorted(directory.glob("*.md")) if site_languages.parse_page_filename(p.stem)[0] == slug]
+
+
+def read_pending(project_slug: str, category_slug: str, slug: str, language: str, version: str = "") -> dict | None:
+    path = pending_path(project_slug, category_slug, slug, language, version)
+    if not path.is_file():
+        return None
+    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    return {
+        "title": str(post.metadata.get("title", slug)),
+        "markdown_content": post.content,
+        "review": review_from(post.metadata),
+    }
+
+
+def write_pending(
+    project_slug: str, category_slug: str, slug: str, language: str, version: str,
+    title: str, markdown_content: str, review: dict,
+) -> list[str]:
+    path = pending_path(project_slug, category_slug, slug, language, version)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    post = frontmatter.Post(markdown_content, title=title, **_review_metadata(review))
+    path.write_text(frontmatter.dumps(post) + "\n", encoding="utf-8")
+    return [_rel(path)]
+
+
+def delete_pending(project_slug: str, category_slug: str, slug: str, language: str, version: str = "") -> list[str]:
+    path = pending_path(project_slug, category_slug, slug, language, version)
+    if not path.exists():
+        return []
+    path.unlink()
+    try:
+        path.parent.rmdir()  # only succeeds once it was the last one
+    except OSError:
+        pass
+    return [_rel(path)]

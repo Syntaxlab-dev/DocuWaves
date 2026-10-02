@@ -70,7 +70,7 @@ from app.services import (
 
 _COLUMNS = (
     "id, project_id, category_id, title, slug, language, markdown_content, sort_order, published, "
-    "created_at, updated_at, version, reviewed_by, reviewed_at"
+    "created_at, updated_at, version, reviewed_by, reviewed_at, review_status, has_pending"
 )
 
 _NAV_COLUMNS = "id, category_id, title, slug, language, sort_order"
@@ -99,6 +99,10 @@ def _row_to_dict(row) -> dict:
         # together everywhere: a name without a date says nothing.
         "reviewed_by": row[12],
         "reviewed_at": row[13],
+        # The review workflow (services/page_review.py): '' | pending |
+        # changes_requested, and whether changes wait for approval.
+        "review_status": row[14],
+        "has_pending": bool(row[15]),
     }
 
 
@@ -407,11 +411,41 @@ def create_page(
     existing_order = next((s["sort_order"] for s in siblings if s is not None), None)
     order = _next_order(category_id) if existing_order is None else existing_order
     paths = content_files.write_page(
-        project["slug"], category["slug"], slug, title, markdown_content, order, False, requested, version
+        project["slug"], category["slug"], slug, title, markdown_content, order, False, requested, version,
+        # Who wrote the text -- the one person who may not approve it
+        # (services/page_review.py). Recorded on every page, so switching a
+        # project to "approval required" later does not open a gap.
+        review={"review_changed_by": author},
     )
     git_content_repo.commit_and_push(paths, f"Add page: {title} [{requested or 'default'}]", author)
     content_sync.full_sync()
     return get_page_by_slug(project_id, slug, requested, version)
+
+
+class ReviewRequiredError(Exception):
+    """Publishing directly is not allowed in this project: a page goes live
+    through an approval (services/page_review.py)."""
+
+
+def review_required(project: dict | None) -> bool:
+    return bool(project and project.get("review_required"))
+
+
+def pending_version(project: dict, category: dict, page: dict) -> dict | None:
+    """The proposed changes to a published page that wait for approval, or
+    None. See services/page_review.py."""
+    return content_files.read_pending(project["slug"], category["slug"], page["slug"], page["language"], page["version"])
+
+
+def _after_edit(review: dict, author: str) -> dict:
+    """The review state once `author` has changed the text: they wrote it, so
+    they may not approve it -- and a submission is about the text that was
+    submitted, so changing that text takes it back. A request for changes
+    stays until the next submission: it is what the author is working on."""
+    review = {**review, "review_changed_by": author}
+    if review.get("review_status") == "pending":
+        review["review_status"] = ""
+    return review
 
 
 class PageChangedError(Exception):
@@ -462,16 +496,20 @@ def _update_page(
     current = get_page(page_id)
     if current is None:
         return None
-    # Blank = the caller did not say what it started from (the MCP tools, an
-    # older browser tab): saved as before. Given and different = someone else
-    # saved in between, and writing now would drop their change unseen.
-    if expected_revision and expected_revision != page_revision(current):
-        raise PageChangedError(page_revision(current))
     project = projects_store.get_project(current["project_id"])
     old_category = categories_store.get_category(current["category_id"])
     new_category = categories_store.get_category(category_id)
     if project is None or old_category is None or new_category is None:
         return None
+    # What the editor shows and saves on top of: the proposed version when
+    # one waits for approval, the page itself otherwise.
+    pending = pending_version(project, old_category, current)
+    base = {**current, **({"title": pending["title"], "markdown_content": pending["markdown_content"]} if pending else {})}
+    # Blank = the caller did not say what it started from (the MCP tools, an
+    # older browser tab): saved as before. Given and different = someone else
+    # saved in between, and writing now would drop their change unseen.
+    if expected_revision and expected_revision != page_revision(base):
+        raise PageChangedError(page_revision(base))
     version = current["version"]
     content_versions.ensure_writable(project["slug"], version)
     if new_category["version"] != version:
@@ -503,12 +541,44 @@ def _update_page(
     # category changes neither a sentence of what was reviewed nor a word of
     # what a reader reads, and dropping the note over a typo in the title
     # would train people to ignore it.
+    text_changed = title != base["title"] or markdown_content != base["markdown_content"]
+    if review_required(project) and current["published"]:
+        # A live page in a project that needs approval: readers keep the
+        # live text, the edit becomes the proposed version in _pending/
+        # (services/page_review.py). The live file is still rewritten -- a
+        # rename or a move changes its place and its order -- but with its
+        # own text, untouched.
+        paths += content_files.write_page(
+            project["slug"], new_category["slug"], slug, current["title"], current["markdown_content"], order,
+            True, current["language"], version,
+            reviewed_by=current["reviewed_by"], reviewed_at=current["reviewed_at"],
+        )
+        proposal_review = (pending or {}).get("review", {})
+        if text_changed:
+            proposal_review = _after_edit(proposal_review, author)
+        if title == current["title"] and markdown_content.strip() == current["markdown_content"].strip():
+            # Edited back to exactly what is live: nothing left to approve.
+            paths += content_files.delete_pending(project["slug"], new_category["slug"], slug, current["language"], version)
+        elif pending is not None or text_changed:
+            paths += content_files.write_pending(
+                project["slug"], new_category["slug"], slug, current["language"], version,
+                title, markdown_content, proposal_review,
+            )
+        git_content_repo.commit_and_push(paths, f"Propose changes: {title}", author)
+        content_sync.full_sync()
+        return get_page_by_slug(current["project_id"], slug, current["language"], version)
+
     reviewed = markdown_content == current["markdown_content"]
+    review = None
+    if text_changed:
+        live = content_files.read_page(project["slug"], new_category["slug"], slug, current["language"], version)
+        review = _after_edit((live or {}).get("review", {}), author)
     paths += content_files.write_page(
         project["slug"], new_category["slug"], slug, title, markdown_content, order, current["published"],
         current["language"], version,
         reviewed_by=current["reviewed_by"] if reviewed else "",
         reviewed_at=current["reviewed_at"] if reviewed else "",
+        review=review,
     )
     git_content_repo.commit_and_push(paths, f"Update page: {title}", author)
     content_sync.full_sync()
@@ -529,12 +599,30 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
     project = projects_store.get_project(current["project_id"])
     category = categories_store.get_category(current["category_id"])
     content_versions.ensure_writable(project["slug"], current["version"])
+    if published and not current["published"] and review_required(project):
+        # Going live is what an approval does in this project
+        # (services/page_review.py). Taking a page OFF the site is not
+        # gated: withdrawing something is never the risky direction.
+        raise ReviewRequiredError()
+    title, markdown, review = current["title"], current["markdown_content"], None
+    pending = pending_version(project, category, current) if not published else None
+    paths: list[str] = []
+    if pending is not None:
+        # Taken off the site with changes still waiting: readers see neither
+        # now, so the proposal simply becomes the draft -- one text, one
+        # place, instead of a draft with a second draft hanging off it.
+        title, markdown, review = pending["title"], pending["markdown_content"], pending["review"]
+        paths += content_files.delete_pending(
+            project["slug"], category["slug"], current["slug"], current["language"], current["version"]
+        )
     # Per language: a translation that isn't finished stays a draft while
     # the language it was translated from is published.
-    paths = content_files.write_page(
-        project["slug"], category["slug"], current["slug"], current["title"], current["markdown_content"],
+    paths += content_files.write_page(
+        project["slug"], category["slug"], current["slug"], title, markdown,
         current["sort_order"], published, current["language"], current["version"],
-        reviewed_by=current["reviewed_by"], reviewed_at=current["reviewed_at"],
+        reviewed_by=current["reviewed_by"] if markdown == current["markdown_content"] else "",
+        reviewed_at=current["reviewed_at"] if markdown == current["markdown_content"] else "",
+        review=review,
     )
     verb = "Publish" if published else "Unpublish"
     git_content_repo.commit_and_push(paths, f"{verb} page: {current['title']}", author)
@@ -828,10 +916,23 @@ def restore_page(page_id: int, sha: str, author: str) -> dict | None:
     # one, which is exactly the case update_page() drops the note for. The
     # restored text may well be text that was once reviewed, but not
     # necessarily by this note's author and not on this note's date.
-    paths = content_files.write_page(
-        project["slug"], category["slug"], current["slug"], title, version["markdown_content"],
-        current["sort_order"], current["published"], current["language"], current["version"],
-    )
+    if review_required(project) and current["published"]:
+        # Like any other edit of a live page here: proposed, not published
+        # (services/page_review.py).
+        pending = pending_version(project, category, current)
+        paths = content_files.write_pending(
+            project["slug"], category["slug"], current["slug"], current["language"], current["version"],
+            title, version["markdown_content"], _after_edit((pending or {}).get("review", {}), author),
+        )
+    else:
+        live = content_files.read_page(
+            project["slug"], category["slug"], current["slug"], current["language"], current["version"]
+        )
+        paths = content_files.write_page(
+            project["slug"], category["slug"], current["slug"], title, version["markdown_content"],
+            current["sort_order"], current["published"], current["language"], current["version"],
+            review=_after_edit((live or {}).get("review", {}), author),
+        )
     message = (
         f"Restore page: {title} [{current['language'] or 'default'}] to {version['sha']}"
         f"\n\nThe content of commit {version['sha']} (\"{version['subject']}\") written back as a new commit. "

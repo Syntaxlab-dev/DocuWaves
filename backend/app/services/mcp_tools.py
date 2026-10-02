@@ -48,6 +48,7 @@ from app.services import (
     content_files,
     content_versions,
     git_content_repo,
+    page_review,
     pages_store,
     projects_store,
     site_languages,
@@ -342,15 +343,14 @@ def create_page(arguments: dict, token: dict) -> dict:
             "The page file was written and committed but could not be read back as a page -- something about "
             "the write disagrees with the way the index reads the content repo. Check the server log."
         )
-    published = _publish_flag(arguments)
-    if published:
-        pages_store.set_published(page["id"], True, author)
+    published = _publish_flag(arguments) and _go_live(page["id"], project, author)
     return {
         "created": True,
         "project": project["slug"],
         "category": category["slug"],
         "page": _page_entry({**page, "published": bool(published)}),
         "commit_author": author,
+        **_review_outcome(project, page["id"]),
     }
 
 
@@ -417,15 +417,14 @@ def translate_page(arguments: dict, token: dict) -> dict:
         raise ToolError(
             "The translation was written and committed but could not be read back. Check the server log."
         )
-    published = _publish_flag(arguments)
-    if published:
-        pages_store.set_published(page["id"], True, author)
+    published = _publish_flag(arguments) and _go_live(page["id"], project, author)
     return {
         "translated": True,
         "project": project["slug"],
         "page": _page_entry({**page, "published": bool(published)}),
         "translated_from": source["language"] or site_languages.default_language(),
         "commit_author": author,
+        **_review_outcome(project, page["id"]),
     }
 
 
@@ -549,9 +548,20 @@ def update_page(arguments: dict, token: dict) -> dict:
         # id this function started with: a title change that moves the slug
         # moves the file, and the reindex that follows gives the page a new
         # id (see content_sync.py -- rows are matched by slug, not by id).
-        if published != updated["published"]:
-            pages_store.set_published(updated["id"], published, author)
-            updated = {**updated, "published": published}
+        if published and not updated["published"]:
+            updated = {**updated, "published": _go_live(updated["id"], project, author)}
+        elif not published and updated["published"]:
+            pages_store.set_published(updated["id"], False, author)
+            updated = {**updated, "published": False}
+    if pages_store.review_required(project) and updated["published"]:
+        # The edit of a live page became a proposal (pages_store.update_page);
+        # nobody would ever look at it unless it is submitted.
+        current = pages_store.get_page(updated["id"])
+        if current and current["has_pending"] and current["review_status"] != "pending":
+            try:
+                page_review.submit(updated["id"], author, _MCP_REVIEW_NOTE)
+            except page_review.ReviewError:
+                pass
 
     return {
         "updated": True,
@@ -562,6 +572,7 @@ def update_page(arguments: dict, token: dict) -> dict:
         # otherwise keep addressing a page that no longer answers.
         "renamed": updated["slug"] != slug,
         "commit_author": author,
+        **_review_outcome(project, updated["id"]),
     }
 
 
@@ -645,6 +656,35 @@ def create_category(arguments: dict, token: dict) -> dict:
             "order": category["sort_order"],
         },
         "commit_author": author,
+    }
+
+
+_MCP_REVIEW_NOTE = "Submitted automatically: written by an AI assistant through the MCP endpoint."
+
+
+def _go_live(page_id: int, project: dict, author: str) -> bool:
+    """Publishes -- or, in a project that needs approval, submits for review
+    instead (services/page_review.py): an assistant never gets past the four
+    eyes a person cannot get past either. True when the page is live now."""
+    if pages_store.review_required(project):
+        try:
+            page_review.submit(page_id, author, _MCP_REVIEW_NOTE)
+        except page_review.ReviewError:
+            pass  # already waiting for a decision
+        return False
+    pages_store.set_published(page_id, True, author)
+    return True
+
+
+def _review_outcome(project: dict, page_id: int) -> dict:
+    if not pages_store.review_required(project):
+        return {}
+    page = pages_store.get_page(page_id)
+    status = page["review_status"] if page else ""
+    return {
+        "review": status or "none",
+        "review_hint": "This project publishes through an approval: a person has to approve the change in the admin "
+        "area before readers see it." if status == "pending" else "",
     }
 
 

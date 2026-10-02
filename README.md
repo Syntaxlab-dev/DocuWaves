@@ -1173,6 +1173,50 @@ private while the remote is public needs an explicit confirmation, in the
 form and in the API. The answer is cached for an hour; "unknown" means the
 remote could not be asked (network, a host without https).
 
+## Approval before publishing
+
+A project can require that nothing goes live without a second person's
+approval:
+
+```yaml
+# content/<project>/_project.yml
+name: Handbook
+review: required
+```
+
+Only the exact words `review: required` switch it on; without them the
+project works exactly as before.
+
+**A published page keeps its live text while somebody works on it.** A save
+in the editor goes to a proposed version next to the page,
+`<category>/_pending/<page file>`, and readers keep reading the live page.
+The author submits the proposal for review; once somebody else approves it,
+the proposal becomes the page -- one commit -- and the approver's name and
+the date are written as the page's review note. Discarding a proposal
+deletes the file; the live page never had it.
+
+**A draft goes live through an approval.** Publishing it directly is refused
+(`409 review_required`); submit it instead.
+
+**Four eyes.** Whoever last changed the text may not approve it -- not the
+person who submitted it, the person who wrote it. Editing a submitted text
+takes the submission back, so nothing changes under a reviewer's eyes.
+
+**Who may decide.** Editors, admins and read-only accounts may approve or
+send a text back with a comment: reviewing is reading, and the right
+reviewer is often somebody who should not be editing. Read-only accounts can
+do exactly those two things and nothing else.
+
+**AI assistants** (the MCP endpoint) go through the same door: an edit to a
+live page, or `published: true` on a new one, is submitted for review
+automatically, and a person approves it.
+
+Everything lives in the content repo -- the review state is a few lines of
+frontmatter on the text under review -- so the review queue survives a
+reindex, a restore from backup and a fresh clone. The queue is
+`GET /api/admin/reviews`; `GET /api/admin/pages/{id}/review/diff` shows what
+an approval would change.
+
 ## Accounts and roles
 
 The first person to open a new instance creates the first account, and it is
