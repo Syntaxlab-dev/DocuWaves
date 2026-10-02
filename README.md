@@ -1227,6 +1227,26 @@ Recognised automatically:
 | GitBook | `SUMMARY.md` | summary order, `{% hint %}` blocks, `{% embed %}` as links |
 | Docusaurus | `docusaurus.config.*` | `docs/`, `sidebar_position`, `_category_.json`, `:::tip` containers, `/img/...` from `static/` (MDX `import` lines are dropped) |
 | Obsidian | `.obsidian/` | `[[wiki links]]`, `![[embeds]]`, `> [!info]` callouts |
+| Confluence | an HTML space export | see below |
+
+**From Confluence:** in the space, *Space settings -> Export space -> HTML*,
+then upload the ZIP it produces as it is. Every page is converted to
+Markdown:
+
+- **The page tree:** the space's home page and every top-level page without
+  children go into "General"; every top-level page with children becomes a
+  category -- the page first, then everything below it in Confluence's order
+  (DocuWaves has one level of categories, so deeper levels are flattened).
+- **Macros:** info, note, warning and tip panels become callouts (Confluence's
+  yellow "note" a warning, its red "warning" a caution); code blocks keep
+  their language; *expand* becomes a callout with its title; status
+  lozenges become bold text, emoticons their text, mentions the person's
+  name. The table of contents, the attachments list, labels, likes,
+  comments and the page footer are left out. Any other macro keeps the text
+  it rendered to and is listed in the preview.
+- **Links and attachments:** links between pages follow the pages; images
+  from `attachments/` are copied like any other. Attachments that are not
+  images or media (PDFs, Office files) are not imported and are listed.
 
 **Every page arrives as a draft**, in **one commit** -- reverting that commit
 undoes the whole import. Nothing existing is overwritten: a name that is
