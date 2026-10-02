@@ -74,7 +74,10 @@ def _current(project: dict, version: str) -> dict[str, dict]:
     return pages
 
 
-def sync(data: bytes, project_slug: str, author: str, ref: str = "") -> dict:
+def sync(data: bytes, project_slug: str, author: str, ref: str = "", source: dict | None = None) -> dict:
+    """`source`: where the docs live ({repo, branch, path}), when the CI says
+    so -- it becomes the project's `source:` (and with it the "edit in the
+    repository" links). Left out, the project keeps what it has."""
     project = projects_store.get_project_by_slug(project_slug)
     if project is None:
         raise SyncError(f"There is no project '{project_slug}'. Create it in the admin area first.")
@@ -104,7 +107,7 @@ def sync(data: bytes, project_slug: str, author: str, ref: str = "") -> dict:
             if not category.pages:
                 continue
             paths += content_files.write_category(
-                project_slug, category.slug, category.name, "", "", category.order, version=version
+                project_slug, category.slug, category.name, category.icon, "", category.order, version=version
             )
             for page in category.pages:
                 paths += content_files.write_page(
@@ -126,11 +129,12 @@ def sync(data: bytes, project_slug: str, author: str, ref: str = "") -> dict:
         paths.append(content_files._rel(sources_path))
         # The first sync makes it official: from now on the project's pages
         # are read-only in the editor (content_versions.ensure_editable).
-        if project.get("source") is None:
+        wanted = content_files.normalize_source({**(project.get("source") or {}), **(source or {})})
+        if project.get("source") != wanted:
             paths += content_files.write_project(
                 project["slug"], project["name"], project["icon"], project["color"], project["image"],
                 project["description"], project["sort_order"], project["name_i18n"], project["description_i18n"],
-                project["private"], project["review_required"], {},
+                project["private"], project["review_required"], wanted,
             )
         asset_dir = content_files.project_content_dir(project_slug, version) / "assets"
         for source, target in result.assets.items():

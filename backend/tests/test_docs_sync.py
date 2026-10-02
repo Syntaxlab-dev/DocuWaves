@@ -187,3 +187,36 @@ def test_edit_links_per_host():
     assert docs_sync.edit_url({**source, "repo": "https://gitlab.com/a/b"}, file) == "https://gitlab.com/a/b/-/edit/main/docs/setup/install.md"
     assert docs_sync.edit_url({**source, "repo": "https://codeberg.org/a/b.git"}, file) == "https://codeberg.org/a/b/_edit/main/docs/setup/install.md"
     assert docs_sync.edit_url({**source, "repo": ""}, file) == ""
+
+
+def test_the_ci_can_say_where_the_docs_live(world):
+    value = token()
+    client = TestClient(world["app"])
+    r = client.post(
+        "/api/sync/alt?ref=a1&repo=https://github.com/acme/app&branch=main&path=docs",
+        content=make_zip(DOCS), headers={"Authorization": f"Bearer {value}"},
+    )
+    assert r.status_code == 200
+    assert projects_store.get_project_by_slug("alt")["source"] == {
+        "repo": "https://github.com/acme/app", "branch": "main", "path": "docs",
+    }
+    # The same again changes nothing -- not even _project.yml.
+    before = commits(world)
+    client.post("/api/sync/alt?ref=a1&repo=https://github.com/acme/app&branch=main&path=docs",
+                content=make_zip(DOCS), headers={"Authorization": f"Bearer {value}"})
+    assert commits(world) == before
+
+
+def test_a_docuwaves_content_folder_imports_as_it_is(world):
+    archive = {
+        "docs/getting-started/_category.yml": "name: Getting started\nicon: 🚀\norder: 0\n",
+        "docs/getting-started/install.md": "---\norder: 1\npublished: true\ntitle: Installing\n---\n\nText.\n",
+        "docs/02-writing/_category.yml": "name: Writing\nicon: ✍️\norder: 1\n",
+        "docs/02-writing/markdown.md": "---\norder: 0\ntitle: Markdown\n---\n\nText.\n",
+    }
+    push(world, archive, token())
+    from app.services import categories_store
+    cats = categories_store.list_categories(projects_store.get_project_by_slug("alt")["id"])
+    assert [(c["slug"], c["name"], c["icon"]) for c in cats] == [
+        ("getting-started", "Getting started", "🚀"), ("writing", "Writing", "✍️"),
+    ]

@@ -27,11 +27,14 @@ async def _read_body(request: Request) -> bytes:
     "/{project_slug}",
     summary="Replace a project's content with the docs from a code repository",
     description="The body is a ZIP of the docs folder (at most 50 MB, any format the importer reads). `ref` is "
-    "the code commit or tag it came from, for the commit message and the history. Pages become what the archive "
+    "the code commit or tag it came from, for the commit message and the history. `repo`, `branch` and `path` "
+    "(optional) say where the docs live, for the editor's 'edit in the repository' links. Pages become what the archive "
     "says: added, changed, removed -- published unless their front matter says `draft: true`. One commit, none "
     "when nothing changed. Requires `Authorization: Bearer <sync token for this project>`.",
 )
-async def sync_project(project_slug: str, request: Request, ref: str = ""):
+async def sync_project(
+    project_slug: str, request: Request, ref: str = "", repo: str = "", branch: str = "", path: str | None = None
+):
     token = getattr(request.state, "api_token", None)
     if token is None or token.get("scope") != api_tokens_store.SYNC_SCOPE:
         raise HTTPException(status_code=403, detail="This endpoint needs a sync token.")
@@ -40,7 +43,12 @@ async def sync_project(project_slug: str, request: Request, ref: str = ""):
     data = await _read_body(request)
     author = api_tokens_store.author_name(token["name"])
     try:
-        return await run_in_threadpool(docs_sync.sync, data, project_slug, author, ref)
+        # Optional: where the docs live, for the "edit in the repository"
+        # links -- a CI job knows its own repository and branch.
+        source = {k: v for k, v in {"repo": repo, "branch": branch, "path": path}.items() if v}
+        if path == "":
+            source["path"] = ""
+        return await run_in_threadpool(docs_sync.sync, data, project_slug, author, ref, source or None)
     except (docs_sync.SyncError, importer.ImportError_) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except content_versions.FrozenVersionError as exc:

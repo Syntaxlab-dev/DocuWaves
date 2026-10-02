@@ -1,0 +1,42 @@
+# The user documentation in docs/ is the "docuwaves" project on
+# https://docs.docuwaves.app -- synced with DocuWaves' own docs-as-code
+# endpoint (backend/app/services/docs_sync.py) whenever docs/ changes on main.
+#
+# Needs the repository secret DOCUWAVES_TOKEN: a SYNC token for the project
+# "docuwaves", created under API tokens on docs.docuwaves.app. Without it the
+# job says so and stops, rather than failing every push.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**", ".github/workflows/docs.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: docs-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync docs/ to docs.docuwaves.app
+        env:
+          DOCUWAVES_TOKEN: ${{ secrets.DOCUWAVES_TOKEN }}
+        run: |
+          if [ -z "$DOCUWAVES_TOKEN" ]; then
+            echo "::notice::DOCUWAVES_TOKEN is not set -- nothing synced."
+            exit 0
+          fi
+          cd docs && zip -qr ../docs.zip . && cd ..
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $DOCUWAVES_TOKEN" \
+            --data-binary @docs.zip \
+            "https://docs.docuwaves.app/api/sync/docuwaves?ref=${GITHUB_SHA::7}&repo=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}&branch=main&path=docs" \
+            | tee sync-result.json
+          echo
+          python3 -c "import json; r=json.load(open('sync-result.json')); print('added', r['added']); print('changed', r['changed']); print('removed', r['removed']); [print('::warning::', w['source'], w['message']) for w in r['warnings']]"

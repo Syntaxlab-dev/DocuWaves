@@ -85,6 +85,12 @@ later".
   files, never the source of truth itself. Losing it isn't losing content;
   DocuWaves rebuilds it from the files on next startup or "Sync now".
 
+
+**User documentation:** [docs.docuwaves.app](https://docs.docuwaves.app). Its
+source is the [`docs/`](docs/) folder of this repository, synced on every
+change with DocuWaves' own docs-as-code endpoint — a pull request that changes
+a feature should change its page there too.
+
 ## Setup
 
 No account anywhere, no repository to create first, no token to mint:
@@ -1892,8 +1898,13 @@ API), but within that it is real write access to what your readers see.
 | `OIDC_PROVIDER_NAME` | `authentik` | Label shown on the SSO login button |
 | `PUBLIC_BASE_URL` | *(empty — auto-detected)* | The address readers use, e.g. `https://docs.example.com`. Only needed to override what the app works out from the proxy headers — see "Search engines and link previews" |
 | `WEBHOOK_URLS` | *(empty — off)* | Discord/Slack/JSON endpoints to notify, comma-separated — see "Announcing changes: webhooks" |
-| `WEBHOOK_EVENTS` | `published` | Which of `published`, `updated`, `unpublished` to send |
+| `WEBHOOK_EVENTS` | `published` | Which of `published`, `updated`, `unpublished`, `review_requested`, `review_decided` to send |
 | `WEBHOOK_SECRET` | *(empty)* | Signs JSON deliveries with HMAC-SHA256 |
+| `SEARCH_GAPS` | `on` | The anonymous tally of searches that found nothing (Insights); `off` writes nothing |
+| `CHAT_API_BASE`, `CHAT_MODEL`, `CHAT_API_KEY` | *(empty — chat off)* | An OpenAI-compatible endpoint for the documentation chat — see "Asking the documentation a question" |
+| `CHAT_MAX_CONCURRENT` | `4` | How many chat questions may wait on the model at once |
+| `CLIENT_IP_HEADER` | *(empty)* | The header with the reader's real address behind more than one proxy (e.g. `CF-Connecting-IP`) |
+| `SESSION_COOKIE_SECURE` | *(on with an https `PUBLIC_BASE_URL`)* | Send the admin session cookie over HTTPS only |
 
 ## Development
 
