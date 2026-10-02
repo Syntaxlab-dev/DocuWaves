@@ -32,6 +32,10 @@ COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
+# The host-side `docuwaves` command (installer/): the installer and every
+# `docuwaves update` copy it out of the image, so the command on a server
+# always matches the version running there.
+COPY installer/docuwaves /usr/share/docuwaves/docuwaves
 COPY --from=frontend-build /app/frontend/dist ./static
 
 EXPOSE 8000

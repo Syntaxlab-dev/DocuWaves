@@ -1,0 +1,505 @@
+#!/usr/bin/env bash
+# docuwaves -- run a DocuWaves instance that install.sh set up.
+#
+# Installed to /usr/local/bin/docuwaves by the installer, and shipped inside
+# the image (/usr/share/docuwaves/docuwaves), so `docuwaves update` brings the
+# version of this script that belongs to the version it just installed.
+#
+# Everything lives in one directory (default /opt/docuwaves):
+#   compose.yml   the containers
+#   .env          every setting, secrets included -- mode 600
+#   Caddyfile     the HTTPS proxy, when there is one
+#   data/         the content repository, the database, the session secret
+#   backups/      what `docuwaves backup` writes
+set -euo pipefail
+
+if [[ -r /etc/default/docuwaves ]]; then
+  # shellcheck disable=SC1091
+  . /etc/default/docuwaves
+fi
+DIR="${DOCUWAVES_DIR:-/opt/docuwaves}"
+KEEP="${DOCUWAVES_BACKUP_KEEP:-7}"
+REGISTRY_IMAGE="ghcr.io/syntaxlab-dev/docuwaves"
+CLI_IN_IMAGE="/usr/share/docuwaves/docuwaves"
+
+# ---- output ----
+
+if [[ -t 1 ]]; then
+  BOLD=$'\e[1m' DIM=$'\e[2m' RED=$'\e[31m' GREEN=$'\e[32m' YELLOW=$'\e[33m' RESET=$'\e[0m'
+else
+  BOLD="" DIM="" RED="" GREEN="" YELLOW="" RESET=""
+fi
+QUIET=0
+
+say() { [[ $QUIET == 1 ]] || printf '%s\n' "$*"; }
+ok() { [[ $QUIET == 1 ]] || printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*" >&2; }
+die() {
+  printf '%s✗%s %s\n' "$RED" "$RESET" "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<EOF
+${BOLD}docuwaves${RESET} -- manage the DocuWaves instance in $DIR
+
+  status                    what is running, which version, where
+  logs [docuwaves|caddy]    follow the logs (Ctrl+C to stop)
+  update                    back up, pull the newest image of the channel,
+                            restart -- and roll back if it does not come up
+  backup                    write an archive to $DIR/backups (keeps $KEEP)
+  restore <archive> [--yes] put a backup back (the current data is kept aside)
+  reset-password <user>     set an account's password
+  users                     list the accounts
+  domain <name>|--none      serve on a domain with HTTPS, or on plain port 80
+  channel [stable|latest|1.2|1.2.3]
+                            show or change which image updates follow
+  uninstall [--purge] [--yes]
+                            stop and remove it; --purge deletes the data too
+  version                   this script's and the running image's version
+
+Docs: https://docs.docuwaves.app/p/docuwaves/pages/the-docuwaves-command
+EOF
+}
+
+# ---- the installation ----
+
+need_root() {
+  [[ $(id -u) == 0 ]] || die "Run this as root (sudo docuwaves $*)."
+}
+
+need_install() {
+  [[ -f $DIR/compose.yml && -f $DIR/.env ]] ||
+    die "No DocuWaves installation in $DIR. (Installed elsewhere? Set DOCUWAVES_DIR.)"
+}
+
+compose() {
+  docker compose --project-directory "$DIR" -f "$DIR/compose.yml" "$@"
+}
+
+has_service() {
+  compose config --services 2>/dev/null | grep -qx "$1"
+}
+
+# A value from .env -- the last assignment wins, as it does for Compose.
+# Quotes around it are removed; multi-line values are not read (only the
+# SSH key is one, and nothing here needs it).
+env_get() {
+  local line
+  line=$(grep -E "^$1=" "$DIR/.env" | tail -n 1 || true)
+  line=${line#*=}
+  line=${line%\"}
+  line=${line#\"}
+  printf '%s' "$line"
+}
+
+# Set or add one line in .env, keeping its mode and every other line.
+env_set() {
+  local key=$1 value=$2 tmp
+  tmp=$(mktemp "$DIR/.env.XXXXXX")
+  chmod 600 "$tmp"
+  if grep -qE "^$key=" "$DIR/.env"; then
+    awk -v k="$key" -v v="$value" 'index($0, k "=") == 1 { print k "=" v; next } { print }' "$DIR/.env" >"$tmp"
+  else
+    cat "$DIR/.env" >"$tmp"
+    printf '%s=%s\n' "$key" "$value" >>"$tmp"
+  fi
+  mv "$tmp" "$DIR/.env"
+}
+
+container() {
+  compose ps -q docuwaves 2>/dev/null || true
+}
+
+health() {
+  local id
+  id=$(container)
+  [[ -n $id ]] || {
+    echo "stopped"
+    return
+  }
+  docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$id" 2>/dev/null || echo "unknown"
+}
+
+# Waits until the container's own health check passes (it asks /health,
+# which needs the database), up to $1 seconds.
+wait_healthy() {
+  local limit=${1:-180} waited=0 state
+  while ((waited < limit)); do
+    state=$(health)
+    [[ $state == healthy ]] && return 0
+    [[ $state == unhealthy || $state == exited || $state == dead ]] && return 1
+    sleep 3
+    waited=$((waited + 3))
+  done
+  return 1
+}
+
+image_version() {
+  docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}} ({{printf "%.7s" (index .Config.Labels "org.opencontainers.image.revision")}})' "$1" 2>/dev/null || echo "?"
+}
+
+address() {
+  local site base
+  base=$(env_get PUBLIC_BASE_URL)
+  if [[ -n $base ]]; then
+    echo "$base"
+    return
+  fi
+  site=$(env_get DOCUWAVES_SITE)
+  local listen
+  listen=$(env_get DOCUWAVES_LISTEN)
+  if [[ -n $listen ]]; then
+    echo "http://$listen"
+  elif [[ $site == :80 || -z $site ]]; then
+    echo "http://$(hostname -I 2>/dev/null | awk '{print $1}')"
+  else
+    echo "https://$site"
+  fi
+}
+
+# This script, refreshed from the image it now runs: an update brings the
+# commands that match it. Older images do not carry it; then nothing changes.
+refresh_cli() {
+  local image tmp
+  image=$(env_get DOCUWAVES_IMAGE)
+  tmp=$(mktemp)
+  if docker run --rm --entrypoint cat "$image" "$CLI_IN_IMAGE" >"$tmp" 2>/dev/null && [[ -s $tmp ]] &&
+    head -n 1 "$tmp" | grep -q bash; then
+    if ! cmp -s "$tmp" /usr/local/bin/docuwaves; then
+      install -m 755 "$tmp" /usr/local/bin/docuwaves
+      ok "docuwaves command updated"
+    fi
+  fi
+  rm -f "$tmp"
+}
+
+# ---- commands ----
+
+cmd_status() {
+  need_install
+  local image state
+  image=$(env_get DOCUWAVES_IMAGE)
+  state=$(health)
+  say "${BOLD}DocuWaves${RESET} in $DIR"
+  say "  address   $(address)"
+  say "  image     $image"
+  say "  version   $(image_version "$image")"
+  case $state in
+    healthy) say "  state     ${GREEN}healthy${RESET}" ;;
+    starting) say "  state     ${YELLOW}starting${RESET}" ;;
+    *) say "  state     ${RED}$state${RESET}" ;;
+  esac
+  if has_service caddy; then
+    local caddy_state
+    caddy_state=$(docker inspect -f '{{.State.Status}}' "$(compose ps -q caddy 2>/dev/null)" 2>/dev/null || echo stopped)
+    say "  proxy     caddy, $caddy_state"
+  fi
+  say "  data      $(du -sh "$DIR/data" 2>/dev/null | cut -f1)"
+  local last
+  last=$(ls -1t "$DIR"/backups/docuwaves-*.tar.gz 2>/dev/null | head -n 1 || true)
+  if [[ -n $last ]]; then
+    say "  backup    $(basename "$last") ${DIM}($(du -h "$last" | cut -f1))${RESET}"
+  else
+    say "  backup    ${YELLOW}none yet${RESET} -- docuwaves backup"
+  fi
+  if [[ -n $(env_get SETUP_TOKEN) ]] && [[ $state == healthy ]]; then
+    if compose exec -T docuwaves python -m app.cli users 2>/dev/null | grep -q .; then
+      say "  ${DIM}SETUP_TOKEN in .env is no longer needed and can be removed.${RESET}"
+    else
+      say "  setup     waiting for the first account -- open $(address)/admin"
+    fi
+  fi
+}
+
+cmd_logs() {
+  need_install
+  compose logs -f --tail 200 "${1:-docuwaves}"
+}
+
+cmd_backup() {
+  need_root backup
+  need_install
+  [[ -n $(container) ]] || die "DocuWaves is not running; start it with: docker compose -f $DIR/compose.yml up -d"
+  umask 077
+  mkdir -p "$DIR/backups"
+  local stamp work archive sqlite rel
+  stamp=$(date -u +%Y%m%d-%H%M%S)
+  archive="$DIR/backups/docuwaves-$stamp.tar.gz"
+  work=$(mktemp -d "$DIR/backups/.work.XXXXXX")
+  # EXIT, not RETURN: a failure below ends the whole script through die.
+  trap 'rm -rf "$work" "$DIR/data/.backup-snapshot.db"' EXIT
+
+  # The database: copied consistently while it runs, not as a file mid-write.
+  local excludes=()
+  if [[ -z $(env_get DATABASE_URL) ]]; then
+    compose exec -T docuwaves python -m app.cli snapshot-db /data/.backup-snapshot.db ||
+      die "Could not copy the database; nothing was written."
+    sqlite=$(env_get SQLITE_PATH)
+    sqlite=${sqlite:-/data/docuwaves.db}
+    if [[ $sqlite == /data/* ]]; then
+      rel="data/${sqlite#/data/}"
+      excludes+=(--exclude="$rel" --exclude="$rel-wal" --exclude="$rel-shm")
+      mv "$DIR/data/.backup-snapshot.db" "$work/database.sqlite"
+    else
+      warn "SQLITE_PATH is outside /data; its snapshot is stored as database.sqlite only."
+      mv "$DIR/data/.backup-snapshot.db" "$work/database.sqlite"
+    fi
+  elif has_service postgres; then
+    compose exec -T postgres pg_dump -U docuwaves docuwaves >"$work/postgres.sql" ||
+      die "pg_dump failed; nothing was written."
+  else
+    warn "DATABASE_URL points at a PostgreSQL server outside this installation: back it up there."
+  fi
+
+  # The content repository, also as one self-contained Git bundle: the
+  # files under data/ are what a restore uses; the bundle is what you can
+  # clone from anywhere, even without DocuWaves.
+  compose exec -T docuwaves sh -c 'cd "${CONTENT_REPO_PATH:-/data/content-repo}" && git rev-parse -q --verify HEAD >/dev/null && git bundle create - --all' \
+    >"$work/content.bundle" 2>/dev/null || rm -f "$work/content.bundle"
+
+  cp "$DIR/.env" "$DIR/compose.yml" "$work/"
+  [[ -f $DIR/Caddyfile ]] && cp "$DIR/Caddyfile" "$work/"
+  printf 'image=%s\nversion=%s\ncreated=%s\n' "$(env_get DOCUWAVES_IMAGE)" \
+    "$(image_version "$(env_get DOCUWAVES_IMAGE)")" "$stamp" >"$work/BACKUP-INFO"
+
+  tar -czf "$archive.partial" "${excludes[@]}" --exclude='data/.backup-snapshot.db' \
+    -C "$DIR" data -C "$work" .
+  mv "$archive.partial" "$archive"
+  chmod 600 "$archive"
+
+  # Rotation: the newest $KEEP stay.
+  ls -1t "$DIR"/backups/docuwaves-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
+    rm -f -- "$old"
+  done
+  ok "Backup written: $archive ($(du -h "$archive" | cut -f1))"
+}
+
+cmd_restore() {
+  need_root restore
+  need_install
+  local archive=${1:-}
+  [[ -n $archive && -f $archive ]] || die "Usage: docuwaves restore <archive>   (the archives are in $DIR/backups)"
+  tar -tzf "$archive" ./BACKUP-INFO >/dev/null 2>&1 || die "$archive is not a DocuWaves backup."
+  say "This replaces the data of the running instance with:"
+  tar -xzOf "$archive" ./BACKUP-INFO | sed 's/^/  /'
+  if [[ ${2:-} != --yes ]]; then
+    local answer
+    read -r -p "Continue? The current data is kept aside, not deleted. [y/N] " answer </dev/tty
+    [[ $answer == [yY]* ]] || die "Nothing changed."
+  fi
+
+  local stamp aside work
+  stamp=$(date -u +%Y%m%d-%H%M%S)
+  aside="$DIR/data.before-restore-$stamp"
+  work=$(mktemp -d "$DIR/.restore.XXXXXX")
+  tar -xzf "$archive" -C "$work"
+
+  compose stop docuwaves >/dev/null
+  mv "$DIR/data" "$aside"
+  mv "$work/data" "$DIR/data"
+  if [[ -f $work/database.sqlite ]]; then
+    local sqlite
+    sqlite=$(env_get SQLITE_PATH)
+    sqlite=${sqlite:-/data/docuwaves.db}
+    if [[ $sqlite == /data/* ]]; then
+      cp "$work/database.sqlite" "$DIR/data/${sqlite#/data/}"
+    else
+      warn "SQLITE_PATH is outside /data; the database is in the archive as database.sqlite -- put it back by hand."
+    fi
+  fi
+  if [[ -f $work/postgres.sql ]]; then
+    warn "The archive holds a PostgreSQL dump (postgres.sql); load it with psql -- it is not applied automatically."
+  fi
+  rm -rf "$work"
+  compose up -d >/dev/null
+  if wait_healthy 180; then
+    ok "Restored. The data from before is in $aside -- delete it once you are happy."
+  else
+    die "The restored instance did not come up healthy. The data from before is in $aside; see: docuwaves logs"
+  fi
+  if ! cmp -s <(tar -xzOf "$archive" ./.env) "$DIR/.env"; then
+    say "${DIM}The archive's .env differs from the current one and was not restored; read it with: tar -xzOf $archive ./.env${RESET}"
+  fi
+}
+
+cmd_update() {
+  need_root update
+  need_install
+  local image old new
+  image=$(env_get DOCUWAVES_IMAGE)
+  old=$(docker image inspect -f '{{.Id}}' "$image" 2>/dev/null || true)
+
+  say "Backing up first ..."
+  cmd_backup
+
+  if [[ ${DOCUWAVES_SKIP_PULL:-0} != 1 ]]; then
+    say "Pulling $image ..."
+    docker pull -q "$image" >/dev/null || die "Could not pull $image. Nothing changed."
+    has_service caddy && compose pull -q caddy >/dev/null 2>&1 || true
+  fi
+  new=$(docker image inspect -f '{{.Id}}' "$image")
+  if [[ -n $old && $old == "$new" && ${DOCUWAVES_SKIP_PULL:-0} != 1 ]]; then
+    compose up -d >/dev/null
+    ok "Already up to date: $(image_version "$image")"
+    return
+  fi
+  # Keep the old image under a name of its own, so neither a prune nor the
+  # pull just now can take away what a rollback needs.
+  [[ -n $old ]] && docker tag "$old" docuwaves-rollback:previous
+
+  compose up -d >/dev/null
+  if wait_healthy 180; then
+    ok "Updated to $(image_version "$image")"
+    refresh_cli
+    docker image prune -f >/dev/null 2>&1 || true
+    return
+  fi
+
+  warn "The new version did not come up healthy -- rolling back."
+  compose logs --tail 30 docuwaves >&2 || true
+  [[ -n $old ]] || die "There is no previous image to roll back to. See: docuwaves logs"
+  docker tag "$old" "$image"
+  compose up -d >/dev/null
+  if wait_healthy 180; then
+    die "Rolled back to $(image_version "$image"). The update was not applied; the backup above has the data as it was."
+  fi
+  die "The rollback did not come up either. Restore the backup: docuwaves restore \$(ls -1t $DIR/backups/*.tar.gz | head -n 1)"
+}
+
+cmd_reset_password() {
+  need_install
+  local user=${1:-} password repeat
+  [[ -n $user ]] || die "Usage: docuwaves reset-password <username>   (docuwaves users lists them)"
+  if [[ -t 0 ]]; then
+    read -r -s -p "New password for $user: " password
+    echo
+    read -r -s -p "Again: " repeat
+    echo
+    [[ $password == "$repeat" ]] || die "The two did not match. Nothing changed."
+  else
+    # From a pipe: one line, for scripts.
+    IFS= read -r password || true
+  fi
+  # printf is a shell builtin: the password never appears in a process list.
+  printf '%s\n' "$password" | compose exec -T docuwaves python -m app.cli reset-password "$user"
+}
+
+cmd_users() {
+  need_install
+  compose exec -T docuwaves python -m app.cli users
+}
+
+cmd_domain() {
+  need_root domain
+  need_install
+  has_service caddy || die "This installation has no proxy of its own (installed with --no-proxy): set the domain in your proxy, and PUBLIC_BASE_URL in $DIR/.env."
+  local name=${1:-}
+  [[ -n $name ]] || die "Usage: docuwaves domain <docs.example.com>   or   docuwaves domain --none"
+  if [[ $name == --none ]]; then
+    env_set DOCUWAVES_SITE ":80"
+    env_set PUBLIC_BASE_URL ""
+  else
+    name=${name#https://}
+    name=${name#http://}
+    name=${name%%/*}
+    [[ $name =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] || die "$name does not look like a domain name."
+    env_set DOCUWAVES_SITE "$name"
+    env_set PUBLIC_BASE_URL "https://$name"
+  fi
+  compose up -d >/dev/null
+  wait_healthy 120 || warn "DocuWaves is not healthy yet; see: docuwaves logs"
+  ok "Now serving at $(address)"
+  [[ $name == --none ]] || say "${DIM}The certificate is fetched on the first request; that needs $name to point at this server and ports 80 and 443 to be open.${RESET}"
+}
+
+cmd_channel() {
+  need_install
+  local image tag
+  image=$(env_get DOCUWAVES_IMAGE)
+  if [[ -z ${1:-} ]]; then
+    say "$image"
+    return
+  fi
+  need_root channel
+  tag=$1
+  [[ $tag =~ ^(stable|latest|[0-9]+\.[0-9]+(\.[0-9]+)?)$ ]] || die "A channel is stable, latest, or a version like 1.2 or 1.2.3."
+  env_set DOCUWAVES_IMAGE "$REGISTRY_IMAGE:$tag"
+  ok "Following $REGISTRY_IMAGE:$tag -- run docuwaves update to switch now."
+}
+
+cmd_uninstall() {
+  need_root uninstall
+  need_install
+  local purge=0 yes=0 arg
+  for arg in "$@"; do
+    [[ $arg == --purge ]] && purge=1
+    [[ $arg == --yes ]] && yes=1
+  done
+  if ((yes)); then
+    :
+  elif ((purge)); then
+    warn "This deletes $DIR -- the documentation, the database, every backup in it."
+    local answer
+    read -r -p "Type delete to confirm: " answer </dev/tty
+    [[ $answer == delete ]] || die "Nothing changed."
+  else
+    local answer
+    read -r -p "Stop DocuWaves and remove the docuwaves command? $DIR stays. [y/N] " answer </dev/tty
+    [[ $answer == [yY]* ]] || die "Nothing changed."
+  fi
+  compose down >/dev/null 2>&1 || true
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl disable --now docuwaves-backup.timer >/dev/null 2>&1 || true
+    rm -f /etc/systemd/system/docuwaves-backup.service /etc/systemd/system/docuwaves-backup.timer
+    systemctl daemon-reload >/dev/null 2>&1 || true
+  fi
+  rm -f /etc/default/docuwaves
+  if ((purge)); then
+    rm -rf -- "$DIR"
+    ok "Removed DocuWaves and its data."
+  else
+    ok "Stopped and removed. Your data is still in $DIR."
+  fi
+  rm -f /usr/local/bin/docuwaves
+}
+
+# The command comes out of the image (see refresh_cli), so the image's
+# version is its version too.
+cmd_version() {
+  need_install
+  local image
+  image=$(env_get DOCUWAVES_IMAGE)
+  say "$image $(image_version "$image")"
+}
+
+main() {
+  command -v docker >/dev/null 2>&1 || die "Docker is not installed."
+  local command=${1:-help}
+  shift || true
+  for arg in "$@"; do [[ $arg == --quiet ]] && QUIET=1; done
+  local args=()
+  for arg in "$@"; do [[ $arg == --quiet ]] || args+=("$arg"); done
+  set -- "${args[@]+"${args[@]}"}"
+  case $command in
+    status) cmd_status ;;
+    logs) cmd_logs "$@" ;;
+    update) cmd_update ;;
+    backup) cmd_backup ;;
+    restore) cmd_restore "$@" ;;
+    reset-password) cmd_reset_password "$@" ;;
+    users) cmd_users ;;
+    domain) cmd_domain "$@" ;;
+    channel) cmd_channel "$@" ;;
+    uninstall) cmd_uninstall "$@" ;;
+    version | --version) cmd_version ;;
+    wait) need_install && wait_healthy "${1:-180}" ;;
+    help | -h | --help) usage ;;
+    *)
+      usage >&2
+      exit 2
+      ;;
+  esac
+}
+
+main "$@"
