@@ -1,6 +1,8 @@
 # The user documentation in docs/ is the "docuwaves" project on
 # https://docs.docuwaves.app -- synced with DocuWaves' own docs-as-code
 # endpoint (backend/app/services/docs_sync.py) whenever docs/ changes on main.
+# A release tag (v1.0, v2.3.1, ...) also freezes the docs as that version, so
+# the documentation of every release stays readable in the version switcher.
 #
 # Needs the repository secret DOCUWAVES_TOKEN: a SYNC token for the project
 # "docuwaves", created under API tokens on docs.docuwaves.app. Without it the
@@ -10,6 +12,8 @@ name: Docs
 on:
   push:
     branches: [main]
+    tags: ["v*"]
+    # Not evaluated for tags: a release always freezes its docs.
     paths: ["docs/**", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
@@ -23,7 +27,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Sync docs/ to docs.docuwaves.app
         env:
           DOCUWAVES_TOKEN: ${{ secrets.DOCUWAVES_TOKEN }}
@@ -33,10 +37,13 @@ jobs:
             exit 0
           fi
           cd docs && zip -qr ../docs.zip . && cd ..
+          # On a release tag: freeze the result as that version too.
+          VERSION=""
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then VERSION="&version=${GITHUB_REF_NAME}"; fi
           curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer $DOCUWAVES_TOKEN" \
             --data-binary @docs.zip \
-            "https://docs.docuwaves.app/api/sync/docuwaves?ref=${GITHUB_SHA::7}&repo=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}&branch=main&path=docs" \
+            "https://docs.docuwaves.app/api/sync/docuwaves?ref=${GITHUB_SHA::7}&repo=${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}&branch=main&path=docs${VERSION}" \
             | tee sync-result.json
           echo
-          python3 -c "import json; r=json.load(open('sync-result.json')); print('added', r['added']); print('changed', r['changed']); print('removed', r['removed']); [print('::warning::', w['source'], w['message']) for w in r['warnings']]"
+          python3 -c "import json; r=json.load(open('sync-result.json')); print('added', r['added']); print('changed', r['changed']); print('removed', r['removed']); print('version', r.get('version')); [print('::warning::', w['source'], w['message']) for w in r['warnings']]"
