@@ -19,7 +19,7 @@ the same thing but visible.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.services import api_tokens_store
+from app.services import api_tokens_store, projects_store
 
 router = APIRouter(prefix="/api/admin/tokens", tags=["admin"])
 
@@ -35,6 +35,8 @@ class TokenIn(BaseModel):
     # operator can check against their own calendar, while "expires in 90
     # days" is one they would have to compute every time they look.
     expires_at: str = ""
+    # A sync token's project slug (services/docs_sync.py); "" otherwise.
+    project: str = ""
 
 
 @router.get(
@@ -59,10 +61,13 @@ def create_token(body: TokenIn):
     name = api_tokens_store.normalize_name(body.name)
     scope = (body.scope or "").strip().lower()
     expires_at = (body.expires_at or "").strip()
-    reason = api_tokens_store.rejection_reason(name, scope, expires_at)
+    project = (body.project or "").strip()
+    reason = api_tokens_store.rejection_reason(name, scope, expires_at, project)
+    if reason is None and project and projects_store.get_project_by_slug(project) is None:
+        reason = f"There is no project '{project}'."
     if reason is not None:
         raise HTTPException(status_code=400, detail=reason)
-    record, token = api_tokens_store.create(name, scope, expires_at)
+    record, token = api_tokens_store.create(name, scope, expires_at, project)
     # The one and only time the plaintext leaves this process. Not logged,
     # here or anywhere else.
     return {**record, "token": token}

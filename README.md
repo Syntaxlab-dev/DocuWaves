@@ -1199,6 +1199,80 @@ private while the remote is public needs an explicit confirmation, in the
 form and in the API. The answer is cached for an hour; "unknown" means the
 remote could not be asked (network, a host without https).
 
+## Docs-as-code: documentation from a code repository
+
+A project's documentation can live in the code repository it documents --
+a `docs/` folder written in the same pull requests as the code -- and
+DocuWaves follows it: the repository's CI sends the folder on every push to
+the main branch, and the project becomes exactly that.
+
+**1. A sync token.** In the admin area, *API tokens* -> scope **Sync**, and
+pick the project (create the project first if it is new). A sync token can
+replace that one project's content and do nothing else: not another
+project, not the MCP endpoint, not the admin API.
+
+**2. A CI step.** Store the token as a secret (`DOCUWAVES_TOKEN`) in the
+code repository and add one step:
+
+```yaml
+# GitHub Actions -- .github/workflows/docs.yml
+on:
+  push:
+    branches: [main]
+    paths: ["docs/**"]
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          cd docs && zip -qr ../docs.zip .
+          curl --fail-with-body -X POST \
+            -H "Authorization: Bearer ${{ secrets.DOCUWAVES_TOKEN }}" \
+            --data-binary @../docs.zip \
+            "https://docs.example.com/api/sync/my-project?ref=${GITHUB_SHA::7}"
+```
+
+```yaml
+# GitLab CI -- .gitlab-ci.yml
+docs:
+  image: alpine
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      changes: ["docs/**/*"]
+  script:
+    - apk add --no-cache zip curl
+    - cd docs && zip -qr ../docs.zip .
+    - curl --fail-with-body -X POST -H "Authorization: Bearer $DOCUWAVES_TOKEN"
+        --data-binary @../docs.zip "https://docs.example.com/api/sync/my-project?ref=$CI_COMMIT_SHORT_SHA"
+```
+
+Forgejo and Gitea Actions take the GitHub workflow as it is (with the
+secret set in the repository's settings).
+
+**What a sync does**
+
+- The ZIP is read like an import -- Markdown, MkDocs, Docusaurus, GitBook,
+  Obsidian; links and images are rewritten the same way -- and then
+  **replaces** the project's content: new files become pages, changed ones
+  are updated, **a file deleted in the repository deletes the page**.
+- **Addresses come from file names**, not titles: rewording a heading never
+  breaks a link to the page. `slug: my-address` in the front matter pins
+  one; `docs/setup/index.md` is the page `setup`, the top `index.md` is
+  `start`.
+- **Pages go live** -- they were reviewed as a pull request, which is the
+  approval. `draft: true` (or `published: false`) in the front matter keeps
+  a page a draft. The project's "approval required" setting does not apply
+  to what a sync writes.
+- **One commit per sync** ("Sync from a1b2c3d"), and **none when nothing
+  changed**, so syncing on every push is safe. The answer says what was
+  added, changed and removed; the last 50 runs are kept per project.
+- Webhooks announce new and changed pages as for any edit -- except on the
+  first sync into an empty project, which would announce every page at once.
+
+The repository is the source: anything edited in DocuWaves inside a synced
+project (in the editor, a translation) is replaced by the next sync.
+
 ## Importing existing documentation
 
 **Import** in the admin header takes a ZIP of Markdown files -- an export

@@ -62,7 +62,11 @@ _TOKEN_BYTES = 32
 
 READ_SCOPE = "read"
 WRITE_SCOPE = "write"
-SCOPES = (READ_SCOPE, WRITE_SCOPE)
+# Docs-as-code (services/docs_sync.py): replaces ONE project's content via
+# /api/sync/<project>, and nothing else -- not the MCP endpoint, not another
+# project. Handed to a CI pipeline, so it can do as little as possible.
+SYNC_SCOPE = "sync"
+SCOPES = (READ_SCOPE, WRITE_SCOPE, SYNC_SCOPE)
 
 # More than this many live tokens on one self-hosted instance is a sign
 # nobody is revoking anything, not a use case -- and verify() below scans
@@ -153,7 +157,7 @@ def author_name(token_name: str) -> str:
 # ---- Reading ----
 
 
-_COLUMNS = "id, name, scope, expires_at, created_at, last_used_at"
+_COLUMNS = "id, name, scope, expires_at, created_at, last_used_at, project_slug"
 
 
 def _row_to_dict(row) -> dict:
@@ -167,6 +171,8 @@ def _row_to_dict(row) -> dict:
         "expires_at": row[3],
         "created_at": row[4],
         "last_used_at": row[5],
+        # The one project a sync token may update; "" for read/write.
+        "project": row[6],
     }
 
 
@@ -228,7 +234,7 @@ def verify(presented: str) -> dict | None:
         rows = conn.execute(f"SELECT {_COLUMNS}, token_hash FROM api_tokens").fetchall()
         match = None
         for row in rows:
-            if hmac.compare_digest(str(row[6]), digest):
+            if hmac.compare_digest(str(row[7]), digest):
                 match = row
                 break
         if match is None:
@@ -298,13 +304,17 @@ def normalize_name(raw: str) -> str:
     return re.sub(r"[\x00-\x1f\x7f]", " ", (raw or "")).strip()[:_NAME_MAX_LENGTH].strip()
 
 
-def rejection_reason(name: str, scope: str, expires_at: str) -> str | None:
+def rejection_reason(name: str, scope: str, expires_at: str, project: str = "") -> str | None:
     """None = this token can be created. Each check says what is wrong,
     since the only fix is for the operator to change the form."""
     if not name:
         return "A name is required -- it is how you will recognize this token later (for example 'notes-bot')."
     if scope not in SCOPES:
-        return f"Scope must be '{READ_SCOPE}' or '{WRITE_SCOPE}'."
+        return f"Scope must be '{READ_SCOPE}', '{WRITE_SCOPE}' or '{SYNC_SCOPE}'."
+    if scope == SYNC_SCOPE and not project:
+        return "A sync token is for one project -- pick which."
+    if scope != SYNC_SCOPE and project:
+        return "Only a sync token is tied to a project."
     if expires_at:
         try:
             expiry = date.fromisoformat(expires_at)
@@ -317,7 +327,7 @@ def rejection_reason(name: str, scope: str, expires_at: str) -> str | None:
     return None
 
 
-def create(name: str, scope: str, expires_at: str) -> tuple[dict, str]:
+def create(name: str, scope: str, expires_at: str, project: str = "") -> tuple[dict, str]:
     """Returns (the record for the list, the plaintext token). The plaintext
     is returned to the caller and NOT stored anywhere -- this is the one and
     only moment it exists, which is why the admin UI shows it as a one-time
@@ -326,9 +336,9 @@ def create(name: str, scope: str, expires_at: str) -> tuple[dict, str]:
     placeholder = _placeholder()
     created_at = _now_iso()
     with db.get_connection() as conn:
-        params = (name, hash_token(token), scope, expires_at, created_at, "")
-        columns = "name, token_hash, scope, expires_at, created_at, last_used_at"
-        values = ", ".join([placeholder] * 6)
+        params = (name, hash_token(token), scope, expires_at, created_at, "", project)
+        columns = "name, token_hash, scope, expires_at, created_at, last_used_at, project_slug"
+        values = ", ".join([placeholder] * 7)
         if db.is_postgres():
             row = conn.execute(
                 f"INSERT INTO api_tokens ({columns}) VALUES ({values}) RETURNING id", params
@@ -344,6 +354,7 @@ def create(name: str, scope: str, expires_at: str) -> tuple[dict, str]:
             "expires_at": expires_at,
             "created_at": created_at,
             "last_used_at": "",
+            "project": project,
         },
         token,
     )

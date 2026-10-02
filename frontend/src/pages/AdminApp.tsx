@@ -521,7 +521,7 @@ export function AdminApp() {
       <div className="mx-auto max-w-6xl px-4 py-6">
         {showAccount && <AccountCard onClose={() => setShowAccount(false)} />}
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
-        {showTokens && <ApiTokensCard onClose={() => setShowTokens(false)} />}
+        {showTokens && <ApiTokensCard projects={projects} onClose={() => setShowTokens(false)} />}
         {showInsights && (
           <AdminInsightsCard onClose={() => setShowInsights(false)} onCreatePage={startPageFromGap} />
         )}
@@ -862,11 +862,13 @@ function AccountCard({ onClose }: { onClose: () => void }) {
  *    those words, and appears the moment "read and write" is picked rather
  *    than being a paragraph above the form nobody reads.
  */
-function ApiTokensCard({ onClose }: { onClose: () => void }) {
+function ApiTokensCard({ projects, onClose }: { projects: Project[]; onClose: () => void }) {
   const { t } = useI18n();
   const [tokens, setTokens] = useState<ApiToken[] | null>(null);
   const [name, setName] = useState("");
   const [scope, setScope] = useState("read");
+  // A sync token is for exactly one project (backend services/docs_sync.py).
+  const [syncProject, setSyncProject] = useState(projects[0]?.slug ?? "");
   const [expiresAt, setExpiresAt] = useState("");
   const [creating, setCreating] = useState(false);
   /** The plaintext of the token just created. Held in component state and
@@ -887,7 +889,7 @@ function ApiTokensCard({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     setCreating(true);
     try {
-      const created = await api.adminCreateToken(name.trim(), scope, expiresAt);
+      const created = await api.adminCreateToken(name.trim(), scope, expiresAt, scope === "sync" ? syncProject : "");
       setRevealed({ name: created.name, token: created.token });
       setName("");
       setExpiresAt("");
@@ -1003,8 +1005,28 @@ function ApiTokensCard({ onClose }: { onClose: () => void }) {
               >
                 <option value="read">{t("admin.tokenScopeRead")}</option>
                 <option value="write">{t("admin.tokenScopeWrite")}</option>
+                <option value="sync">{t("sync.scope")}</option>
               </select>
             </div>
+            {scope === "sync" && (
+              <div className="flex flex-col gap-1.5">
+                <label className="text-sm font-medium" htmlFor="token-project">
+                  {t("sync.project")}
+                </label>
+                <select
+                  id="token-project"
+                  value={syncProject}
+                  onChange={(e) => setSyncProject(e.target.value)}
+                  className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+                >
+                  {projects.map((p) => (
+                    <option key={p.slug} value={p.slug}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium" htmlFor="token-expires">
                 {t("admin.tokenExpires")}
@@ -1026,7 +1048,12 @@ function ApiTokensCard({ onClose }: { onClose: () => void }) {
               token is the one thing in this panel that can change what
               readers see, so it says so in plain words rather than leaving
               "write" to speak for itself. */}
-          {scope === "write" ? (
+          {scope === "sync" ? (
+            <p className="flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+              <span>{t("sync.scopeHint")}</span>
+            </p>
+          ) : scope === "write" ? (
             <p className="flex items-start gap-2 rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
               <span>{t("admin.tokenScopeWriteHint")}</span>
@@ -1050,7 +1077,7 @@ function ApiTokensCard({ onClose }: { onClose: () => void }) {
  *  used it) and, deliberately, nothing that identifies the value. */
 function TokenRow({ token, onRevoke }: { token: ApiToken; onRevoke: () => void }) {
   const { t } = useI18n();
-  const write = token.scope === "write";
+  const write = token.scope === "write" || token.scope === "sync";
   // Compared as dates, matching the backend: a token expires at the END of
   // its expiry day, so today's date is still valid.
   const expired = Boolean(token.expires_at) && token.expires_at < new Date().toISOString().slice(0, 10);
@@ -1064,7 +1091,11 @@ function TokenRow({ token, onRevoke }: { token: ApiToken; onRevoke: () => void }
           write ? "border-amber-500/60 text-amber-600" : "border-[var(--border)] text-[var(--muted)]"
         }`}
       >
-        {write ? t("admin.tokenScopeWrite") : t("admin.tokenScopeRead")}
+        {token.scope === "sync"
+          ? `${t("sync.scope")}: ${token.project}`
+          : write
+            ? t("admin.tokenScopeWrite")
+            : t("admin.tokenScopeRead")}
       </span>
       <span className={`text-xs ${expired ? "text-red-500" : "text-[var(--muted)]"}`}>
         {!token.expires_at

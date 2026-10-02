@@ -123,7 +123,24 @@ _SQLITE_SCHEMA = [
         scope TEXT NOT NULL,
         expires_at TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
-        last_used_at TEXT NOT NULL DEFAULT ''
+        last_used_at TEXT NOT NULL DEFAULT '',
+        -- A SYNC token's one project (services/docs_sync.py); '' otherwise.
+        project_slug TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    # Every docs-as-code sync (services/docs_sync.py), the last 50 per
+    # project: when, from which commit, what it did. Real state.
+    """
+    CREATE TABLE IF NOT EXISTS sync_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_slug TEXT NOT NULL,
+        ref TEXT NOT NULL DEFAULT '',
+        author TEXT NOT NULL DEFAULT '',
+        synced_at TEXT NOT NULL,
+        added INTEGER NOT NULL DEFAULT 0,
+        changed INTEGER NOT NULL DEFAULT 0,
+        removed INTEGER NOT NULL DEFAULT 0,
+        committed INTEGER NOT NULL DEFAULT 0
     )
     """,
     # name_i18n / description_i18n hold the per-language MAPPING a
@@ -367,7 +384,24 @@ _POSTGRES_SCHEMA = [
         scope TEXT NOT NULL,
         expires_at TEXT NOT NULL DEFAULT '',
         created_at TEXT NOT NULL,
-        last_used_at TEXT NOT NULL DEFAULT ''
+        last_used_at TEXT NOT NULL DEFAULT '',
+        -- A SYNC token's one project (services/docs_sync.py); '' otherwise.
+        project_slug TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    # Every docs-as-code sync (services/docs_sync.py), the last 50 per
+    # project: when, from which commit, what it did. Real state.
+    """
+    CREATE TABLE IF NOT EXISTS sync_runs (
+        id SERIAL PRIMARY KEY,
+        project_slug TEXT NOT NULL,
+        ref TEXT NOT NULL DEFAULT '',
+        author TEXT NOT NULL DEFAULT '',
+        synced_at TEXT NOT NULL,
+        added INTEGER NOT NULL DEFAULT 0,
+        changed INTEGER NOT NULL DEFAULT 0,
+        removed INTEGER NOT NULL DEFAULT 0,
+        committed INTEGER NOT NULL DEFAULT 0
     )
     """,
     # See the SQLite block above for what name_i18n / language / version /
@@ -583,6 +617,9 @@ _ADDED_COLUMNS = {
     "projects": {
         "private": "INTEGER NOT NULL DEFAULT 0",
         "review_required": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "api_tokens": {
+        "project_slug": "TEXT NOT NULL DEFAULT ''",
     },
     "pages": {
         "review_status": "TEXT NOT NULL DEFAULT ''",
