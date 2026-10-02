@@ -18,6 +18,7 @@ const TOOL_NAMES: Record<ImportSummary["tool"], string> = {
   docusaurus: "Docusaurus",
   obsidian: "Obsidian",
   confluence: "Confluence",
+  notion: "Notion",
 };
 const LIST_LIMIT = 30;
 

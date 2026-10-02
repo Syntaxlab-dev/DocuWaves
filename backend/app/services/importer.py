@@ -25,6 +25,8 @@ RECOGNISED TOOLS, by what is in the archive:
   callouts;
 - Confluence (an HTML space export): converted to Markdown first, see
   services/import_confluence.py;
+- Notion ("Markdown & CSV" export, ZIP of ZIPs included): ids removed,
+  databases as tables, see services/import_notion.py;
 - anything else: plain Markdown, numbered prefixes (`01-intro.md`) order it.
 
 TWO STEPS, the same code: `plan()` reads the archive and says what WOULD
@@ -55,6 +57,7 @@ import yaml
 from app.services import (
     categories_store,
     import_confluence,
+    import_notion,
     content_assets,
     content_files,
     content_sync,
@@ -114,6 +117,9 @@ class Plan:
     assets: dict[str, str]
     skipped: list[dict]
     warnings: list[dict]
+    # The assets' bytes, by the same source paths -- after a converter has
+    # renamed them (Notion drops the ids), the raw archive no longer has them.
+    asset_bytes: dict[str, bytes] = field(default_factory=dict)
 
     def summary(self) -> dict:
         return {
@@ -158,6 +164,9 @@ def _wanted(path: str) -> bool:
         return False
     if name in _NAV_FILES or name.startswith("docusaurus.config."):
         return True
+    if lower.endswith((".zip", ".csv")):
+        # A ZIP of ZIPs and Notion's databases (services/import_notion.py).
+        return not any(p.startswith(".") for p in parts)
     if lower.endswith((".html", ".htm")):
         # Read for Confluence exports (services/import_confluence.py); in any
         # other archive plan() lists them as not taken over.
@@ -167,9 +176,14 @@ def _wanted(path: str) -> bool:
     return posixpath.splitext(lower)[1] in content_assets.CONTENT_TYPES and not any(p.startswith(".") for p in parts)
 
 
-def read_archive(data: bytes) -> tuple[dict[str, bytes], set[str], list[dict]]:
+def read_archive(data: bytes, _nested: bool = False) -> tuple[dict[str, bytes], set[str], list[dict]]:
     """(files we read, every path in the archive, skipped entries). Raises
-    ImportError_ for an archive that must not be read at all."""
+    ImportError_ for an archive that must not be read at all.
+
+    Notion wraps its export in a ZIP of ZIPs ("Export-...-Part-1.zip"): an
+    archive holding nothing but ZIPs is opened one level deep, under the
+    same limits -- all of the inner ones together count against the one
+    unpacked-size limit. Never deeper than that."""
     if len(data) > MAX_UPLOAD_BYTES:
         raise ImportError_(f"The archive is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
     try:
@@ -202,6 +216,26 @@ def read_archive(data: bytes) -> tuple[dict[str, bytes], set[str], list[dict]]:
         if len(content) > info.file_size:
             raise ImportError_(f"{path} is larger than the archive says it is.")
         files[path] = content
+
+    inner = [p for p in files if p.lower().endswith(".zip")]
+    if inner:
+        if _nested or len(inner) != len(files):
+            # A ZIP next to documentation is an attachment, not an export.
+            for path in inner:
+                files.pop(path)
+                skipped.append({"path": path, "reason": "an archive inside the archive"})
+        else:
+            merged: dict[str, bytes] = {}
+            merged_names: set[str] = set()
+            merged_skipped: list[dict] = []
+            for path in sorted(inner):
+                part_files, part_names, part_skipped = read_archive(files[path], _nested=True)
+                merged.update(part_files)
+                merged_names |= part_names
+                merged_skipped += part_skipped
+                if sum(len(b) for b in merged.values()) > MAX_UNPACKED_BYTES:
+                    raise ImportError_(f"The archive unpacks to more than {MAX_UNPACKED_BYTES // (1024 * 1024)} MB.")
+            files, names, skipped = merged, merged_names, skipped + merged_skipped
 
     # One folder around everything (the way "Compress" on a folder makes a
     # ZIP) is not part of the structure. macOS adds __MACOSX/ and .DS_Store
@@ -344,14 +378,21 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
     if html and import_confluence.looks_like(files):
         files, order, notes = import_confluence.convert(files)
         layout = _Layout("confluence", "", order, {})
-        for note in notes:
-            source, _, message = note.partition(": ")
-            warnings.append({"source": source, "message": message})
+    elif import_notion.looks_like(files):
+        files, order, notes = import_notion.convert(files)
+        layout = _Layout("notion", "", order, {})
     else:
+        notes = []
         for path in html:
             files.pop(path)
             skipped.append({"path": path, "reason": "HTML is only imported from a Confluence export"})
+        for path in [p for p in files if p.lower().endswith(".csv")]:
+            files.pop(path)
+            skipped.append({"path": path, "reason": "CSV is only imported from a Notion export"})
         layout = detect(files, names)
+    for note in notes:
+        source, _, message = note.partition(": ")
+        warnings.append({"source": source, "message": message})
 
     root_prefix = f"{layout.root}/" if layout.root else ""
     markdown = sorted(
@@ -531,6 +572,7 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
     return Plan(
         tool=layout.tool, project_slug=project_slug, project_name=project_name, new_project=new,
         version=version, categories=categories, assets=assets, skipped=skipped, warnings=warnings,
+        asset_bytes={source: files[source] for source in assets},
     )
 
 
@@ -799,9 +841,6 @@ def convert(markdown: str, context: _Context) -> str:
 def apply(data: bytes, author: str, *, archive_name: str = "", project_slug: str = "", new_project_name: str = "") -> dict:
     """Runs plan() and writes the result: drafts only, one commit."""
     result = plan(data, project_slug=project_slug, new_project_name=new_project_name)
-    # The assets' bytes. Every converter keeps attachments at their archive
-    # paths, so the plain read is where they are.
-    files, _, _ = read_archive(data)
     if not result.new_project:
         content_versions.ensure_writable(result.project_slug, result.version)
     paths: list[str] = []
@@ -824,7 +863,7 @@ def apply(data: bytes, author: str, *, archive_name: str = "", project_slug: str
         destination = asset_dir / target
         destination.parent.mkdir(parents=True, exist_ok=True)
         if not destination.exists():
-            destination.write_bytes(files[source])
+            destination.write_bytes(result.asset_bytes[source])
             paths.append(content_files._rel(destination))
     pages = sum(len(c.pages) for c in result.categories)
     label = f" from {archive_name}" if archive_name else ""

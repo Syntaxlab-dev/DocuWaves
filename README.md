@@ -1228,6 +1228,7 @@ Recognised automatically:
 | Docusaurus | `docusaurus.config.*` | `docs/`, `sidebar_position`, `_category_.json`, `:::tip` containers, `/img/...` from `static/` (MDX `import` lines are dropped) |
 | Obsidian | `.obsidian/` | `[[wiki links]]`, `![[embeds]]`, `> [!info]` callouts |
 | Confluence | an HTML space export | see below |
+| Notion | names with Notion's 32-character ids | see below |
 
 **From Confluence:** in the space, *Space settings -> Export space -> HTML*,
 then upload the ZIP it produces as it is. Every page is converted to
@@ -1255,6 +1256,21 @@ taken gets `-2`. Only accounts that may write can import.
 Limits, because an uploaded archive is untrusted: at most 50 MB (200 MB
 unpacked, 5000 files); ZIP bombs, absolute paths and `..` are refused; only
 Markdown, image/media files and the navigation files above are read.
+
+**From Notion:** *Settings -> Export content*, or *... -> Export* on a page,
+with format **Markdown & CSV** (sub-pages included), then upload the ZIP
+Notion gives you as it is -- including the ZIP-inside-a-ZIP it usually is.
+
+- **Names:** the ids Notion appends to every file and folder are removed,
+  and links follow.
+- **The page tree:** the same rule as Confluence -- one top page is the
+  home page; it and top-level pages without sub-pages go into "General",
+  every top-level page with sub-pages becomes a category.
+- **Databases** become a page with the table from the CSV (at most 500
+  rows); the first column links to the row's own page, and the row pages
+  are its sub-pages.
+- **Callouts** (`<aside>`) become DocuWaves callouts by their emoji: 💡 tip,
+  ⚠️ warning, ❗/🚨 caution, any other a note.
 
 ## Approval before publishing
 
