@@ -176,6 +176,8 @@ def submit(page_id: int, author: str, note: str = "") -> dict:
         if not review.get("review_changed_by"):
             review["review_changed_by"] = author
         _write_state(page, project, category, pending, review, f"Submit for review: {_label(page, pending)}", author)
+    announced = {**page, "title": (pending or page)["title"]}
+    webhooks.notify("review_requested", announced, project, category, {"kind": "change" if pending else "new"})
     return editor_view(pages_store.get_page(page_id) or page)
 
 
@@ -192,6 +194,8 @@ def request_changes(page_id: int, reviewer: str, comment: str = "") -> dict:
             "review_decided_by": reviewer,
         }
         _write_state(page, project, category, pending, review, f"Request changes: {_label(page, pending)}", reviewer)
+    announced = {**page, "title": (pending or page)["title"]}
+    webhooks.notify("review_decided", announced, project, category, {"decision": "changes_requested"})
     return editor_view(pages_store.get_page(page_id) or page)
 
 
@@ -246,6 +250,7 @@ def approve(page_id: int, reviewer: str) -> dict:
         git_content_repo.commit_and_push(paths, f"Approve: {_label(page, pending)}", reviewer)
         content_sync.full_sync()
         updated = pages_store.get_page_by_slug(page["project_id"], page["slug"], page["language"], page["version"])
+    webhooks.notify("review_decided", updated or page, project, category, {"decision": "approved"})
     if not page["published"]:
         webhooks.notify("published", updated or page, project, category)
     elif title != page["title"] or markdown != page["markdown_content"]:

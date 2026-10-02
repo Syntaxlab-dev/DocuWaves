@@ -50,6 +50,7 @@ import { SnippetsCard } from "@/components/SnippetsCard";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { PresenceBanner } from "@/components/PresenceBanner";
 import { DiffView } from "@/components/DiffView";
+import { UiLanguageToggle } from "@/components/UiLanguageToggle";
 import { ReviewMark, ReviewPanel, ReviewQueueCard } from "@/components/ReviewWorkflow";
 import { useEditingPresence } from "@/lib/presence";
 import {
@@ -420,9 +421,7 @@ export function AdminApp() {
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
             {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setLang(lang === "de" ? "en" : "de")}>
-            {lang === "de" ? "EN" : "DE"}
-          </Button>
+          <UiLanguageToggle lang={lang} onChange={setLang} />
           <Button variant="outline" size="sm" onClick={onLogout}>
             {t("nav.logout")}
           </Button>

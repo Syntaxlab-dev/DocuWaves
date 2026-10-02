@@ -1185,7 +1185,15 @@ review: required
 ```
 
 Only the exact words `review: required` switch it on; without them the
-project works exactly as before.
+project works exactly as before. The project form in the admin area has the
+same switch ("Approval required").
+
+In the admin area, **Approvals** in the header lists everything waiting for a
+decision, with a counter; an entry opens the page in its editor. There the
+review panel shows the state, the author's note or the reviewer's comment,
+the changes against the live text, and the buttons that apply right now.
+Pages in the list are marked while they wait, were sent back, or have open
+changes.
 
 **A published page keeps its live text while somebody works on it.** A save
 in the editor goes to a proposed version next to the page,
@@ -1338,7 +1346,7 @@ when documentation changes:
 
 ```env
 WEBHOOK_URLS=https://discord.com/api/webhooks/…,https://example.org/docs-hook
-WEBHOOK_EVENTS=published,updated   # default: published
+WEBHOOK_EVENTS=published,updated   # default: published; see the table below
 WEBHOOK_SECRET=a-long-random-string  # optional, signs JSON deliveries
 ```
 
@@ -1347,6 +1355,15 @@ WEBHOOK_SECRET=a-long-random-string  # optional, signs JSON deliveries
 | `published` | a draft goes live |
 | `updated` | the title or text of a published page changes |
 | `unpublished` | a published page goes back to draft, or is deleted |
+| `review_requested` | a page, or changes to a live page, was submitted for approval |
+| `review_decided` | a submission was approved or sent back |
+
+The two review events are meant for a team's own channel and are only sent
+when `WEBHOOK_EVENTS` names them. They carry no text from the page -- what
+waits for approval is not published yet -- only its title, `"review":
+{"kind": "new" | "change"}` or `{"decision": "approved" |
+"changes_requested"}`, and `admin_url`. An approval that publishes a page
+also sends `published` or `updated` as usual.
 
 Only a **change** counts: saving a published page without touching its title
 or text (say, moving it to another category) sends nothing, and neither does
