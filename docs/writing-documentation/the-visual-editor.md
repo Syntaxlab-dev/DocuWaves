@@ -30,6 +30,7 @@ Switch at any time, even halfway through a page — it is the same text.
 | Divider | |
 | Upload an image | also by pasting a screenshot or dropping a file |
 | Formula | asks for the LaTeX source |
+| Tabs | inserts a [tab group](/p/docuwaves/pages/tabs) with two tabs |
 | **Callout** | turns the paragraph into a box of that kind — or changes the kind of the box the cursor is in |
 | **{ }** | inserts one of the project's [variables or snippets](/p/docuwaves/pages/snippets-and-variables) |
 
@@ -55,7 +56,10 @@ Images are uploaded into the project like any other
   rendered. Double-click one to edit its LaTeX.
 - **Diagrams** — ` ```mermaid ` blocks — keep their source editable,
   with the drawing right below it, updated as you type.
-- **Tabs** are shown as markers where a tab group starts and ends.
+- **Tabs** are tabs: click a tab to see its content, double-click it to
+  rename it, **+** adds one, **×** removes the one shown. A group the site
+  would not show as tabs (no heading first, never closed) is left exactly as
+  written.
 
 ## Nothing is lost — or the page opens in Markdown
 

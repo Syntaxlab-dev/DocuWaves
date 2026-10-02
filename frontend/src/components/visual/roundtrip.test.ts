@@ -179,3 +179,34 @@ describe("DocuWaves' blocks in the visual editor", () => {
     handle.destroy();
   });
 });
+
+describe("tabs in the visual editor", () => {
+  const TABS = "<!-- tabs -->\n#### macOS\n\n```bash\nbrew install x\n```\n\n#### Linux\n\n```bash\napt install x\n```\n<!-- /tabs -->\n";
+
+  it("a tab group becomes tabs, and is written back as it was", async () => {
+    const root = document.createElement("div");
+    const { createVisualEditor } = await import("./milkdown");
+    const handle = await createVisualEditor({ root, markdown: TABS });
+    const titles = [...root.querySelectorAll(".visual-tab")].map((b) => b.textContent);
+    expect(titles).toEqual(["macOS", "Linux"]);
+    expect(sameDocument(TABS, handle.markdown())).toBe(true);
+    handle.destroy();
+  });
+
+  it("a group the site would not accept is left exactly as written", async () => {
+    const broken = "<!-- tabs -->\nNo heading first.\n<!-- /tabs -->\n";
+    const out = await survives(broken);
+    expect(out).toContain("<!-- tabs -->");
+  });
+
+  it("inserting tabs writes a group the site renders as tabs", async () => {
+    const root = document.createElement("div");
+    const { createVisualEditor } = await import("./milkdown");
+    const { insertTabsCommand } = await import("./extensions");
+    const handle = await createVisualEditor({ root, markdown: "Intro.\n" });
+    handle.run(insertTabsCommand, ["Windows", "Linux"]);
+    const out = handle.markdown();
+    expect(out).toMatch(/<!-- tabs -->\n+#### Windows\n[\s\S]*#### Linux[\s\S]*<!-- \/tabs -->/);
+    handle.destroy();
+  });
+});

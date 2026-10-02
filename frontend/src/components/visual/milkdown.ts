@@ -30,6 +30,10 @@ import { sameDocument } from "@/lib/markdownTree";
 import {
   calloutBlockquote,
   insertMathCommand,
+  insertTabsCommand,
+  remarkVisualTabs,
+  tabGroupSchema,
+  tabPanelSchema,
   mathBlockSchema,
   mathInlineSchema,
   meaningfulHtml,
@@ -190,6 +194,124 @@ function mathView(
   return { dom, ignoreMutation: () => true };
 }
 
+const TAB_WORDS: Record<string, { add: string; remove: string; rename: string; title: string; confirm: string }> = {
+  de: {
+    add: "Tab hinzufügen",
+    remove: "Diesen Tab entfernen",
+    rename: "Doppelklick: umbenennen",
+    title: "Name des Tabs:",
+    confirm: "Diesen Tab samt Inhalt entfernen?",
+  },
+  en: {
+    add: "Add a tab",
+    remove: "Remove this tab",
+    rename: "Double-click to rename",
+    title: "Tab name:",
+    confirm: "Remove this tab and its content?",
+  },
+};
+
+/** A tab group as tabs: a strip of titles (not part of the document) above
+ *  the panels, of which the chosen one is shown. Which one that is lives in
+ *  the view only -- it is not content. */
+function tabsView(
+  initial: ProseNode,
+  view: import("@milkdown/kit/prose/view").EditorView,
+  getPos: () => number | undefined,
+) {
+  let node = initial;
+  let active = 0;
+  const words = () => TAB_WORDS[((view.dom.closest("[lang]") as HTMLElement | null)?.lang ?? "en").slice(0, 2)] ?? TAB_WORDS.en;
+  const dom = document.createElement("div");
+  dom.className = "visual-tabs";
+  const strip = document.createElement("div");
+  strip.className = "visual-tabs-strip";
+  strip.contentEditable = "false";
+  const body = document.createElement("div");
+  body.className = "visual-tabs-body";
+  dom.append(strip, body);
+
+  /** Document position of the panel at `index`. */
+  const panelPos = (index: number) => {
+    let pos = (getPos() ?? 0) + 1;
+    for (let i = 0; i < index; i++) pos += node.child(i).nodeSize;
+    return pos;
+  };
+
+  const draw = () => {
+    active = Math.min(active, node.childCount - 1);
+    dom.dataset.active = String(active);
+    strip.replaceChildren();
+    node.forEach((panel, _offset, index) => {
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = `visual-tab${index === active ? " is-active" : ""}`;
+      tab.textContent = String(panel.attrs.title);
+      tab.title = words().rename;
+      tab.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        active = index;
+        draw();
+      });
+      tab.addEventListener("dblclick", () => {
+        if (!view.editable) return;
+        const title = window.prompt(words().title, String(panel.attrs.title));
+        if (!title || !title.trim()) return;
+        view.dispatch(view.state.tr.setNodeMarkup(panelPos(index), undefined, { ...panel.attrs, title: title.trim() }));
+      });
+      strip.append(tab);
+    });
+    if (!view.editable) return;
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "visual-tab-action";
+    add.textContent = "+";
+    add.title = words().add;
+    add.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+      const title = window.prompt(words().title, `Tab ${node.childCount + 1}`);
+      if (!title || !title.trim()) return;
+      const panel = node.child(0).type.create(
+        { title: title.trim(), depth: node.attrs.depth },
+        view.state.schema.nodes.paragraph.create(),
+      );
+      const end = (getPos() ?? 0) + node.nodeSize - 1;
+      active = node.childCount;
+      view.dispatch(view.state.tr.insert(end, panel));
+    });
+    strip.append(add);
+    if (node.childCount > 1) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "visual-tab-action";
+      remove.textContent = "×";
+      remove.title = words().remove;
+      remove.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        if (!window.confirm(words().confirm)) return;
+        const from = panelPos(active);
+        view.dispatch(view.state.tr.delete(from, from + node.child(active).nodeSize));
+        active = Math.max(0, active - 1);
+      });
+      strip.append(remove);
+    }
+  };
+  draw();
+
+  return {
+    dom,
+    contentDOM: body,
+    update: (next: ProseNode) => {
+      if (next.type !== node.type) return false;
+      node = next;
+      draw();
+      return true;
+    },
+    ignoreMutation: (mutation: { target: Node }) => strip.contains(mutation.target),
+    stopEvent: (event: Event) => strip.contains(event.target as Node),
+  };
+}
+
 export async function createVisualEditor(options: VisualOptions): Promise<VisualHandle> {
   let suppress = true;
   const editor = await Editor.make()
@@ -222,6 +344,7 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
           // A formula shows rendered; a double click edits its LaTeX.
           math_block: (node: ProseNode, view, getPos) => mathView(node, view, getPos as () => number | undefined, true),
           math_inline: (node: ProseNode, view, getPos) => mathView(node, view, getPos as () => number | undefined, false),
+          tab_group: (node: ProseNode, view, getPos) => tabsView(node, view, getPos as () => number | undefined),
         },
       }));
       ctx.get(listenerCtx).selectionUpdated((_ctx, selection) => {
@@ -262,6 +385,10 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
     .use(calloutBlockquote)
     .use(meaningfulHtml)
     .use(setCalloutCommand)
+    .use(remarkVisualTabs)
+    .use(tabGroupSchema)
+    .use(tabPanelSchema)
+    .use(insertTabsCommand)
     .use(remarkMathPlugin)
     .use(mathBlockSchema)
     .use(mathInlineSchema)

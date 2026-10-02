@@ -440,3 +440,24 @@ body {
 .visual-editor:lang(en) .ProseMirror blockquote[data-kind="IMPORTANT"]::before { content: "Important"; }
 .visual-editor:lang(en) .ProseMirror blockquote[data-kind="WARNING"]::before { content: "Warning"; }
 .visual-editor:lang(en) .ProseMirror blockquote[data-kind="CAUTION"]::before { content: "Caution"; }
+
+/* Tabs in the visual editor: a strip of titles, the chosen panel below. */
+.visual-editor .visual-tabs { margin: 0.9rem 0; border: 1px solid var(--border); border-radius: 0.5rem; }
+.visual-editor .visual-tabs-strip { display: flex; flex-wrap: wrap; gap: 0.15rem; padding: 0.3rem 0.4rem 0; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: 0.5rem 0.5rem 0 0; }
+.visual-editor .visual-tab { padding: 0.35rem 0.8rem; font-size: 0.85rem; color: var(--muted); border-bottom: 2px solid transparent; }
+.visual-editor .visual-tab.is-active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
+.visual-editor .visual-tab-action { margin-left: 0.2rem; padding: 0.2rem 0.5rem; font-size: 0.9rem; color: var(--muted); border-radius: 0.3rem; }
+.visual-editor .visual-tab-action:hover { background: var(--surface); color: var(--ink); }
+.visual-editor .visual-tabs-body { padding: 0.25rem 0.9rem; }
+.visual-editor .visual-tabs[data-active="0"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(1)) { display: none; }
+.visual-editor .visual-tabs[data-active="1"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(2)) { display: none; }
+.visual-editor .visual-tabs[data-active="2"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(3)) { display: none; }
+.visual-editor .visual-tabs[data-active="3"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(4)) { display: none; }
+.visual-editor .visual-tabs[data-active="4"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(5)) { display: none; }
+.visual-editor .visual-tabs[data-active="5"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(6)) { display: none; }
+.visual-editor .visual-tabs[data-active="6"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(7)) { display: none; }
+.visual-editor .visual-tabs[data-active="7"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(8)) { display: none; }
+.visual-editor .visual-tabs[data-active="8"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(9)) { display: none; }
+.visual-editor .visual-tabs[data-active="9"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(10)) { display: none; }
+.visual-editor .visual-tabs[data-active="10"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(11)) { display: none; }
+.visual-editor .visual-tabs[data-active="11"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(12)) { display: none; }
