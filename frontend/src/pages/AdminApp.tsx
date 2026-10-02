@@ -7,6 +7,7 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ import {
   PencilLine,
   Puzzle,
   Lock,
+  Menu,
   Trash2,
   Upload,
   X,
@@ -368,64 +370,125 @@ export function AdminApp() {
     await refresh();
   }
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const reviewBadge =
+    reviewCount > 0 ? (
+      <span className="ml-1.5 rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold leading-4 text-[var(--accent-ink)]">
+        {reviewCount}
+      </span>
+    ) : null;
+  /** The header's panel toggles, in the order they are shown. Branding,
+   *  accounts, tokens and diagnostics are administrator territory -- the
+   *  middleware refuses the whole prefix for anyone else, so offering them
+   *  would be offering four ways to get a 403. One list for both layouts,
+   *  so the row and the menu can never offer different things. */
+  const headerItems: { key: string; label: string; onClick: () => void; badge?: ReactNode }[] = [
+    ...(isAdmin
+      ? [
+          { key: "branding", label: t("admin.branding"), onClick: () => setShowBranding((v) => !v) },
+          { key: "users", label: t("users.title"), onClick: () => setShowUsers((v) => !v) },
+        ]
+      : []),
+    { key: "reviews", label: t("review.queueButton"), onClick: () => setShowReviews((v) => !v), badge: reviewBadge },
+    { key: "insights", label: t("admin.insights"), onClick: () => setShowInsights((v) => !v) },
+    ...(isAdmin
+      ? [
+          { key: "tokens", label: t("admin.tokens"), onClick: () => setShowTokens((v) => !v) },
+          { key: "diagnostics", label: t("diag.title"), onClick: () => setShowDiagnostics((v) => !v) },
+        ]
+      : []),
+    { key: "account", label: t("admin.account"), onClick: () => setShowAccount((v) => !v) },
+  ];
+
   return (
     <div className="min-h-screen">
-      <header className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-        {logoForTheme(site, isDark) && (
-          <img src={logoForTheme(site, isDark)!} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />
-        )}
-        <span className="text-lg font-semibold">{site.name}</span>
-        <span className="text-sm text-[var(--muted)]">{t("nav.admin")}</span>
-        <div className="ml-auto flex items-center gap-2">
-          <Link to="/" className="text-sm text-[var(--accent)]">
-            {t("nav.public")}
-          </Link>
-          {/* Branding, tokens, accounts, diagnostics and the export are
-              administrator territory -- the middleware refuses the whole
-              prefix for anyone else, so offering the buttons would be
-              offering four ways to get a 403. */}
-          {isAdmin && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setShowBranding((v) => !v)}>
-                {t("admin.branding")}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowUsers((v) => !v)}>
-                {t("users.title")}
-              </Button>
-            </>
+      <header className="border-b border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex items-center gap-3 px-4 py-3">
+          {logoForTheme(site, isDark) && (
+            <img src={logoForTheme(site, isDark)!} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />
           )}
-          <Button variant="ghost" size="sm" onClick={() => setShowReviews((v) => !v)}>
-            {t("review.queueButton")}
-            {reviewCount > 0 && (
-              <span className="ml-1.5 rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold leading-4 text-[var(--accent-ink)]">
-                {reviewCount}
-              </span>
-            )}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowInsights((v) => !v)}>
-            {t("admin.insights")}
-          </Button>
-          {isAdmin && (
-            <>
-              <Button variant="ghost" size="sm" onClick={() => setShowTokens((v) => !v)}>
-                {t("admin.tokens")}
+          <span className="truncate text-lg font-semibold">{site.name}</span>
+          <span className="hidden text-sm text-[var(--muted)] sm:inline">{t("nav.admin")}</span>
+
+          {/* Wide screens: everything in one row, as it always was. */}
+          <nav className="ml-auto hidden items-center gap-2 xl:flex">
+            <Link to="/" className="text-sm text-[var(--accent)]">
+              {t("nav.public")}
+            </Link>
+            {headerItems.map((item) => (
+              <Button key={item.key} variant="ghost" size="sm" onClick={item.onClick}>
+                {item.label}
+                {item.badge}
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics((v) => !v)}>
-                {t("diag.title")}
-              </Button>
-            </>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => setShowAccount((v) => !v)}>
-            {t("admin.account")}
-          </Button>
-          <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
-            {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </Button>
-          <UiLanguageToggle lang={lang} onChange={setLang} />
-          <Button variant="outline" size="sm" onClick={onLogout}>
-            {t("nav.logout")}
-          </Button>
+            ))}
+            <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <UiLanguageToggle lang={lang} onChange={setLang} />
+            <Button variant="outline" size="sm" onClick={onLogout}>
+              {t("nav.logout")}
+            </Button>
+          </nav>
+
+          {/* Narrower: the approvals stay in reach -- they are the one thing
+              in this row that can be waiting for somebody -- and everything
+              else folds into a menu below the bar. Eleven controls in one
+              row pushed the page sideways on a phone, and still overflowed
+              on a laptop. */}
+          <div className="ml-auto flex items-center gap-1 xl:hidden">
+            <Button variant="ghost" size="sm" onClick={() => setShowReviews((v) => !v)}>
+              {t("review.queueButton")}
+              {reviewBadge}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-expanded={menuOpen}
+              aria-controls="admin-menu"
+              aria-label={menuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </Button>
+          </div>
         </div>
+
+        {menuOpen && (
+          <nav id="admin-menu" className="border-t border-[var(--border)] px-4 py-3 xl:hidden">
+            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
+              <Link
+                to="/"
+                className="rounded-md px-3 py-2 text-sm text-[var(--accent)] hover:bg-[var(--surface-2)]"
+              >
+                {t("nav.public")}
+              </Link>
+              {headerItems
+                .filter((item) => item.key !== "reviews")
+                .map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className="rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--surface-2)]"
+                    onClick={() => {
+                      item.onClick();
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+            </div>
+            <div className="mt-3 flex items-center gap-2 border-t border-[var(--border)] pt-3">
+              <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </Button>
+              <UiLanguageToggle lang={lang} onChange={setLang} />
+              <Button variant="outline" size="sm" className="ml-auto" onClick={onLogout}>
+                {t("nav.logout")}
+              </Button>
+            </div>
+          </nav>
+        )}
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-6">
