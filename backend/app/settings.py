@@ -106,6 +106,13 @@ class Settings:
     # check included -- stops answering until they come back.
     chat_max_concurrent: int = max(1, int(os.environ.get("CHAT_MAX_CONCURRENT", "4")))
 
+    # A one-time code the first-run setup asks for (routers/auth.py). The
+    # installer generates one and prints it, so that between `docker compose
+    # up` and the admin's first visit nobody else who finds the address can
+    # claim the instance. Blank = no code, the setup screen as it always was.
+    # Meaningless once an admin account exists; it can be removed then.
+    setup_token: str = os.environ.get("SETUP_TOKEN", "").strip()
+
     # The gaps radar (services/search_gaps.py): searches that found nothing,
     # tallied for the admin's "Insights". On unless switched off.
     search_gaps_enabled: bool = os.environ.get("SEARCH_GAPS", "on").strip().lower() not in ("off", "0", "false", "no")

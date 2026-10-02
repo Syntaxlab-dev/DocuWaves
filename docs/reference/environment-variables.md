@@ -83,6 +83,12 @@ See [Webhooks](/p/docuwaves/pages/webhooks).
 |---|---|---|
 | `CLIENT_IP_HEADER` | *(empty)* | Which header carries the reader's real address when there is **more than one** proxy in front of DocuWaves (e.g. `CF-Connecting-IP` behind Cloudflare and nginx). Feeds the rate limits on sign-in, the chat, page feedback and the search tally. Behind a single reverse proxy leave it empty |
 
+## First-run setup
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SETUP_TOKEN` | *(empty — no code)* | A setup code the first-run screen asks for before it creates the first account. Without it, whoever opens a fresh instance first becomes its administrator. The installer sets a random one and prints it. While it is set, a first SSO sign-in cannot create the first account. It has no effect once an account exists, so you can remove it then. See [The first run](/p/docuwaves/pages/the-first-run) |
+
 ## Sessions
 
 | Variable | Default | Purpose |

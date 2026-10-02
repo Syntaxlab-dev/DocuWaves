@@ -11,10 +11,13 @@ import { useI18n } from "@/lib/i18n";
 
 export function Login({
   setupRequired,
+  setupTokenRequired = false,
   next,
   embedded = false,
 }: {
   setupRequired: boolean;
+  /** The setup screen asks for the installer's setup code. */
+  setupTokenRequired?: boolean;
   /** Where to go once signed in -- set by the public /login page, so a
    *  reader who signed in from a private project's page lands back on it.
    *  Already checked to be a path on this site (see PublicLogin). */
@@ -27,6 +30,7 @@ export function Login({
   const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [setupToken, setSetupToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [oidcStatus, setOidcStatus] = useState<OidcStatus | null>(null);
 
@@ -35,8 +39,14 @@ export function Login({
 
     const params = new URLSearchParams(window.location.search);
     const result = params.get("oidc_login");
-    if (result === "failed" || result === "no_account") {
-      toast.error(result === "no_account" ? t("login.oidcNoAccount") : t("login.oidcFailed"));
+    if (result === "failed" || result === "no_account" || result === "setup_token") {
+      toast.error(
+        result === "no_account"
+          ? t("login.oidcNoAccount")
+          : result === "setup_token"
+            ? t("login.oidcSetupToken")
+            : t("login.oidcFailed"),
+      );
       window.history.replaceState({}, "", "/admin");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -47,14 +57,20 @@ export function Login({
     setSubmitting(true);
     try {
       if (setupRequired) {
-        await api.setup(username, password);
+        await api.setup(username, password, setupToken);
       } else {
         await api.login(username, password);
       }
       await refresh();
       if (next) navigate(next, { replace: true });
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t("login.failed"));
+      toast.error(
+        err instanceof ApiError
+          ? err.message === "setup_token_invalid"
+            ? t("setup.tokenInvalid")
+            : err.message
+          : t("login.failed"),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -77,11 +93,34 @@ export function Login({
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            {setupRequired && setupTokenRequired && (
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="setup-token" className="text-sm font-medium">
+                  {t("setup.token")}
+                </label>
+                <Input
+                  id="setup-token"
+                  value={setupToken}
+                  onChange={(e) => setSetupToken(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                  required
+                  autoFocus
+                />
+                <p className="text-xs text-[var(--muted)]">{t("setup.tokenHint")}</p>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <label htmlFor="username" className="text-sm font-medium">
                 {setupRequired ? t("setup.username") : t("login.username")}
               </label>
-              <Input id="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
+              <Input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoFocus={!(setupRequired && setupTokenRequired)}
+              />
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="password" className="text-sm font-medium">

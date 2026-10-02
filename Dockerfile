@@ -1,4 +1,8 @@
-FROM node:22-slim AS frontend-build
+# The frontend is built once, on the machine doing the build, whatever the
+# image is for: its output is HTML, CSS and JavaScript, the same bytes for
+# amd64 and arm64. Built under emulation for arm64 instead, `npm ci` and
+# Vite would take several times as long and give the identical result.
+FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
