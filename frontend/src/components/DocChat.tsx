@@ -124,9 +124,11 @@ export function DocChat() {
                 <p className="text-[var(--muted)]">{t("chat.intro")}</p>
                 {/* Said before the first question, not after it: a reader
                     deciding what to type is entitled to know that the text
-                    leaves this site, and which model reads it. */}
+                    leaves this site. Not WHICH model: the public status
+                    deliberately leaves that out (backend doc_chat.public_status),
+                    and the text used to say "undefined" here. */}
                 <p className="mt-2 text-xs text-[var(--muted)]">
-                  {t("chat.disclosure").replace("{model}", chat.model)}
+                  {t("chat.disclosure")}
                 </p>
               </>
             )}

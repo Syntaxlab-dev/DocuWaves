@@ -276,6 +276,21 @@ _SQLITE_SCHEMA = [
     CREATE INDEX IF NOT EXISTS page_feedback_page
         ON page_feedback (project_slug, page_slug)
     """,
+    # Searches that found nothing, as a tally (services/search_gaps.py): the
+    # words, never who searched. Real state like page_feedback -- not part of
+    # the content index, never dropped by a rebuild.
+    """
+    CREATE TABLE IF NOT EXISTS search_gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        project_slug TEXT NOT NULL DEFAULT '',
+        hits INTEGER NOT NULL DEFAULT 0,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        UNIQUE(query, language, project_slug)
+    )
+    """,
     # A preview link: one URL that shows one unpublished page to somebody
     # with no login here, until a date. See preview_links_store.py for what
     # this is and (at more length) what it deliberately is not.
@@ -452,6 +467,19 @@ _POSTGRES_SCHEMA = [
     """
     CREATE INDEX IF NOT EXISTS page_feedback_page
         ON page_feedback (project_slug, page_slug)
+    """,
+    # See the SQLite schema above (services/search_gaps.py).
+    """
+    CREATE TABLE IF NOT EXISTS search_gaps (
+        id SERIAL PRIMARY KEY,
+        query TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        project_slug TEXT NOT NULL DEFAULT '',
+        hits INTEGER NOT NULL DEFAULT 0,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        UNIQUE(query, language, project_slug)
+    )
     """,
     # See the SQLite schema above for what a preview link is and why it lives
     # here rather than in the content repo.

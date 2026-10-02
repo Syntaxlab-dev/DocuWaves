@@ -38,7 +38,9 @@ export function SearchResults() {
     // own, plus the pages that exist only in the site's default language.
     // Switching language re-runs the same query against the other set.
     setCorrected(null);
-    api.search(q, lang, project || undefined, version || undefined).then((r) => {
+    // record: this page is a finished search, so one that finds nothing is
+    // worth counting for the gaps radar (unlike search-as-you-type).
+    api.search(q, lang, project || undefined, version || undefined, true).then((r) => {
       setResults(r.results);
       setCorrected(r.corrected ?? null);
     });

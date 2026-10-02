@@ -29,6 +29,17 @@ const de = {
   "nav.language": "Sprache",
   "nav.openMenu": "Menü öffnen",
   "nav.closeMenu": "Menü schließen",
+  "gaps.title": "Gesucht, aber nicht gefunden",
+  "gaps.hint": "Suchen auf der öffentlichen Seite, die nichts gefunden haben – nur die Suchbegriffe mit Anzahl, nie wer gesucht hat. Einträge verschwinden nach 90 Tagen.",
+  "gaps.none": "Noch nichts – jede Suche hat bisher etwas gefunden.",
+  "gaps.off": "Ausgeschaltet (SEARCH_GAPS=off).",
+  "gaps.count": "{n}× gesucht",
+  "gaps.createPage": "Seite mit diesem Titel anlegen",
+  "gaps.forget": "Aus der Liste entfernen",
+  "gaps.clearAll": "Liste leeren",
+  "gaps.clearConfirm": "Die ganze Liste leeren?",
+  "gaps.pickCategory": "Wähle eine Kategorie – die neue Seite „{title}“ öffnet sich dann im Editor.",
+  "gaps.pickProject": "Wähle ein Projekt und eine Kategorie – die neue Seite „{title}“ öffnet sich dann im Editor.",
   "admin.insights": "Auswertung",
   "users.title": "Konten",
   "users.intro":
@@ -158,7 +169,7 @@ const de = {
   "chat.intro":
     "Stell eine Frage zu dieser Dokumentation. Geantwortet wird ausschließlich aus den veröffentlichten Seiten — und die Seiten stehen unter jeder Antwort.",
   "chat.disclosure":
-    "Deine Frage und passende Ausschnitte der Dokumentation gehen an das Modell „{model}“, das der Betreiber eingerichtet hat. Nichts davon wird hier gespeichert.",
+    "Deine Frage und passende Ausschnitte der Dokumentation gehen an das KI-Modell, das der Betreiber eingerichtet hat. Nichts davon wird hier gespeichert.",
   "chat.placeholder": "Deine Frage…",
   "chat.ask": "Fragen",
   "chat.thinking": "Suche in der Dokumentation…",
@@ -593,6 +604,17 @@ const en: Dict = {
   "nav.language": "Language",
   "nav.openMenu": "Open menu",
   "nav.closeMenu": "Close menu",
+  "gaps.title": "Searched for, not found",
+  "gaps.hint": "Searches on the public site that found nothing -- only the words and how often, never who searched. Entries disappear after 90 days.",
+  "gaps.none": "Nothing yet -- every search so far found something.",
+  "gaps.off": "Switched off (SEARCH_GAPS=off).",
+  "gaps.count": "searched {n}×",
+  "gaps.createPage": "Create a page with this title",
+  "gaps.forget": "Remove from the list",
+  "gaps.clearAll": "Clear list",
+  "gaps.clearConfirm": "Clear the whole list?",
+  "gaps.pickCategory": "Pick a category -- the new page “{title}” then opens in the editor.",
+  "gaps.pickProject": "Pick a project and a category -- the new page “{title}” then opens in the editor.",
   "admin.insights": "Insights",
   "users.title": "Accounts",
   "users.intro":
@@ -722,7 +744,7 @@ const en: Dict = {
   "chat.intro":
     "Ask a question about this documentation. Answers are built only from the published pages -- and those pages are listed under every answer.",
   "chat.disclosure":
-    "Your question, and matching excerpts of the documentation, go to the model \"{model}\" that the operator configured. None of it is stored here.",
+    "Your question, and matching excerpts of the documentation, go to the AI model that the operator configured. None of it is stored here.",
   "chat.placeholder": "Your question…",
   "chat.ask": "Ask",
   "chat.thinking": "Searching the documentation…",

@@ -38,6 +38,7 @@ from app.services import (
     site_branding,
     site_languages,
     changelog,
+    search_gaps,
     search_suggest,
     snippets,
     visibility,
@@ -418,9 +419,15 @@ def public_search(
     lang: str | None = _LANG_QUERY,
     project: str | None = Query(default=None, max_length=200, description="Project slug to scope the search to."),
     version: str | None = _VERSION_QUERY,
+    record: bool = Query(
+        default=False,
+        description="Count this search for the gaps radar when it finds nothing. Sent by the results page only, "
+        "never by search-as-you-type (services/search_gaps.py).",
+    ),
 ):
     project_id: int | None = None
     resolved: str | None = None
+    private_scope = False
     if project:
         row = projects_store.get_project_by_slug(project)
         if not visibility.can_see(row, request):
@@ -431,6 +438,7 @@ def public_search(
         if row is None:
             return {"results": [], "corrected": None}
         project_id = row["id"]
+        private_scope = bool(row.get("private"))
         resolved = _version(project, version)
     language = _language(lang)
     include_private = visibility.signed_in(request)
@@ -448,6 +456,10 @@ def public_search(
         )
         if fixed:
             return {"results": fixed, "corrected": corrected}
+    # Found nothing even with the correction: a gap. Not for a signed-in
+    # account or a private project -- see services/search_gaps.py.
+    if record and not results and not include_private and not private_scope:
+        search_gaps.record(q, language, project or "", _client_key(request))
     return {"results": results, "corrected": None}
 
 
