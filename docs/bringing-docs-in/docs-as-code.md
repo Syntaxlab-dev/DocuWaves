@@ -81,6 +81,39 @@ the repository** button.
   for any edit — except on the first sync into an empty project, which would
   announce every page at once.
 
+## Release tags become versions
+
+Add `version=` to the request and the synced docs are **frozen as that
+version** right after the sync — a release tag in the code repository
+becomes a [frozen version](/p/docuwaves/pages/freezing-a-version) of its
+documentation, with its own entry in the version switcher:
+
+```yaml title=".github/workflows/docs.yml (excerpt)"
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+# … in the run step, after building docs.zip:
+#   VERSION=""
+#   if [ "$GITHUB_REF_TYPE" = "tag" ]; then VERSION="&version=$GITHUB_REF_NAME"; fi
+#   curl … "https://docs.example.com/api/sync/my-project?ref=${GITHUB_SHA::7}${VERSION}"
+```
+
+- The tag `v2.0` becomes the version `v2.0`, labelled **2.0** in the switcher
+  (`&label=…` names it differently).
+- The sync and the freeze are **two commits**: first the docs as of the tag,
+  then *"Freeze version 2.0 from v2.0"*.
+- The **first** freeze moves the project's content into `current/`, as any
+  first freeze does; the next sync writes there automatically.
+- Pushing the same tag again — a re-run CI job — leaves the existing version
+  alone, and the answer says so.
+- An id that cannot be a version (`../x`, `current`) is refused **before**
+  anything is written.
+
+Released versions have no **Edit in the repository** button: a release is
+changed nowhere, not even in the repository. Readers keep landing on
+`current` unless you make a release the default under **Versions**.
+
 ## In the admin area
 
 A synced project says so above its categories: which repository, branch and

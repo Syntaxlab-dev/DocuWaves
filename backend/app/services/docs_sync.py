@@ -74,10 +74,38 @@ def _current(project: dict, version: str) -> dict[str, dict]:
     return pages
 
 
-def sync(data: bytes, project_slug: str, author: str, ref: str = "", source: dict | None = None) -> dict:
+def freeze_target(project_slug: str, version: str, label: str = "") -> dict | None:
+    """What `?version=` asks for, checked BEFORE anything is written:
+    {"id", "label", "exists"}, or None for no freeze. Raises SyncError for an
+    id that cannot be a version -- the sync must not run half-way and then
+    refuse its second step."""
+    if not version:
+        return None
+    version_id = content_versions.normalize_id(version)
+    label = (label or "").strip() or (version_id[1:] if version_id[:1] == "v" and version_id[1:2].isdigit() else version_id)
+    exists = version_id in content_versions.version_ids(project_slug)
+    if not exists:
+        reason = content_versions.rejection_reason(project_slug, version_id, label, version)
+        # "Nothing to freeze yet" is not a reason here: the sync writes the
+        # content first.
+        if reason and "nothing to freeze" not in reason.lower():
+            raise SyncError(reason)
+    return {"id": version_id, "label": label, "exists": exists}
+
+
+def sync(
+    data: bytes, project_slug: str, author: str, ref: str = "", source: dict | None = None,
+    freeze: dict | None = None,
+) -> dict:
     """`source`: where the docs live ({repo, branch, path}), when the CI says
     so -- it becomes the project's `source:` (and with it the "edit in the
-    repository" links). Left out, the project keeps what it has."""
+    repository" links). Left out, the project keeps what it has.
+
+    `freeze` (from freeze_target): after the sync, the result is frozen as
+    that version -- a release tag in the code repository becomes a frozen
+    version of its docs, in a second commit. A version that already exists
+    is left alone (the same tag pushed twice, a re-run CI job), and the
+    answer says so."""
     project = projects_store.get_project_by_slug(project_slug)
     if project is None:
         raise SyncError(f"There is no project '{project_slug}'. Create it in the admin area first.")
@@ -160,6 +188,19 @@ def sync(data: bytes, project_slug: str, author: str, ref: str = "", source: dic
         committed = git_content_repo.head_sha() != sha_before
         content_sync.full_sync()
 
+        frozen = None
+        if freeze is not None:
+            if freeze["exists"]:
+                frozen = {"id": freeze["id"], "label": freeze["label"], "frozen": False, "reason": "exists"}
+            else:
+                freeze_paths = content_versions.freeze(project_slug, freeze["id"], freeze["label"])
+                note = f" from {ref}" if ref else ""
+                git_content_repo.commit_and_push(
+                    freeze_paths, f"Freeze version {freeze['label']}{note}", author
+                )
+                content_sync.full_sync()
+                frozen = {"id": freeze["id"], "label": freeze["label"], "frozen": True}
+
     if committed and not first_sync:
         categories = {c["slug"]: c for c in categories_store.list_categories(project["id"], version=version)}
         for slug in added:
@@ -192,6 +233,7 @@ def sync(data: bytes, project_slug: str, author: str, ref: str = "", source: dic
         "assets": len(result.assets),
         "warnings": result.warnings,
         "skipped": result.skipped,
+        "version": frozen,
     }
     _record_run(project_slug, ref, author, record)
     return record

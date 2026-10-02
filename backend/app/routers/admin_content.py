@@ -653,6 +653,9 @@ def _source_info(page: dict) -> dict:
     source = (project or {}).get("source")
     if source is None:
         return {"synced": False, "source_edit_url": ""}
+    if content_versions.is_frozen(project["slug"], page["version"]):
+        # A released version is changed nowhere -- not even in the repository.
+        return {"synced": True, "source_edit_url": ""}
     file = docs_sync.source_file(project["slug"], page["version"], page["slug"])
     return {"synced": True, "source_edit_url": docs_sync.edit_url(source, file)}
 
