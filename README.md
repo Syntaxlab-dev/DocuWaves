@@ -1276,6 +1276,14 @@ secret set in the repository's settings).
 - Webhooks announce new and changed pages as for any edit -- except on the
   first sync into an empty project, which would announce every page at once.
 
+**Release tags become versions.** Add `&version=v2.0` (when the CI runs for a
+tag, e.g. `${GITHUB_REF_NAME}` with `on: push: tags: ["v*"]`) and the synced
+docs are frozen as that version right after the sync — labelled "2.0"
+(`&label=` overrides), in a second commit. The same tag pushed again leaves
+the existing version alone; an id that cannot be a version is refused before
+anything is written. Released versions have no "edit in the repository"
+link — a release is changed nowhere.
+
 **In the admin area** a synced project says so above its categories: which
 repository, branch and folder, when the last sync ran, from which commit and
 what it changed (with the last 20 runs). Its pages and categories are
