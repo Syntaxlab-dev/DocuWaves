@@ -11,6 +11,7 @@
 import {
   Editor,
   defaultValueCtx,
+  editorViewCtx,
   editorViewOptionsCtx,
   remarkPluginsCtx,
   remarkStringifyOptionsCtx,
@@ -22,9 +23,21 @@ import { history } from "@milkdown/kit/plugin/history";
 import { clipboard } from "@milkdown/kit/plugin/clipboard";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { upload, uploadConfig } from "@milkdown/kit/plugin/upload";
-import { callCommand, getMarkdown, replaceAll } from "@milkdown/kit/utils";
+import { callCommand, getMarkdown, insert, replaceAll } from "@milkdown/kit/utils";
+import type { Command } from "@milkdown/kit/prose/state";
 import type { Node as ProseNode, Schema } from "@milkdown/kit/prose/model";
 import { sameDocument } from "@/lib/markdownTree";
+import {
+  calloutBlockquote,
+  insertMathCommand,
+  mathBlockSchema,
+  mathInlineSchema,
+  meaningfulHtml,
+  previews,
+  remarkMathPlugin,
+  renderMath,
+  setCalloutCommand,
+} from "./extensions";
 
 export interface VisualOptions {
   root: HTMLElement;
@@ -36,6 +49,8 @@ export interface VisualOptions {
   uploadImage?: (file: File) => Promise<string | null>;
   /** Turns a Markdown image path into an address the browser can load. */
   resolveImage?: (src: string) => string;
+  /** Where the cursor is, for the toolbar: inside a table, inside a callout. */
+  onSelection?: (where: { inTable: boolean; callout: string | null }) => void;
 }
 
 export interface VisualHandle {
@@ -43,6 +58,10 @@ export interface VisualHandle {
   markdown: () => string;
   setMarkdown: (markdown: string) => void;
   run: <T>(command: { key: unknown }, payload?: T) => void;
+  /** A plain ProseMirror command (the table ones, say) on the current state. */
+  prose: (command: Command) => void;
+  /** Markdown parsed and put where the cursor is. */
+  insertMarkdown: (markdown: string, inline?: boolean) => void;
   destroy: () => void;
 }
 
@@ -62,28 +81,44 @@ const STRINGIFY = {
  *  box, but GitHub would not, and nobody wants to read `\[!WARNING]`. */
 export function tidyMarkdown(markdown: string): string {
   let fence: string | null = null;
-  return markdown
-    .split("\n")
-    .map((line) => {
-      const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-      if (opening) {
-        if (fence === null) fence = opening[1][0].repeat(opening[1].length);
-        else if (line.trim().startsWith(fence)) fence = null;
-        return line;
-      }
-      if (fence !== null) return line;
-      // A table's delimiter row the way most people write it: |---|:-:|
-      if (/^\|(?:\s*:?-+:?\s*\|)+\s*$/.test(line)) {
-        return `|${line
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (opening) {
+      if (fence === null) fence = opening[1][0].repeat(opening[1].length);
+      else if (line.trim().startsWith(fence)) fence = null;
+      out.push(line);
+      continue;
+    }
+    if (fence !== null) {
+      out.push(line);
+      continue;
+    }
+    // A table's delimiter row the way most people write it: |---|:-:|
+    if (/^\|(?:\s*:?-+:?\s*\|)+\s*$/.test(line)) {
+      out.push(
+        `|${line
           .trim()
           .slice(1, -1)
           .split("|")
           .map((cell) => cell.trim().replace(/-+/, "---"))
-          .join("|")}|`;
-      }
-      return line.replace(/^((?:>[ \t]?)+)\\\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i, "$1[!$2]");
-    })
-    .join("\n");
+          .join("|")}|`,
+      );
+      continue;
+    }
+    const callout = /^((?:>[ \t]?)+)\\?\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*$/i.exec(line);
+    if (callout) {
+      out.push(`${callout[1]}[!${callout[2].toUpperCase()}]`);
+      // The callout's text right below its marker, not after an empty quote
+      // line: `> [!TIP]` / `> Text`, as GitHub writes it.
+      if (/^(?:>[ \t]?)+$/.test(lines[i + 1] ?? "") && /^>/.test(lines[i + 2] ?? "")) i += 1;
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
 }
 
 type MdNode = { type: string; title?: string | null; children?: MdNode[] };
@@ -135,6 +170,26 @@ const codeBlockWithMeta = codeBlockSchema.extendSchema((previous) => (ctx) => {
   };
 });
 
+function mathView(
+  node: ProseNode,
+  view: import("@milkdown/kit/prose/view").EditorView,
+  getPos: () => number | undefined,
+  display: boolean,
+) {
+  const dom = document.createElement(display ? "div" : "span");
+  dom.className = `visual-math ${display ? "visual-math-block" : "visual-math-inline"}`;
+  dom.title = String(node.attrs.value);
+  renderMath(dom, String(node.attrs.value), display);
+  dom.addEventListener("dblclick", () => {
+    if (!view.editable) return;
+    const value = window.prompt("LaTeX", String(node.attrs.value));
+    const pos = getPos();
+    if (value === null || pos === undefined) return;
+    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { value }));
+  });
+  return { dom, ignoreMutation: () => true };
+}
+
 export async function createVisualEditor(options: VisualOptions): Promise<VisualHandle> {
   let suppress = true;
   const editor = await Editor.make()
@@ -164,8 +219,23 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
             img.className = "visual-editor-image";
             return { dom: img };
           },
+          // A formula shows rendered; a double click edits its LaTeX.
+          math_block: (node: ProseNode, view, getPos) => mathView(node, view, getPos as () => number | undefined, true),
+          math_inline: (node: ProseNode, view, getPos) => mathView(node, view, getPos as () => number | undefined, false),
         },
       }));
+      ctx.get(listenerCtx).selectionUpdated((_ctx, selection) => {
+        if (!options.onSelection) return;
+        let inTable = false;
+        let callout: string | null = null;
+        const { $from } = selection;
+        for (let depth = $from.depth; depth > 0; depth--) {
+          const node = $from.node(depth);
+          if (node.type.name === "table") inTable = true;
+          if (node.type.name === "blockquote" && callout === null) callout = String(node.attrs.kind ?? "");
+        }
+        options.onSelection({ inTable, callout });
+      });
       ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, previous) => {
         if (!suppress && markdown !== previous) options.onChange?.(tidyMarkdown(markdown));
       });
@@ -189,6 +259,14 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
     })
     .use(commonmark)
     .use(codeBlockWithMeta)
+    .use(calloutBlockquote)
+    .use(meaningfulHtml)
+    .use(setCalloutCommand)
+    .use(remarkMathPlugin)
+    .use(mathBlockSchema)
+    .use(mathInlineSchema)
+    .use(insertMathCommand)
+    .use(previews)
     .use(gfm)
     .use(history)
     .use(clipboard)
@@ -207,6 +285,16 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
     },
     run: (command, payload) => {
       editor.action(callCommand(command.key as never, payload as never));
+    },
+    prose: (command) => {
+      editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx);
+        command(view.state, view.dispatch, view);
+        view.focus();
+      });
+    },
+    insertMarkdown: (markdown, inline = false) => {
+      editor.action(insert(markdown, inline));
     },
     destroy: () => {
       void editor.destroy();

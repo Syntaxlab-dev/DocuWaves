@@ -29,6 +29,13 @@ Switch at any time, even halfway through a page — it is the same text.
 | Table | 3 × 3 to start; Tab moves to the next cell |
 | Divider | |
 | Upload an image | also by pasting a screenshot or dropping a file |
+| Formula | asks for the LaTeX source |
+| **Callout** | turns the paragraph into a box of that kind — or changes the kind of the box the cursor is in |
+| **{ }** | inserts one of the project's [variables or snippets](/p/docuwaves/pages/snippets-and-variables) |
+
+Inside a table, a second row of tools appears: insert a row above or below,
+a column left or right, delete the row or column, and align the column left,
+centred or right.
 
 Markdown shortcuts work while typing, too: `## ` at the start of a line
 becomes a heading, `- ` a list, `> ` a quote, ` ``` ` a code block.
@@ -36,6 +43,19 @@ becomes a heading, `- ` a list, `> ` a quote, ` ``` ` a code block.
 
 Images are uploaded into the project like any other
 [image](/p/docuwaves/pages/images) and shown in the editor as they will look.
+
+## DocuWaves' own blocks
+
+- **Callouts** are shown as the coloured boxes readers see, labelled in your
+  language, and saved as GitHub's `> [!WARNING]`.
+- **Variables** (`{{port}}`) and **snippets** appear as chips. They stay
+  exactly what they are in the file; what they stand for is managed under
+  **Snippets & variables**.
+- **Formulas** — `$…$` in a sentence, `$$…$$` on their own — are shown
+  rendered. Double-click one to edit its LaTeX.
+- **Diagrams** — ` ```mermaid ` blocks — keep their source editable,
+  with the drawing right below it, updated as you type.
+- **Tabs** are shown as markers where a tab group starts and ends.
 
 ## Nothing is lost — or the page opens in Markdown
 
@@ -51,7 +71,3 @@ What may change when a page is saved visually is **spelling, not content**:
 written in that style — like these docs — come back character for
 character.
 
-> [!NOTE]
-> Callouts, tabs, snippets and variables are kept exactly as written, and
-> shown as text for now. Proper boxes, tabs and chips for them in the visual
-> editor come next.

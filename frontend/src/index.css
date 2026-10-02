@@ -404,3 +404,39 @@ body {
 .visual-editor .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1.25rem 0; }
 .visual-editor .ProseMirror code { font-family: var(--font-mono); font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 0.3rem; }
 .visual-editor .ProseMirror pre code { background: none; padding: 0; }
+/* Callouts in the visual editor: the same boxes readers see. */
+.visual-editor .ProseMirror blockquote.callout { --callout: var(--accent); color: var(--ink); padding: 1.6rem 1rem 0.5rem; border: 1px solid color-mix(in srgb, var(--callout) 35%, var(--border)); border-left: 4px solid var(--callout); border-radius: 0.5rem; background: color-mix(in srgb, var(--callout) 8%, var(--surface)); position: relative; }
+.visual-editor .ProseMirror blockquote.callout > p:first-child { margin-top: 0.2rem; }
+.visual-editor .ProseMirror blockquote.callout::before { content: attr(data-kind); position: absolute; top: 0.5rem; left: 1rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; color: var(--callout); }
+.visual-editor .ProseMirror blockquote.callout-note { --callout: #3b82f6; }
+.visual-editor .ProseMirror blockquote.callout-tip { --callout: #16a34a; }
+.visual-editor .ProseMirror blockquote.callout-important { --callout: #8b5cf6; }
+.visual-editor .ProseMirror blockquote.callout-warning { --callout: #d97706; }
+.visual-editor .ProseMirror blockquote.callout-caution { --callout: var(--danger); }
+/* Variables, snippets and tab markers: what they are, at a glance. */
+.visual-editor .visual-chip { border-radius: 0.35rem; padding: 0.05em 0.35em; font-size: 0.88em; white-space: nowrap; }
+.visual-editor .visual-chip-variable { background: var(--accent-soft); color: var(--accent); font-family: var(--font-mono); }
+.visual-editor .visual-chip-snippet { background: color-mix(in srgb, #16a34a 14%, var(--surface)); color: #15803d; }
+.visual-editor .visual-chip-tabs { background: var(--surface-2); color: var(--muted); }
+.visual-editor .visual-chip-html { background: var(--surface-2); color: var(--muted); font-family: var(--font-mono); }
+/* Previews next to their source: formulas and diagrams. */
+.visual-editor .visual-math-source { color: var(--muted); font-family: var(--font-mono); font-size: 0.85em; }
+.visual-editor .visual-preview-inline-math { margin-left: 0.35em; padding: 0 0.3em; border-radius: 0.3rem; background: var(--surface-2); }
+.visual-editor .visual-preview-math, .visual-editor .visual-preview-diagram { margin: -0.25rem 0 0.9rem; padding: 0.6rem; border: 1px dashed var(--border); border-radius: 0.5rem; overflow-x: auto; user-select: none; }
+.visual-editor .visual-preview-error { color: var(--danger); font-size: 0.8rem; }
+.visual-editor .visual-math { cursor: pointer; border-radius: 0.3rem; }
+.visual-editor .visual-math:hover { background: var(--accent-soft); }
+.visual-editor .visual-math-block { display: block; margin: 0.75rem 0; padding: 0.5rem; text-align: center; overflow-x: auto; }
+.visual-editor .ProseMirror-selectednode.visual-math { outline: 2px solid var(--accent); }
+
+/* The box label in the interface language, as on the site. */
+.visual-editor:lang(de) .ProseMirror blockquote[data-kind="NOTE"]::before { content: "Hinweis"; }
+.visual-editor:lang(de) .ProseMirror blockquote[data-kind="TIP"]::before { content: "Tipp"; }
+.visual-editor:lang(de) .ProseMirror blockquote[data-kind="IMPORTANT"]::before { content: "Wichtig"; }
+.visual-editor:lang(de) .ProseMirror blockquote[data-kind="WARNING"]::before { content: "Warnung"; }
+.visual-editor:lang(de) .ProseMirror blockquote[data-kind="CAUTION"]::before { content: "Achtung"; }
+.visual-editor:lang(en) .ProseMirror blockquote[data-kind="NOTE"]::before { content: "Note"; }
+.visual-editor:lang(en) .ProseMirror blockquote[data-kind="TIP"]::before { content: "Tip"; }
+.visual-editor:lang(en) .ProseMirror blockquote[data-kind="IMPORTANT"]::before { content: "Important"; }
+.visual-editor:lang(en) .ProseMirror blockquote[data-kind="WARNING"]::before { content: "Warning"; }
+.visual-editor:lang(en) .ProseMirror blockquote[data-kind="CAUTION"]::before { content: "Caution"; }
