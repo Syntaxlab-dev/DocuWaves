@@ -297,6 +297,8 @@ def queue() -> list[dict]:
             "project_slug": project["slug"],
             "project_name": project["name"],
             "category_name": category["name"],
+            # What the admin needs to open the page in its editor.
+            "category_id": category["id"],
             **{k: state[k] for k in ("pending", "submitted_by", "submitted_at", "note", "changed_by")},
         })
     return sorted(entries, key=lambda e: e["submitted_at"])

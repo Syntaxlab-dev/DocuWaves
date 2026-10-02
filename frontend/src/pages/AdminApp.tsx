@@ -49,6 +49,8 @@ import { AdminUsersCard } from "@/components/AdminUsersCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { PresenceBanner } from "@/components/PresenceBanner";
+import { DiffView } from "@/components/DiffView";
+import { ReviewMark, ReviewPanel, ReviewQueueCard } from "@/components/ReviewWorkflow";
 import { useEditingPresence } from "@/lib/presence";
 import {
   api,
@@ -66,6 +68,8 @@ import {
   type PageVersion,
   type PreviewLink,
   type Project,
+  type ReviewQueueEntry,
+  type ReviewState,
   type SiteAnalytics,
   type SiteAsset,
   type SiteBranding,
@@ -198,6 +202,14 @@ export function AdminApp() {
   const [showTokens, setShowTokens] = useState(false);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showUsers, setShowUsers] = useState(false);
+  // The approval queue (services/page_review.py): its count in the header,
+  // re-read after every save so it never claims work that was just done.
+  const [showReviews, setShowReviews] = useState(false);
+  const [reviewCount, setReviewCount] = useState(0);
+  const [reviewsKey, setReviewsKey] = useState(0);
+  /** A queue entry being opened: the project, then the category, then the
+   *  editor -- each waits for the list it needs to have loaded. */
+  const [opening, setOpening] = useState<ReviewQueueEntry | null>(null);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   // The selected project's documentation versions, and which one the panels
@@ -220,6 +232,42 @@ export function AdminApp() {
   // panel below: browse it, don't change it. One flag rather than two, so
   // no panel can end up honouring one and not the other.
   const readOnly = frozen || !canWrite;
+
+  useEffect(() => {
+    api
+      .adminReviewQueue()
+      .then((r) => setReviewCount(r.count))
+      .catch(() => setReviewCount(0));
+  }, [reviewsKey]);
+  const refreshReviews = () => setReviewsKey((k) => k + 1);
+
+  function openReview(entry: ReviewQueueEntry) {
+    const project = projects.find((p) => p.slug === entry.project_slug);
+    if (!project) return;
+    setOpening(entry);
+    setEditing(null);
+    if (selectedProject?.id === project.id) {
+      // Same project: the categories are already there (or on their way).
+      const category = categories.find((c) => c.id === entry.category_id);
+      if (category) {
+        setSelectedCategory(category);
+        setEditing({ kind: "page", slug: entry.slug, language: entry.language });
+        setOpening(null);
+      }
+    } else {
+      setSelectedProject(project);
+      setSelectedCategory(null);
+    }
+  }
+
+  useEffect(() => {
+    if (!opening) return;
+    const category = categories.find((c) => c.id === opening.category_id);
+    if (!category) return;
+    setSelectedCategory(category);
+    setEditing({ kind: "page", slug: opening.slug, language: opening.language });
+    setOpening(null);
+  }, [categories, opening]);
 
   function loadRepoStatus() {
     api.contentRepoStatus().then(setRepoStatus);
@@ -345,6 +393,14 @@ export function AdminApp() {
               </Button>
             </>
           )}
+          <Button variant="ghost" size="sm" onClick={() => setShowReviews((v) => !v)}>
+            {t("review.queueButton")}
+            {reviewCount > 0 && (
+              <span className="ml-1.5 rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold leading-4 text-[var(--accent-ink)]">
+                {reviewCount}
+              </span>
+            )}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowInsights((v) => !v)}>
             {t("admin.insights")}
           </Button>
@@ -379,6 +435,16 @@ export function AdminApp() {
         {showTokens && <ApiTokensCard onClose={() => setShowTokens(false)} />}
         {showInsights && <AdminInsightsCard onClose={() => setShowInsights(false)} />}
         {showDiagnostics && <AdminDiagnosticsCard onClose={() => setShowDiagnostics(false)} />}
+        {showReviews && (
+          <ReviewQueueCard
+            refreshKey={reviewsKey}
+            onClose={() => setShowReviews(false)}
+            onOpen={(entry) => {
+              setShowReviews(false);
+              openReview(entry);
+            }}
+          />
+        )}
         {showUsers && <AdminUsersCard onClose={() => setShowUsers(false)} onSelfChanged={() => void refresh()} />}
 
         {/* Said once, at the top, rather than as a disabled tooltip on every
@@ -493,10 +559,16 @@ export function AdminApp() {
                         categories={categories}
                         version={viewing}
                         readOnly={readOnly}
-                        onSaved={() => loadPages(selectedCategory.id)}
+                        frozen={frozen}
+                        reviewRequired={Boolean(selectedProject.review_required)}
+                        onSaved={() => {
+                          loadPages(selectedCategory.id);
+                          refreshReviews();
+                        }}
                         onDone={() => {
                           setEditing(null);
                           loadPages(selectedCategory.id);
+                          refreshReviews();
                         }}
                       />
                     )}
@@ -1720,6 +1792,7 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
   const [image, setImage] = useState(project?.image ?? "");
   const [imageUrl, setImageUrl] = useState<string | null>(project?.image_url ?? null);
   const [isPrivate, setIsPrivate] = useState(project?.private ?? false);
+  const [reviewRequired, setReviewRequired] = useState(project?.review_required ?? false);
   const [acknowledged, setAcknowledged] = useState(false);
   // Whether the content repo is readable by anybody (backend
   // services/repo_exposure.py). Asked here rather than passed in: the form
@@ -1756,6 +1829,7 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
       description_i18n: resolvedDescription.i18n,
       private: isPrivate,
       acknowledge_public_repo: needsAck && acknowledged,
+      review_required: reviewRequired,
     };
     setSaving(true);
     try {
@@ -1818,6 +1892,14 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
             )}
           </div>
         )}
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5 rounded-md border border-[var(--border)] p-2">
+        <legend className="px-1 text-xs font-medium text-[var(--muted)]">{t("review.projectLegend")}</legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={reviewRequired} onChange={(e) => setReviewRequired(e.target.checked)} />
+          {t("review.projectRequired")}
+        </label>
+        <p className="text-xs text-[var(--muted)]">{t("review.projectHint")}</p>
       </fieldset>
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={saving}>
@@ -2289,6 +2371,8 @@ function PagesPanel({
                   on that language. A missing one is dimmed and dashed,
                   clicking it starts the translation. Nothing of this shows
                   on a single-language instance. */}
+              <ReviewMark variants={[...group.variants.values()]} />
+
               {multilingual && (
                 <div className="flex items-center gap-1" aria-label={t("admin.pageLanguages")}>
                   {site.languages.map((code) => {
@@ -2471,6 +2555,8 @@ function PageEditor({
   categories,
   version,
   readOnly,
+  frozen,
+  reviewRequired,
   onSaved,
   onDone,
 }: {
@@ -2486,6 +2572,11 @@ function PageEditor({
    *  The API refuses the write too -- this is what stops anyone reaching
    *  for a button that would only fail. */
   readOnly: boolean;
+  /** A frozen version specifically -- unlike `readOnly`, which is also a
+   *  read-only ACCOUNT, and such an account may still review. */
+  frozen: boolean;
+  /** The project publishes through an approval (services/page_review.py). */
+  reviewRequired: boolean;
   onSaved: () => void;
   onDone: () => void;
 }) {
@@ -2503,6 +2594,11 @@ function PageEditor({
   const [content, setContent] = useState("");
   const [targetCategoryId, setTargetCategoryId] = useState(categoryId);
   const [published, setPublished] = useState(false);
+  /** Whether the page is live on the server -- the toggle above is what the
+   *  next save will ask for. In a project that needs approval, a page that
+   *  is not live cannot be switched on here: it goes live by approval. */
+  const [livePublished, setLivePublished] = useState(false);
+  const [review, setReview] = useState<ReviewState | null>(null);
   const [tab, setTab] = useState<"edit" | "preview" | "history">("edit");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
@@ -2622,6 +2718,8 @@ function PageEditor({
       setContent("");
       setTargetCategoryId(categoryId);
       setPublished(false);
+      setLivePublished(false);
+      setReview(null);
       setLoadedId(null);
       setRevision("");
       setExisting([]);
@@ -2638,6 +2736,8 @@ function PageEditor({
         setContent(page.page.markdown_content);
         setTargetCategoryId(page.page.category_id);
         setPublished(page.page.published);
+        setLivePublished(page.page.published);
+        setReview(page.page.review ?? null);
         setLoadedId(page.page.id);
         setRevision(page.page.revision ?? "");
         setReviewedBy(page.page.reviewed_by);
@@ -2649,8 +2749,10 @@ function PageEditor({
         setTitle("");
         setContent("");
         setPublished(false);
+        setLivePublished(false);
+        setReview(null);
         setLoadedId(null);
-      setRevision("");
+        setRevision("");
         setReviewedBy("");
         setReviewedAt("");
         offerDraft(localDraftKey, "", "");
@@ -2808,7 +2910,9 @@ function PageEditor({
           language,
           slug: slug || undefined,
         });
-        await api.adminPublishPage(created.id, published);
+        // Not in a project that needs approval: a new page there is a
+        // draft until somebody approves it.
+        if (!reviewRequired) await api.adminPublishPage(created.id, published);
         setLoadedId(created.id);
         setSlug(created.slug);
         setExisting((codes) => (codes.includes(created.language) ? codes : [...codes, created.language]));
@@ -2833,8 +2937,13 @@ function PageEditor({
         // row it had is gone. Publishing under the old id 404s on a save
         // that actually worked, and silently drops the published state the
         // author just toggled.
-        await api.adminPublishPage(saved.id, published);
+        // Asked only when it changes anything: re-publishing a live page is
+        // a no-op, and in a project that needs approval a draft cannot be
+        // switched on here at all (the toggle says so).
+        if (published !== livePublished) await api.adminPublishPage(saved.id, published);
+        setLivePublished(published);
         setLoadedId(saved.id);
+        if (saved.review) setReview(saved.review);
         // May well be empty now: editing the body drops the review note.
         setReviewedBy(saved.reviewed_by);
         setReviewedAt(saved.reviewed_at);
@@ -2851,7 +2960,7 @@ function PageEditor({
       // What was just saved is what the server now has, so a draft written
       // from here on is written on top of THIS text.
       serverBase.current = fingerprint(content);
-      toast.success(t("admin.save"));
+      toast.success(reviewRequired && livePublished ? t("review.savedAsProposal") : t("admin.save"));
       // The list behind the editor is refreshed, but the editor stays open
       // on this page -- writing the other language is the very next thing
       // an author does after saving a translation.
@@ -3170,7 +3279,19 @@ function PageEditor({
             </option>
           ))}
         </select>
-        <Button variant="outline" size="icon" disabled={readOnly} onClick={() => setPublished((v) => !v)} title={published ? t("admin.published") : t("admin.draft")}>
+        <Button
+          variant="outline"
+          size="icon"
+          disabled={readOnly || (reviewRequired && !livePublished)}
+          onClick={() => setPublished((v) => !v)}
+          title={
+            reviewRequired && !livePublished
+              ? t("review.publishViaApproval")
+              : published
+                ? t("admin.published")
+                : t("admin.draft")
+          }
+        >
           {published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
         </Button>
       </div>
@@ -3188,6 +3309,20 @@ function PageEditor({
           onChanged={(by, at) => {
             setReviewedBy(by);
             setReviewedAt(at);
+          }}
+        />
+      )}
+
+      {loadedId !== null && review && !frozen && (
+        <ReviewPanel
+          pageId={loadedId}
+          review={review}
+          published={livePublished}
+          dirty={dirty}
+          canWrite={!readOnly}
+          onChanged={() => {
+            setReloadKey((k) => k + 1);
+            onSaved();
           }}
         />
       )}
@@ -3891,38 +4026,6 @@ function HistoryPanel({
 function formatCommitDate(iso: string, locale: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
-}
-
-/** Which of the four kinds of line this is. Order matters: `+++` and `---`
- *  are the diff's own file headers and would otherwise be read as an added
- *  and a removed line. Anything that is neither content nor a hunk header
- *  (`diff --git`, `index`, `similarity`/`rename`, `new file mode`, git's
- *  "\ No newline at end of file") is git talking about the file rather than
- *  quoting it. */
-function diffLineClass(line: string): string {
-  if (line.startsWith("@@")) return "diff-line diff-line-hunk";
-  if (line.startsWith("+++") || line.startsWith("---")) return "diff-line diff-line-meta";
-  if (line.startsWith("+")) return "diff-line diff-line-add";
-  if (line.startsWith("-")) return "diff-line diff-line-del";
-  if (line.startsWith(" ")) return "diff-line";
-  return "diff-line diff-line-meta";
-}
-
-/** A unified diff, rendered by hand -- see the .diff-* rules in index.css for
- *  why there is no library here. Each line keeps its own leading +/-, so
- *  added and removed stay distinguishable without relying on the colour. */
-function DiffView({ diff }: { diff: string }) {
-  const lines = diff.replace(/\n+$/, "").split("\n");
-  return (
-    <div className="diff-view max-h-[26rem] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface-2)] py-2">
-      {lines.map((line, index) => (
-        // An empty line still needs a box to draw its background in.
-        <span key={index} className={diffLineClass(line)}>
-          {line || " "}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 /** Upload button + the project's existing images, so re-using one on a
