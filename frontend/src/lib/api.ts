@@ -385,6 +385,9 @@ export type Role = "reader" | "viewer" | "editor" | "admin";
 
 export interface AuthStatus {
   setup_required: boolean;
+  /** Only while setup_required: the instance was installed with a setup
+   *  code (SETUP_TOKEN), and the setup screen has to ask for it. */
+  setup_token_required?: boolean;
   authenticated: boolean;
   username: string | null;
   /** null while signed out. */
@@ -797,8 +800,11 @@ function contentQuery(lang?: string, version?: string): string {
 export const api = {
   // Auth
   authStatus: () => request<AuthStatus>("/api/auth/status"),
-  setup: (username: string, password: string) =>
-    request("/api/auth/setup", { method: "POST", body: JSON.stringify({ username, password }) }),
+  setup: (username: string, password: string, setupToken = "") =>
+    request("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ username, password, setup_token: setupToken }),
+    }),
   login: (username: string, password: string) =>
     request("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request("/api/auth/logout", { method: "POST" }),

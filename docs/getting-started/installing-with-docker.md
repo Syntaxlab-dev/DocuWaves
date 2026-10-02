@@ -22,7 +22,16 @@ docker compose up -d --build
 
 Every line in the shipped `.env.example` is commented out, because every setting has a working default. Started this way, DocuWaves creates its own Git repository inside the data volume and commits every save to it — no account, no token, no remote.
 
-The shipped `docker-compose.yml` builds the image from the checkout. If you would rather not build, a published image is available at `ghcr.io/syntaxlab-dev/docuwaves` — tagged `latest` on the default branch, plus a short-commit tag and a semver tag on releases. Point the service at it with `image:` instead of `build:`.
+The shipped `docker-compose.yml` builds the image from the checkout. If you would rather not build, a published image is available at `ghcr.io/syntaxlab-dev/docuwaves`, for **amd64 and arm64** (a Raspberry Pi 4 or 5, or an ARM cloud server, works too). Point the service at it with `image:` instead of `build:`. Its tags:
+
+| Tag | What it is |
+|---|---|
+| `stable` | The newest release. This is the tag to run. |
+| `1.2.3`, `1.2` | A specific release, or the newest patch of one |
+| `latest` | The current state of the default branch, between releases |
+| a short commit hash | That exact build |
+
+Every release image, `stable` included, is rebuilt weekly with the latest fixes from its Debian base, and keeps the same tags. Pulling `stable` again picks those fixes up.
 
 Two things in that compose file matter and are easy to lose if you write your own:
 

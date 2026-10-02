@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from app.services import login_throttle, oidc_client, session_registry_store, users_store, visibility
 from app.services.client_address import client_address
 from app.services.same_origin import is_same_origin
+from app.settings import settings
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -14,6 +15,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 class Credentials(BaseModel):
     username: str
     password: str
+
+
+class SetupCredentials(Credentials):
+    setup_token: str = ""
 
 
 class PasswordChange(BaseModel):
@@ -64,10 +69,19 @@ def safe_next(target: str | None) -> str:
     return target[:500]
 
 
+# Failed setup codes count against this name, not against any account.
+_SETUP_THROTTLE_KEY = "(setup)"
+
+
 @router.get("/status", summary="Auth status")
 def auth_status(request: Request):
     if not users_store.is_configured():
-        return {"setup_required": True, "authenticated": False, "username": None}
+        return {
+            "setup_required": True,
+            "setup_token_required": bool(settings.setup_token),
+            "authenticated": False,
+            "username": None,
+        }
     # The same check the public site uses to show private projects
     # (services/visibility.py): a revoked or signed-out session is not
     # "authenticated" just because the cookie still says so.
@@ -86,10 +100,18 @@ def auth_status(request: Request):
 
 
 @router.post("/setup", summary="First-run admin account setup")
-def auth_setup(body: Credentials, request: Request):
+def auth_setup(body: SetupCredentials, request: Request):
     _refuse_cross_site(request)
     if users_store.is_configured():
         raise HTTPException(status_code=409, detail="An admin account already exists.")
+    if settings.setup_token:
+        # Throttled like a password: the installer's code is far too long to
+        # guess, but a code somebody chose by hand might not be.
+        address = client_address(request)
+        _refuse_if_throttled(address, _SETUP_THROTTLE_KEY)
+        if not secrets.compare_digest(body.setup_token.strip().encode(), settings.setup_token.encode()):
+            login_throttle.record_failure(address, _SETUP_THROTTLE_KEY)
+            raise HTTPException(status_code=403, detail="setup_token_invalid")
     if not body.username.strip() or len(body.password) < 8:
         raise HTTPException(status_code=400, detail="Username required, password needs at least 8 characters.")
     users_store.create_first_admin(body.username.strip(), body.password)
@@ -209,6 +231,12 @@ def oidc_callback(request: Request):
         return RedirectResponse("/?oidc_login=failed")
 
     if not users_store.is_configured():
+        if settings.setup_token:
+            # A provider login carries no setup code, so it cannot be what
+            # claims an instance that asks for one: set up with the code and a
+            # password first; this identity binds to that account on its
+            # first sign-in, by username, as below.
+            return RedirectResponse("/?oidc_login=setup_token")
         # First-run bootstrap: whoever completes a valid OIDC login first on
         # a totally unconfigured instance becomes the one admin account --
         # same trust model as POST /api/auth/setup. Random password (never

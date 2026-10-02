@@ -99,7 +99,9 @@ No account anywhere, no repository to create first, no token to mint:
 2. `docker compose up -d --build`
 3. Open `http://<your-server>:8091` — the first thing you'll see is the
    setup screen. Pick a username and password; this becomes the one admin
-   account.
+   account. (On a server the internet can reach, set `SETUP_TOKEN` in
+   `.env` first, so that only someone with that code can do this — see
+   "The first run" in the docs.)
 4. In the admin area, add a project, add a category to it, add a page,
    write some Markdown, and hit "Published" to make it visible on the
    public site.
@@ -163,13 +165,17 @@ decides it for you.
 
 Every push to `main` that passes the test suite is published to
 `ghcr.io/syntaxlab-dev/docuwaves` -- a push whose tests fail publishes
-nothing. Three kinds of tag:
+nothing. Built for amd64 and arm64. Four kinds of tag:
 
 | Tag | What it is | Use it for |
 |---|---|---|
+| `stable` | the newest release (never a pre-release) | a production instance that follows releases |
 | `latest` | whatever `main` was at its last green push | trying things out |
 | `<short sha>`, e.g. `96f8185` | exactly one commit, never moved | pinning a production instance |
-| `<version>`, e.g. `1.2.0` | a release, from a `v1.2.0` git tag | pinning a production instance |
+| `<version>`, e.g. `1.2.0` or `1.2` | a release, from a `v1.2.0` git tag | pinning a production instance |
+
+The weekly rebuild refreshes `latest` and the newest release (`stable` and
+its version tags), so Debian security fixes reach both.
 
 Pin production to a version or a sha, not `latest`: `latest` changes under
 you the next time the container is recreated, so an update happens when a

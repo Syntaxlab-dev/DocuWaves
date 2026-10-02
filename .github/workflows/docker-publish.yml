@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+  # A pull request that changes how the image is built builds it -- both
+  # architectures, pushed nowhere -- so a broken arm64 build is found
+  # before it is merged, not on main.
+  pull_request:
+    paths:
+      - Dockerfile
+      - backend/requirements.txt
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/docker-publish.yml
   # Weekly rebuild with no code change. The base image ships a Debian
   # userland, and most of what a container scan reports lives there rather
   # than in this project's own dependencies -- so those findings only clear
@@ -22,11 +32,14 @@ jobs:
   # The same suite a pull request runs, and nothing is built until it passes.
   # Without this, publish and tests ran side by side: a push that broke the
   # tests still became :latest -- the tag running instances pull.
+  # (A pull request runs it already, from tests.yml itself.)
   tests:
+    if: github.event_name != 'pull_request'
     uses: ./.github/workflows/tests.yml
 
   build-and-push:
     needs: tests
+    if: ${{ !cancelled() && (needs.tests.result == 'success' || needs.tests.result == 'skipped') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -45,10 +58,18 @@ jobs:
         env:
           REGISTRY: ${{ env.REGISTRY }}
 
+      # arm64 next to amd64: Raspberry Pis and the ARM servers most hosts
+      # now offer. Only the Python stage runs emulated (see the Dockerfile),
+      # and every pinned dependency ships a ready-made arm64 wheel, so
+      # nothing is compiled there.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -64,13 +85,80 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=,format=short
             type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=stable,enable=${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # `stable` -- the tag installed instances follow -- is the newest release,
+  # not main. The weekly rebuild above only refreshes main, so without this
+  # the Debian fixes it exists for would reach :latest and never :stable.
+  # Rebuilds that release from its own tag, under the same version tags.
+  rebuild-stable:
+    needs: build-and-push
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find the newest release
+        id: release
+        run: |
+          # Pre-releases (v1.1.0-rc.1) are never stable.
+          tag=$(git tag --list 'v[0-9]*' --sort=-v:refname | grep -v -- '-' | head -n 1 || true)
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ -z "$tag" ]; then echo "No release yet -- nothing to rebuild."; exit 0; fi
+          version=${tag#v}
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          {
+            echo "tags<<EOF"
+            echo "$image:$version"
+            echo "$image:${version%.*}"
+            echo "$image:stable"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check out the release
+        if: steps.release.outputs.tag != ''
+        run: git checkout --quiet "${{ steps.release.outputs.tag }}"
+
+      - name: Set up QEMU
+        if: steps.release.outputs.tag != ''
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        if: steps.release.outputs.tag != ''
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: steps.release.outputs.tag != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        if: steps.release.outputs.tag != ''
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.release.outputs.tags }}
+          cache-from: type=gha

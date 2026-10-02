@@ -10,9 +10,23 @@ The first page a fresh instance shows is **First-run setup**: a username and a p
 
 ![The first-run setup card: a heading "First-run setup", the line "Create the first admin account", a username field, a password field and a "Set up" button](../assets/first-run-setup.png)
 
+### The setup code
+
+Until that account exists, the first person to open the address can create it. On a server that the whole internet can reach, that might not be you.
+
+To prevent that, set a **setup code** before the first start: `SETUP_TOKEN` in `.env`, ideally something long and random:
+
+```bash
+SETUP_TOKEN=$(openssl rand -hex 16)
+```
+
+The installer does this for you and prints the code at the end. With a code set, the setup screen has a third field, **Setup code**, and creates the account only when the code matches. Wrong codes are rate-limited like wrong passwords. Once the account exists, the code is not used again, and you can delete the line.
+
 Until it exists, the whole API is closed. Every route under `/api/` except the login flow itself and the public read-only endpoints answers `401 setup_required` — API tokens included, since there is nobody yet who could have created one.
 
 If you configured [single sign-on](/p/docuwaves/pages/single-sign-on) before the first start, you can skip this screen: on an instance with no account yet, the first successful SSO login creates the administrator account from your SSO username. After that, SSO only signs in accounts that already exist here.
+
+With a setup code configured, this shortcut is off, because a provider login cannot carry the code. Set up with the code and a password first, using the same username your provider reports. Your first SSO sign-in then binds to that account.
 
 Everybody else is added afterwards, under **Accounts**, with the role they need — see [Accounts and roles](/p/docuwaves/pages/accounts-and-roles).
 
