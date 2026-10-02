@@ -3112,6 +3112,23 @@ function PageEditor({
     }
   }
 
+  /** The { } menu of the visual editor: this project's (and the whole
+   *  site's) variables and snippets, for the version being edited. */
+  async function loadInsertables() {
+    const [own, site] = await Promise.all([
+      api.adminListSnippets(projectSlug, version || ""),
+      api.adminListSnippets("", ""),
+    ]);
+    const keys = (yaml: string) =>
+      yaml
+        .split("\n")
+        .map((line) => /^([A-Za-z0-9_.-]+)\s*:/.exec(line)?.[1])
+        .filter((name): name is string => Boolean(name));
+    const variables = new Set(["project", ...(version ? ["version"] : []), ...keys(own.variables), ...keys(site.variables)]);
+    const snippets = new Set([...own.snippets, ...site.snippets].map((s) => s.name));
+    return { variables: [...variables].sort(), snippets: [...snippets].sort() };
+  }
+
   function onVisualKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     // Formatting shortcuts are the visual editor's own; saving is the page's.
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
@@ -3760,6 +3777,7 @@ function PageEditor({
               uploadImage={uploadForVisual}
               resolveImage={(src) => resolveImageSrc(src, projectSlug, targetCategorySlug, version || undefined)}
               onKeyDown={onVisualKeyDown}
+              insertables={loadInsertables}
             />
           </Suspense>
         )}

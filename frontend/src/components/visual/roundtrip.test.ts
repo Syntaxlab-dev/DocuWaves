@@ -33,6 +33,9 @@ describe("what the visual editor carries through", () => {
     "a horizontal rule": "Above\n\n---\n\nBelow\n",
     variables: "Runs on port {{port}} for {{product}}.\n",
     "hard breaks": "Line one\\\nline two\n",
+    "inline formulas": "Euler: $e^{i\\pi}+1=0$ and $a_1 + b_2$.\n",
+    "formula blocks": "$$\n\\int_0^1 x^2\\,dx = \\frac{1}{3}\n$$\n",
+    "diagrams": "```mermaid\ngraph LR\n  A --> B\n```\n",
   };
   for (const [name, markdown] of Object.entries(cases)) {
     it(name, async () => {
@@ -63,7 +66,7 @@ describe("what makes a page open in Markdown instead", () => {
   // Not lost -- refused: the round-trip check catches each of these, and the
   // page stays in the Markdown editor until the visual one learns them.
   const cases: Record<string, string> = {
-    math: "Euler: $e^{i\\pi} + 1 = 0$\n",
+    "raw HTML": "<details><summary>More</summary>\n\nHidden.\n\n</details>\n",
   };
   for (const [name, markdown] of Object.entries(cases)) {
     it(name, async () => {
@@ -131,4 +134,48 @@ describe("DocuWaves' own documentation", () => {
       if (ok) expect(await visualRoundTrip(out)).toBe(out);
     });
   }
+});
+
+describe("DocuWaves' blocks in the visual editor", () => {
+  it("a callout is a box that knows its kind", async () => {
+    const root = document.createElement("div");
+    const { createVisualEditor } = await import("./milkdown");
+    const handle = await createVisualEditor({ root, markdown: "> [!CAUTION]\n> Deletes everything.\n" });
+    const box = root.querySelector("blockquote");
+    expect(box?.getAttribute("data-kind")).toBe("CAUTION");
+    expect(box?.textContent).toBe("Deletes everything.");
+    handle.destroy();
+  });
+
+  it("turning a paragraph into a callout writes GitHub's marker", async () => {
+    const root = document.createElement("div");
+    const { createVisualEditor } = await import("./milkdown");
+    const { setCalloutCommand } = await import("./extensions");
+    const handle = await createVisualEditor({ root, markdown: "Back up first.\n" });
+    handle.run(setCalloutCommand, "WARNING");
+    expect(handle.markdown().trim()).toBe("> [!WARNING]\n> Back up first.");
+    handle.run(setCalloutCommand, "TIP");
+    expect(handle.markdown().trim()).toBe("> [!TIP]\n> Back up first.");
+    handle.destroy();
+  });
+
+  it("variables and snippets are shown as chips and written as they were", async () => {
+    const root = document.createElement("div");
+    const { createVisualEditor } = await import("./milkdown");
+    const markdown = "Port {{port}} here.\n\n<!-- snippet: prerequisites -->\n";
+    const handle = await createVisualEditor({ root, markdown });
+    expect(root.querySelector(".visual-chip-variable")?.textContent).toBe("{{port}}");
+    expect(root.querySelector(".visual-chip-snippet")?.textContent).toContain("prerequisites");
+    expect(handle.markdown()).toBe(markdown);
+    handle.destroy();
+  });
+
+  it("inserting a variable puts {{name}} at the cursor", async () => {
+    const root = document.createElement("div");
+    const { createVisualEditor } = await import("./milkdown");
+    const handle = await createVisualEditor({ root, markdown: "Port: \n" });
+    handle.insertMarkdown("{{port}}", true);
+    expect(handle.markdown()).toContain("{{port}}");
+    handle.destroy();
+  });
 });
