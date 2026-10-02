@@ -93,6 +93,8 @@ class PagePlan:
     order: int
     body: str = ""
     warnings: list[str] = field(default_factory=list)
+    # Only a sync publishes (services/docs_sync.py); an import never does.
+    published: bool = False
 
 
 @dataclass
@@ -369,9 +371,16 @@ def _first_heading(body: str) -> tuple[str, str]:
 # ---- Planning ----
 
 
-def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> Plan:
+def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "", sync: bool = False) -> Plan:
     """What an import would do. Writes nothing. Exactly one of the two:
-    an existing project's slug, or the name of the project to create."""
+    an existing project's slug, or the name of the project to create.
+
+    `sync` (services/docs_sync.py): the archive IS the project's content, so
+    names are not checked against what the project has now -- the sync
+    replaces it -- and they come from the FILE, not the title: a page keeps
+    its address when somebody rewords its heading (`slug:` in the front
+    matter overrides). Pages are published unless they say `draft: true` or
+    `published: false`; images go to `assets/sync/`, which the sync owns."""
     files, names, skipped = read_archive(data)
     warnings: list[dict] = []
     html = [p for p in files if p.lower().endswith((".html", ".htm"))]
@@ -444,7 +453,12 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
             (meta.get(k) for k in ("sidebar_position", "nav_order", "weight", "order") if isinstance(meta.get(k), (int, float))),
             None,
         )
-        docs[path] = {"title": title, "body": body, "position": position, "number": number, "stem": stem}
+        explicit_slug = content_files.make_slug(str(meta["slug"])) if meta.get("slug") else ""
+        published = not (meta.get("draft") is True or meta.get("published") is False)
+        docs[path] = {
+            "title": title, "body": body, "position": position, "number": number, "stem": stem,
+            "slug": explicit_slug, "published": published,
+        }
 
     # -- Categories: one per directory --
     def category_key(path: str) -> str:
@@ -478,14 +492,14 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
             key.lower(),
         )
 
-    existing_categories = categories_store.list_categories(project_id, version=version) if project_id else []
+    existing_categories = categories_store.list_categories(project_id, version=version) if project_id and not sync else []
     order_base = max((c["sort_order"] for c in existing_categories), default=-1) + 1
     planned_category_slugs: set[str] = set()
 
     def category_taken(slug: str, _exclude=None) -> bool:
         if slug in planned_category_slugs:
             return True
-        return bool(project_id and categories_store.slug_taken(project_id, version, slug))
+        return bool(project_id and not sync and categories_store.slug_taken(project_id, version, slug))
 
     categories: list[CategoryPlan] = []
     for index, key in enumerate(sorted(keys, key=category_sort)):
@@ -493,7 +507,10 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
         name = str(meta.get("label") or "").strip() or (
             " / ".join(_pretty(part) for part in key.split("/")) if key else _general_name()
         )
-        slug = content_files.unique_slug(name, category_taken)
+        # A synced category's address comes from its folder, like a page's
+        # from its file -- renaming the label must not move the URL.
+        basis = (key.replace("/", "-") if key else _general_name()) if sync else name
+        slug = content_files.unique_slug(basis, category_taken)
         planned_category_slugs.add(slug)
         categories.append(CategoryPlan(key=key, slug=slug, name=name, order=order_base + index))
     by_key = {c.key: c for c in categories}
@@ -504,7 +521,18 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
     def page_taken(slug: str, _exclude=None) -> bool:
         if slug in planned_page_slugs:
             return True
-        return bool(project_id and pages_store.slug_taken(project_id, version, slug))
+        return bool(project_id and not sync and pages_store.slug_taken(project_id, version, slug))
+
+    def slug_basis(path: str, key: str) -> str:
+        doc = docs[path]
+        if not sync:
+            return doc["title"]
+        if doc["slug"]:
+            return doc["slug"]
+        if doc["stem"].lower() in _INDEX_NAMES:
+            # docs/betrieb/index.md is "the Betrieb page".
+            return key.split("/")[-1] if key else "start"
+        return _strip_number(doc["stem"])[1]
 
     def page_sort(path: str):
         doc = docs[path]
@@ -521,9 +549,12 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
     for key in keys:
         paths = sorted((p for p in markdown if category_key(p) == key), key=page_sort)
         for position, path in enumerate(paths):
-            slug = content_files.unique_slug(docs[path]["title"], page_taken)
+            slug = content_files.unique_slug(slug_basis(path, key), page_taken)
             planned_page_slugs.add(slug)
-            page = PagePlan(source=path, slug=slug, title=docs[path]["title"], order=position)
+            page = PagePlan(
+                source=path, slug=slug, title=docs[path]["title"], order=position,
+                published=sync and docs[path]["published"],
+            )
             by_key[key].pages.append(page)
             page_by_path[path] = page
 
@@ -539,9 +570,11 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "") -> 
         directory, filename = posixpath.split(rel)
         stem, ext = posixpath.splitext(filename)
         safe_dir = "/".join(content_files.make_slug(part) for part in directory.split("/") if part)
-        base = posixpath.join("imported", safe_dir, f"{content_files.make_slug(stem)}{ext.lower()}")
+        base = posixpath.join("sync" if sync else "imported", safe_dir, f"{content_files.make_slug(stem)}{ext.lower()}")
         candidate, n = base, 2
-        while candidate in used_targets or (asset_dir / candidate).exists():
+        # A sync owns assets/sync/ and rewrites it whole: only its own names
+        # can collide there.
+        while candidate in used_targets or (not sync and (asset_dir / candidate).exists()):
             if (asset_dir / candidate).exists() and (asset_dir / candidate).read_bytes() == files[source]:
                 break  # the very same file is already there: reuse it
             candidate = f"{posixpath.splitext(base)[0]}-{n}{ext.lower()}"

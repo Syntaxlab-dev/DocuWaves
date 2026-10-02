@@ -77,6 +77,10 @@ _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
 # The only prefix an API token authorizes, and the only prefix that refuses
 # a session. Kept as a constant so the two rules below can't drift apart.
 _TOKEN_ONLY_PREFIX = "/api/mcp"
+# Docs-as-code (services/docs_sync.py): token-only too, and only for a SYNC
+# token -- which in turn opens nothing else.
+_SYNC_PREFIX = "/api/sync/"
+_TOKEN_PREFIXES = (_TOKEN_ONLY_PREFIX, _SYNC_PREFIX)
 
 _BEARER = "bearer "
 
@@ -162,11 +166,11 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         # ---- API token path (before the session path, see the docstring) --
         credential = _bearer_credential(request)
         if credential is not None:
-            if not path.startswith(_TOKEN_ONLY_PREFIX):
+            if not path.startswith(_TOKEN_PREFIXES):
                 return JSONResponse(
                     {
-                        "detail": "An API token only authorizes the MCP endpoint at /api/mcp. The rest of the "
-                        "admin API is reached with an admin session (a browser login).",
+                        "detail": "An API token only authorizes the MCP endpoint at /api/mcp (and a sync token "
+                        "/api/sync/). The rest of the admin API is reached with an admin session (a browser login).",
                     },
                     status_code=403,
                 )
@@ -185,10 +189,18 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
             # The record (name and scope, never the value) travels on the
             # request's own scope so the MCP router can decide what this
             # token may do without looking the header up a second time.
+            # A sync token syncs and does nothing else; a read/write token
+            # never syncs. Checked here, once, for both directions.
+            if (record["scope"] == api_tokens_store.SYNC_SCOPE) != path.startswith(_SYNC_PREFIX):
+                return JSONResponse(
+                    {"detail": "This token is not for this endpoint: a sync token only works on /api/sync/<project>, "
+                     "and only a sync token does."},
+                    status_code=403,
+                )
             request.state.api_token = record
             return None
 
-        if path.startswith(_TOKEN_ONLY_PREFIX):
+        if path.startswith(_TOKEN_PREFIXES):
             return JSONResponse(
                 {
                     "detail": "This endpoint requires an API token: send 'Authorization: Bearer dwt_...'. "

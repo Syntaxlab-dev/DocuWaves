@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
-from app.routers import admin_content, api_tokens, auth, feeds, mcp, public_content, sitemap, users
+from app.routers import admin_content, api_tokens, auth, feeds, mcp, public_content, sitemap, sync, users
 from app.services import content_sync, content_versions, db, git_content_repo, seo, session_registry_store, session_secret
 from app.settings import settings
 
@@ -135,6 +135,7 @@ app.include_router(users.router)
 # the admin ones, so /api/admin/tokens is matched by its own router rather
 # than by anything more general.
 app.include_router(mcp.router)
+app.include_router(sync.router)
 app.include_router(public_content.router)
 # /sitemap.xml and /robots.txt: root paths, so they have to be registered
 # before the catch-all SPA route below (which would otherwise 404 the first

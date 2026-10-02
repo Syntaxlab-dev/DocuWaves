@@ -549,11 +549,14 @@ export interface SiteAsset {
 export interface ApiToken {
   id: number;
   name: string;
-  /** "read" or "write"; write implies read. */
+  /** "read" or "write" (write implies read) for the MCP endpoint, or
+   *  "sync" for docs-as-code (backend services/docs_sync.py). */
   scope: string;
   expires_at: string;
   created_at: string;
   last_used_at: string;
+  /** The one project a sync token may update; "" otherwise. */
+  project?: string;
 }
 
 /** The create response, and the ONE moment the token value exists outside
@@ -1052,10 +1055,10 @@ export const api = {
   // MCP endpoint. Session-only, like every other /api/admin route: a token
   // can never be used to create another token.
   adminListTokens: () => request<{ tokens: ApiToken[]; max_tokens: number }>("/api/admin/tokens"),
-  adminCreateToken: (name: string, scope: string, expiresAt: string) =>
+  adminCreateToken: (name: string, scope: string, expiresAt: string, project = "") =>
     request<CreatedApiToken>("/api/admin/tokens", {
       method: "POST",
-      body: JSON.stringify({ name, scope, expires_at: expiresAt }),
+      body: JSON.stringify({ name, scope, expires_at: expiresAt, project }),
     }),
   adminRevokeToken: (id: number) => request(`/api/admin/tokens/${id}`, { method: "DELETE" }),
 
