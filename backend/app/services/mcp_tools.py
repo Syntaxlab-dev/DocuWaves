@@ -106,7 +106,7 @@ def _writable_version(project: dict, requested: str | None) -> str:
     version = _version(project, requested)
     # Raises FrozenVersionError with the message every other write path in
     # this app produces for the same mistake -- caught by the router.
-    content_versions.ensure_writable(project["slug"], version)
+    content_versions.ensure_editable(project["slug"], version)
     return version
 
 

@@ -197,7 +197,7 @@ def update_category(
         return None
     project = projects_store.get_project(current["project_id"])
     version = current["version"]
-    content_versions.ensure_writable(project["slug"], version)
+    content_versions.ensure_editable(project["slug"], version)
     paths: list[str] = []
     if slug != current["slug"]:
         paths += content_files.rename_category(project["slug"], current["slug"], slug, version)
@@ -215,7 +215,7 @@ def reorder_category(project_id: int, category_id: int, direction: int, author: 
         return
     project = projects_store.get_project(project_id)
     version = current["version"]
-    content_versions.ensure_writable(project["slug"], version)
+    content_versions.ensure_editable(project["slug"], version)
     categories = list_categories(project_id, "", version)
     index = next((i for i, c in enumerate(categories) if c["id"] == category_id), None)
     if index is None:
@@ -242,7 +242,7 @@ def delete_category(category_id: int, author: str) -> None:
     if current is None:
         return
     project = projects_store.get_project(current["project_id"])
-    content_versions.ensure_writable(project["slug"], current["version"])
+    content_versions.ensure_editable(project["slug"], current["version"])
     paths = content_files.delete_category(project["slug"], current["slug"], current["version"])
     if paths:
         git_content_repo.commit_and_push(paths, f"Remove category: {current['name']} ({project['name']})", author)

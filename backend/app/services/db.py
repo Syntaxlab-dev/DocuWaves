@@ -175,7 +175,10 @@ _SQLITE_SCHEMA = [
         -- INTEGER on both backends so one comparison works everywhere.
         private INTEGER NOT NULL DEFAULT 0,
         -- 1 = nothing goes live without approval (services/page_review.py).
-        review_required INTEGER NOT NULL DEFAULT 0
+        review_required INTEGER NOT NULL DEFAULT 0,
+        -- Docs-as-code: the `source:` mapping as JSON, '' for a project edited
+        -- here (services/docs_sync.py).
+        source TEXT NOT NULL DEFAULT ''
     )
     """,
     # `version` is the documentation version a row belongs to (see
@@ -423,7 +426,10 @@ _POSTGRES_SCHEMA = [
         -- INTEGER on both backends so one comparison works everywhere.
         private INTEGER NOT NULL DEFAULT 0,
         -- 1 = nothing goes live without approval (services/page_review.py).
-        review_required INTEGER NOT NULL DEFAULT 0
+        review_required INTEGER NOT NULL DEFAULT 0,
+        -- Docs-as-code: the `source:` mapping as JSON, '' for a project edited
+        -- here (services/docs_sync.py).
+        source TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -617,6 +623,7 @@ _ADDED_COLUMNS = {
     "projects": {
         "private": "INTEGER NOT NULL DEFAULT 0",
         "review_required": "INTEGER NOT NULL DEFAULT 0",
+        "source": "TEXT NOT NULL DEFAULT ''",
     },
     "api_tokens": {
         "project_slug": "TEXT NOT NULL DEFAULT ''",

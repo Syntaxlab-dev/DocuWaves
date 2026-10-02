@@ -128,6 +128,7 @@ class TestWhenItFires:
         monkeypatch.setattr(pages_store.projects_store, "get_project", lambda pid: PROJECT)
         monkeypatch.setattr(pages_store.categories_store, "get_category", lambda cid: CATEGORY)
         monkeypatch.setattr(pages_store.content_versions, "ensure_writable", lambda *a: None)
+        monkeypatch.setattr(pages_store.content_versions, "ensure_editable", lambda *a: None)
         monkeypatch.setattr(pages_store.content_files, "write_page", lambda *a, **k: [])
         monkeypatch.setattr(pages_store.content_files, "relocate_page", lambda *a, **k: [])
         monkeypatch.setattr(pages_store.content_files, "delete_page", lambda *a, **k: ["x.md"])

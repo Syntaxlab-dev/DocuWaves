@@ -401,7 +401,7 @@ def create_page(
     # by the category it is being created in. A frozen one is refused here
     # rather than after the file has been written.
     version = category["version"]
-    content_versions.ensure_writable(project["slug"], version)
+    content_versions.ensure_editable(project["slug"], version)
     requested, _ = _language_pair(language)
     # A translation takes the position the page already has: order is a
     # property of the page, and a fresh MAX+1 here would put the English
@@ -511,7 +511,7 @@ def _update_page(
     if expected_revision and expected_revision != page_revision(base):
         raise PageChangedError(page_revision(base))
     version = current["version"]
-    content_versions.ensure_writable(project["slug"], version)
+    content_versions.ensure_editable(project["slug"], version)
     if new_category["version"] != version:
         # The category dropdown only ever offers the page's own version's
         # categories, so this is a hand-built request: moving a page across
@@ -598,7 +598,7 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
         return None
     project = projects_store.get_project(current["project_id"])
     category = categories_store.get_category(current["category_id"])
-    content_versions.ensure_writable(project["slug"], current["version"])
+    content_versions.ensure_editable(project["slug"], current["version"])
     if published and not current["published"] and review_required(project):
         # Going live is what an approval does in this project
         # (services/page_review.py). Taking a page OFF the site is not
@@ -661,7 +661,7 @@ def set_review(page_id: int, reviewed_by: str, author: str) -> dict | None:
     category = categories_store.get_category(current["category_id"])
     if project is None or category is None:
         return None
-    content_versions.ensure_writable(project["slug"], current["version"])
+    content_versions.ensure_editable(project["slug"], current["version"])
     name = reviewed_by.strip()[:_REVIEWER_MAX_LENGTH]
     stamp = datetime.now(timezone.utc).date().isoformat() if name else ""
     paths = content_files.write_page(
@@ -706,7 +706,7 @@ def reorder_page(category_id: int, page_id: int, direction: int, author: str) ->
     project = projects_store.get_project(a["project_id"])
     category = categories_store.get_category(category_id)
     version = category["version"]
-    content_versions.ensure_writable(project["slug"], version)
+    content_versions.ensure_editable(project["slug"], version)
     paths = _write_order(project["slug"], category["slug"], a["project_id"], a["slug"], b["sort_order"], version)
     paths += _write_order(project["slug"], category["slug"], b["project_id"], b["slug"], a["sort_order"], version)
     git_content_repo.commit_and_push(paths, f"Reorder pages: {a['title']} / {b['title']}", author)
@@ -724,7 +724,7 @@ def delete_page(page_id: int, author: str) -> None:
         return
     project = projects_store.get_project(current["project_id"])
     category = categories_store.get_category(current["category_id"])
-    content_versions.ensure_writable(project["slug"], current["version"])
+    content_versions.ensure_editable(project["slug"], current["version"])
     paths = content_files.delete_page(project["slug"], category["slug"], current["slug"], current["version"])
     if paths:
         # Any preview link to this page goes with it. The links name the page
@@ -902,7 +902,7 @@ def restore_page(page_id: int, sha: str, author: str) -> dict | None:
         return None
     # Before the history is even read: a frozen version answers with the
     # frozen message, not with a restore that turns out to be refused later.
-    content_versions.ensure_writable(project["slug"], current["version"])
+    content_versions.ensure_editable(project["slug"], current["version"])
 
     version = page_at_commit(page_id, sha)
     if version is None:

@@ -58,6 +58,7 @@ git_content_repo.commit_and_push() expects for staging.
 """
 
 import logging
+import re
 import shutil
 from pathlib import Path
 
@@ -201,6 +202,9 @@ def read_project(slug: str) -> dict | None:
         # Same rule: only the exact word. `review: required` means nothing in
         # this project goes live without somebody else's approval.
         "review_required": str(data.get("review", "")).strip().lower() == "required",
+        # Docs-as-code (services/docs_sync.py): the project's pages come from
+        # a code repository, so they are read-only here.
+        "source": normalize_source(data.get("source")),
     }
 
 
@@ -216,6 +220,7 @@ def write_project(
     description_i18n: dict[str, str] | None = None,
     private: bool = False,
     review_required: bool = False,
+    source: dict | None = None,
 ) -> list[str]:
     """The two i18n mappings default to None so every existing caller (and
     every single-language install) writes exactly the plain `name: My
@@ -247,8 +252,31 @@ def write_project(
         data["visibility"] = "private"
     if review_required:
         data["review"] = "required"
+    source = normalize_source(source)
+    if source is not None:
+        data["source"] = source
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return [_rel(path)]
+
+
+def normalize_source(raw) -> dict | None:
+    """A project's `source:` -- where its pages come from (docs-as-code), or
+    None. `source: repository` and `source: {}` both mean "from a repository,
+    details not given"; `repo` is the repository's web address (only
+    http(s) is kept -- it becomes a link in the admin area), `branch` and
+    `path` where the docs live in it."""
+    if raw is None or raw is False or raw == "":
+        return None
+    if not isinstance(raw, dict):
+        raw = {}
+    repo = str(raw.get("repo") or "").strip().rstrip("/")
+    if repo and not re.match(r"^https?://[^\s]+$", repo):
+        repo = ""
+    return {
+        "repo": repo,
+        "branch": str(raw.get("branch") or "main").strip() or "main",
+        "path": str(raw.get("path") if raw.get("path") is not None else "docs").strip().strip("/"),
+    }
 
 
 def delete_project(slug: str) -> list[str]:

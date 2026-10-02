@@ -14,6 +14,7 @@ admin UI shifts with up/down arrows (same "no drag-and-drop library" choice
 CachePanel already made deliberately) -- persisted in `order:` inside
 `_project.yml` now, not just a DB column.
 """
+import json
 
 from app.services import content_assets, content_files, content_sync, db, git_content_repo, site_languages
 
@@ -48,13 +49,16 @@ def _row_to_dict(row, language: str = "") -> dict:
         "image_url": content_assets.project_cover_url(row[3], row[9]),
         "private": bool(row[10]),
         "review_required": bool(row[11]),
+        # Docs-as-code: {repo, branch, path} when the pages come from a code
+        # repository (read-only here), else None.
+        "source": json.loads(row[12]) if row[12] else None,
     }
 
 
 # `image` appended rather than slotted in beside `icon`/`color`: every index
 # above is a positional read in _row_to_dict(), and the new column is the one
 # thing here that has no reason to renumber them.
-_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order, image, private, review_required"
+_COLUMNS = "id, name, name_i18n, slug, icon, color, description, description_i18n, sort_order, image, private, review_required, source"
 
 
 def list_projects(language: str = "", published_only: bool = False, include_private: bool = True) -> list[dict]:
@@ -137,10 +141,12 @@ def create_project(
     image: str = "",
     private: bool = False,
     review_required: bool = False,
+    source: dict | None = None,
 ) -> dict:
     order = _next_order()
     paths = content_files.write_project(
-        slug, name, icon, color, image, description, order, name_i18n, description_i18n, private, review_required
+        slug, name, icon, color, image, description, order, name_i18n, description_i18n, private, review_required,
+        source,
     )
     git_content_repo.commit_and_push(paths, f"Add project: {name}", author)
     content_sync.full_sync()
@@ -160,6 +166,7 @@ def update_project(
     image: str = "",
     private: bool = False,
     review_required: bool = False,
+    source: dict | None = None,
 ) -> dict | None:
     current = get_project(project_id)
     if current is None:
@@ -169,7 +176,7 @@ def update_project(
         paths += content_files.rename_project(current["slug"], slug)
     paths += content_files.write_project(
         slug, name, icon, color, image, description, current["sort_order"], name_i18n, description_i18n, private,
-        review_required,
+        review_required, source,
     )
     git_content_repo.commit_and_push(paths, f"Update project: {name}", author)
     content_sync.full_sync()
@@ -186,7 +193,7 @@ def _rewrite(project: dict, order: int) -> list[str]:
     return content_files.write_project(
         project["slug"], project["name"], project["icon"], project["color"], project["image"],
         project["description"], order, project["name_i18n"], project["description_i18n"], project["private"],
-        project["review_required"],
+        project["review_required"], project["source"],
     )
 
 

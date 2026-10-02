@@ -122,3 +122,68 @@ class TestTokens:
         assert api_tokens_store.rejection_reason("ci", "sync", "", "") is not None
         assert api_tokens_store.rejection_reason("ci", "read", "", "alt") is not None
         assert api_tokens_store.rejection_reason("ci", "sync", "", "alt") is None
+
+
+class TestReadOnly:
+    def admin(self, world):
+        client = TestClient(world["app"])
+        client.post("/api/auth/login", json={"username": "chef", "password": "chef-passwort-123"}, headers=ORIGIN)
+        return client
+
+    def test_the_first_sync_marks_the_project_and_its_pages_are_read_only(self, world):
+        push(world, DOCS, token())
+        assert "source:" in (world["content"] / "alt/_project.yml").read_text()
+        project = projects_store.get_project_by_slug("alt")
+        assert project["source"] == {"repo": "", "branch": "main", "path": "docs"}
+        chef = self.admin(world)
+        page = pages()["install"]
+        r = chef.put(f"/api/admin/pages/{page['id']}", headers=ORIGIN,
+                     json={"title": "X", "markdown_content": "y", "category_id": page["category_id"]})
+        assert r.status_code == 403 and "code repository" in r.json()["detail"]
+        assert chef.post(f"/api/admin/pages/{page['id']}/publish?published=false", headers=ORIGIN).status_code == 403
+        assert chef.post("/api/admin/pages", headers=ORIGIN,
+                         json={"title": "Neu", "markdown_content": "", "category_id": page["category_id"]}).status_code == 403
+
+    def test_an_assistant_cannot_write_there_either(self, world):
+        push(world, DOCS, token())
+        from app.services import mcp_tools
+        import pytest as _pytest
+        with _pytest.raises(Exception, match="code repository"):
+            mcp_tools.update_page({"project": "alt", "page": "install", "markdown": "x"}, {"name": "bot", "scope": "write"})
+
+    def test_the_editor_gets_a_link_to_the_file(self, world):
+        push(world, DOCS, token())
+        chef = self.admin(world)
+        project = projects_store.get_project_by_slug("alt")
+        r = chef.put(f"/api/admin/projects/{project['id']}", headers=ORIGIN, json={
+            "name": "Alt", "source": {"repo": "https://github.com/acme/pagenest", "branch": "main", "path": "docs"},
+        })
+        assert r.status_code == 200, r.text
+        page = pages()["install"]
+        data = chef.get(f"/api/admin/pages/{page['id']}").json()
+        assert data["synced"] is True
+        assert data["source_edit_url"] == "https://github.com/acme/pagenest/edit/main/docs/setup/install.md"
+        runs = chef.get("/api/admin/projects/alt/sync").json()
+        assert runs["source"]["repo"] == "https://github.com/acme/pagenest" and len(runs["runs"]) == 1
+
+    def test_switching_the_source_off_makes_it_editable_again(self, world):
+        push(world, DOCS, token())
+        chef = self.admin(world)
+        project = projects_store.get_project_by_slug("alt")
+        chef.put(f"/api/admin/projects/{project['id']}", headers=ORIGIN, json={"name": "Alt", "source": None})
+        page = pages()["install"]
+        r = chef.put(f"/api/admin/pages/{page['id']}", headers=ORIGIN,
+                     json={"title": "Install", "markdown_content": "Hier geändert.", "category_id": page["category_id"]})
+        assert r.status_code == 200
+
+    def test_a_javascript_repo_address_is_not_kept(self, world):
+        from app.services import content_files
+        assert content_files.normalize_source({"repo": "javascript:alert(1)"})["repo"] == ""
+
+
+def test_edit_links_per_host():
+    file = "setup/install.md"
+    source = {"branch": "main", "path": "docs"}
+    assert docs_sync.edit_url({**source, "repo": "https://gitlab.com/a/b"}, file) == "https://gitlab.com/a/b/-/edit/main/docs/setup/install.md"
+    assert docs_sync.edit_url({**source, "repo": "https://codeberg.org/a/b.git"}, file) == "https://codeberg.org/a/b/_edit/main/docs/setup/install.md"
+    assert docs_sync.edit_url({**source, "repo": ""}, file) == ""

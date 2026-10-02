@@ -34,6 +34,7 @@ from app.services import (
     diagnostics,
     editing_presence,
     link_check,
+    docs_sync,
     importer,
     page_feedback_store,
     page_review,
@@ -332,6 +333,9 @@ class ProjectIn(BaseModel):
     # Nothing in the project goes live without somebody else's approval
     # (services/page_review.py).
     review_required: bool = False
+    # Docs-as-code: {repo, branch, path} when the pages come from a code
+    # repository (services/docs_sync.py); null = edited here.
+    source: dict | None = None
 
 
 def _refuse_private_on_public_repo(body: "ProjectIn", currently_private: bool = False) -> None:
@@ -360,7 +364,7 @@ def admin_create_project(body: ProjectIn, request: Request):
         project = projects_store.create_project(
             name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
             _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
-            body.review_required,
+            body.review_required, body.source,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -383,7 +387,7 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
         updated = projects_store.update_project(
             project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
             _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
-            body.review_required,
+            body.review_required, body.source,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -636,9 +640,32 @@ def admin_get_page(page_id: int):
     view = page_review.editor_view(page)
     return {
         **view,
+        **_source_info(page),
         "revision": pages_store.page_revision(view),
         "languages": pages_store.page_languages(page["project_id"], page["slug"], page["version"]),
     }
+
+
+def _source_info(page: dict) -> dict:
+    """For a docs-as-code project: that the page is read-only here, and where
+    to change it instead (services/docs_sync.py)."""
+    project = projects_store.get_project(page["project_id"])
+    source = (project or {}).get("source")
+    if source is None:
+        return {"synced": False, "source_edit_url": ""}
+    file = docs_sync.source_file(project["slug"], page["version"], page["slug"])
+    return {"synced": True, "source_edit_url": docs_sync.edit_url(source, file)}
+
+
+@router.get(
+    "/projects/{project_slug}/sync",
+    summary="Docs-as-code: where this project's pages come from, and the last syncs",
+)
+def admin_project_sync(project_slug: str):
+    project = projects_store.get_project_by_slug(project_slug)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return {"source": project["source"], "runs": docs_sync.runs(project_slug)}
 
 
 @router.get(
@@ -660,7 +687,7 @@ def admin_find_page(project_slug: str, page_slug: str, language: str = "", versi
     page = pages_store.get_page_by_slug(project["id"], page_slug, _page_language(language), resolved)
     if page is not None:
         page = page_review.editor_view(page)
-        page = {**page, "revision": pages_store.page_revision(page)}
+        page = {**page, **_source_info(page), "revision": pages_store.page_revision(page)}
     # `frozen` so the editor can open a frozen version's page read-only and
     # say why, instead of offering a Save button that the API then refuses.
     return {"page": page, "languages": languages, "frozen": content_versions.is_frozen(project_slug, resolved)}

@@ -53,6 +53,7 @@ import { PrivateBadge } from "@/components/PrivateBadge";
 import { PresenceBanner } from "@/components/PresenceBanner";
 import { DiffView } from "@/components/DiffView";
 import { ImportCard } from "@/components/ImportCard";
+import { SyncBanner } from "@/components/SyncBanner";
 import { UiLanguageToggle } from "@/components/UiLanguageToggle";
 import { ReviewMark, ReviewPanel, ReviewQueueCard } from "@/components/ReviewWorkflow";
 import { useEditingPresence } from "@/lib/presence";
@@ -237,6 +238,11 @@ export function AdminApp() {
   // panel below: browse it, don't change it. One flag rather than two, so
   // no panel can end up honouring one and not the other.
   const readOnly = frozen || !canWrite;
+  // Docs-as-code: the pages and categories come from a code repository and
+  // are changed there (backend services/docs_sync.py). Snippets, versions
+  // and images are not the sync's, so only these panels follow it.
+  const synced = Boolean(selectedProject?.source);
+  const contentReadOnly = readOnly || synced;
 
   useEffect(() => {
     api
@@ -626,6 +632,9 @@ export function AdminApp() {
                 )}
 
                 {frozen && <FrozenNotice projectSlug={selectedProject.slug} version={viewing} />}
+                {selectedProject.source && !frozen && (
+                  <SyncBanner projectSlug={selectedProject.slug} source={selectedProject.source} />
+                )}
 
                 {/* min-w-0 on the right column: a grid track is sized by its
                     content unless told otherwise, so a wide unified diff in the
@@ -639,7 +648,7 @@ export function AdminApp() {
                     projectSlug={selectedProject.slug}
                     categories={categories}
                     selected={selectedCategory}
-                    readOnly={readOnly}
+                    readOnly={contentReadOnly}
                     onSelect={(c) => {
                       setSelectedCategory(c);
                       setEditing(null);
@@ -653,7 +662,7 @@ export function AdminApp() {
                     {selectedCategory && editing === null && (
                       <PagesPanel
                         pages={pages}
-                        readOnly={readOnly}
+                        readOnly={contentReadOnly}
                         onEdit={setEditing}
                         onChanged={() => loadPages(selectedCategory.id)}
                       />
@@ -666,8 +675,8 @@ export function AdminApp() {
                         categoryId={selectedCategory.id}
                         categories={categories}
                         version={viewing}
-                        readOnly={readOnly}
-                        frozen={frozen}
+                        readOnly={contentReadOnly}
+                        frozen={frozen || synced}
                         reviewRequired={Boolean(selectedProject.review_required)}
                         onSaved={() => {
                           loadPages(selectedCategory.id);
@@ -1932,6 +1941,10 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
   const [imageUrl, setImageUrl] = useState<string | null>(project?.image_url ?? null);
   const [isPrivate, setIsPrivate] = useState(project?.private ?? false);
   const [reviewRequired, setReviewRequired] = useState(project?.review_required ?? false);
+  const [fromRepo, setFromRepo] = useState(Boolean(project?.source));
+  const [repo, setRepo] = useState(project?.source?.repo ?? "");
+  const [branch, setBranch] = useState(project?.source?.branch ?? "main");
+  const [docsPath, setDocsPath] = useState(project?.source?.path ?? "docs");
   const [acknowledged, setAcknowledged] = useState(false);
   // Whether the content repo is readable by anybody (backend
   // services/repo_exposure.py). Asked here rather than passed in: the form
@@ -1969,6 +1982,9 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
       private: isPrivate,
       acknowledge_public_repo: needsAck && acknowledged,
       review_required: reviewRequired,
+      // Sent on every save: a save that left it out would switch a synced
+      // project back to editable without anyone asking for that.
+      source: fromRepo ? { repo: repo.trim(), branch: branch.trim() || "main", path: docsPath.trim() } : null,
     };
     setSaving(true);
     try {
@@ -2039,6 +2055,27 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
           {t("review.projectRequired")}
         </label>
         <p className="text-xs text-[var(--muted)]">{t("review.projectHint")}</p>
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5 rounded-md border border-[var(--border)] p-2">
+        <legend className="px-1 text-xs font-medium text-[var(--muted)]">{t("sync.sourceLegend")}</legend>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" name="source" checked={!fromRepo} onChange={() => setFromRepo(false)} />
+          {t("sync.sourceEditor")}
+        </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="radio" name="source" checked={fromRepo} onChange={() => setFromRepo(true)} />
+          {t("sync.sourceRepo")}
+        </label>
+        {fromRepo && (
+          <>
+            <Input placeholder={t("sync.repoPlaceholder")} value={repo} onChange={(e) => setRepo(e.target.value)} />
+            <div className="flex gap-2">
+              <Input placeholder="main" value={branch} onChange={(e) => setBranch(e.target.value)} />
+              <Input placeholder="docs" value={docsPath} onChange={(e) => setDocsPath(e.target.value)} />
+            </div>
+            <p className="text-xs text-[var(--muted)]">{t("sync.sourceHint")}</p>
+          </>
+        )}
       </fieldset>
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={saving}>
@@ -2739,6 +2776,8 @@ function PageEditor({
    *  is not live cannot be switched on here: it goes live by approval. */
   const [livePublished, setLivePublished] = useState(false);
   const [review, setReview] = useState<ReviewState | null>(null);
+  /** Docs-as-code: where this page's file can be changed instead. */
+  const [sourceEditUrl, setSourceEditUrl] = useState("");
   const [tab, setTab] = useState<"edit" | "preview" | "history">("edit");
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
@@ -2878,6 +2917,7 @@ function PageEditor({
         setPublished(page.page.published);
         setLivePublished(page.page.published);
         setReview(page.page.review ?? null);
+        setSourceEditUrl(page.page.source_edit_url ?? "");
         setLoadedId(page.page.id);
         setRevision(page.page.revision ?? "");
         setReviewedBy(page.page.reviewed_by);
@@ -3451,6 +3491,18 @@ function PageEditor({
             setReviewedAt(at);
           }}
         />
+      )}
+
+      {sourceEditUrl && (
+        <a
+          href={sourceEditUrl}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="mt-2 inline-flex items-center gap-1.5 self-start rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)]"
+        >
+          <GitBranch className="h-4 w-4" />
+          {t("sync.editInRepo")}
+        </a>
       )}
 
       {loadedId !== null && review && !frozen && (
