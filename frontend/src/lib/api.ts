@@ -150,7 +150,7 @@ export interface Page extends PageSummary {
 
 /** What an import would do, or did (backend services/importer.py). */
 export interface ImportSummary {
-  tool: "markdown" | "mkdocs" | "gitbook" | "docusaurus" | "obsidian" | "confluence";
+  tool: "markdown" | "mkdocs" | "gitbook" | "docusaurus" | "obsidian" | "confluence" | "notion";
   project: { slug: string; name: string; new: boolean };
   categories: { slug: string; name: string; exists: boolean; pages: { title: string; slug: string; source: string }[] }[];
   pages: number;
