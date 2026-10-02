@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useRef,
   useState,
@@ -43,7 +45,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MarkdownView } from "@/components/MarkdownView";
+import { MarkdownView, resolveImageSrc } from "@/components/MarkdownView";
+import type { VisualEditorHandle } from "@/components/visual/VisualEditor";
 import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
@@ -111,6 +114,22 @@ import { accentVariables, applyTheme, getPreferredTheme } from "@/lib/theme";
  * A field is edited as a map of language code to text; "" is the key a
  * single-language instance uses, since it has no code to name.
  */
+// The visual editor (components/visual/), loaded only when somebody writes
+// with it: ProseMirror is no business of the public site's bundle.
+const VisualEditor = lazy(() => import("@/components/visual/VisualEditor"));
+
+type EditorMode = "visual" | "markdown";
+const EDITOR_MODE_KEY = "docuwaves.editorMode";
+
+/** The author's choice, per browser. Visual unless they chose Markdown. */
+function storedEditorMode(): EditorMode {
+  try {
+    return localStorage.getItem(EDITOR_MODE_KEY) === "markdown" ? "markdown" : "visual";
+  } catch {
+    return "visual";
+  }
+}
+
 type FieldValues = Record<string, string>;
 
 const SINGLE = [""];
@@ -2796,6 +2815,13 @@ function PageEditor({
    *  stale the moment it succeeds. */
   const [reloadKey, setReloadKey] = useState(0);
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  /** Visual or Markdown (see storedEditorMode), and whether THIS text can be
+   *  edited visually without losing anything -- checked whenever a text
+   *  arrives from somewhere other than the visual editor itself. */
+  const [editorMode, setEditorMode] = useState<EditorMode>(storedEditorMode);
+  const [visualCheck, setVisualCheck] = useState<"pending" | "ok" | "lossy">("pending");
+  const [textArrived, setTextArrived] = useState(0);
+  const visualRef = useRef<VisualEditorHandle>(null);
   /** A local draft of unsaved text found for this page, waiting to be
    *  restored or discarded, and whether the page has changed on the server
    *  since it was made. Held in state rather than re-read from storage on
@@ -2923,6 +2949,7 @@ function PageEditor({
         setReviewedBy(page.page.reviewed_by);
         setReviewedAt(page.page.reviewed_at);
         offerDraft(localDraftKey, page.page.title, page.page.markdown_content);
+        setTextArrived((n) => n + 1);
       } else {
         // This language has no version yet: an empty editor, but on the
         // page's own slug and in its own category.
@@ -3034,12 +3061,72 @@ function PageEditor({
     focusAt(0);
   }
 
+  // Visual editing only for a text it carries through unchanged (see
+  // components/visual/milkdown.ts); anything else opens in Markdown, with
+  // the reason above it, rather than losing a construct on the next save.
+  useEffect(() => {
+    if (editorMode !== "visual") return;
+    let current = true;
+    setVisualCheck("pending");
+    import("@/components/visual/milkdown")
+      .then(({ editableVisually }) => editableVisually(content))
+      .then((ok) => current && setVisualCheck(ok ? "ok" : "lossy"))
+      .catch(() => current && setVisualCheck("lossy"));
+    return () => {
+      current = false;
+    };
+    // Checked when a text ARRIVES (loaded, restored) or the mode changes --
+    // not on every keystroke the visual editor itself produces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorMode, textArrived, slug, language]);
+
+  function chooseEditorMode(mode: EditorMode) {
+    setEditorMode(mode);
+    try {
+      localStorage.setItem(EDITOR_MODE_KEY, mode);
+    } catch {
+      // A browser that keeps nothing simply asks again next time.
+    }
+  }
+
+  const visualActive = editorMode === "visual" && visualCheck === "ok";
+
+  /** One image from the visual editor (pasted, dropped or picked): the same
+   *  upload as everywhere else, answering the Markdown path to it. */
+  async function uploadForVisual(file: File): Promise<string | null> {
+    const named =
+      !file.name || /^image\.\w+$/i.test(file.name)
+        ? new File([file], pastedImageName(file, new Date()), { type: file.type })
+        : file;
+    setUploading({ done: 0, total: 1 });
+    try {
+      const asset = await api.adminUploadAsset(projectSlug, named, version || undefined);
+      setAssetsKey((key) => key + 1);
+      toast.success(t("admin.imageUploaded"));
+      return asset.markdown_path;
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+      return null;
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  function onVisualKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    // Formatting shortcuts are the visual editor's own; saving is the page's.
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void onSave();
+    }
+  }
+
   function onRestoreDraft() {
     if (!draftOffer) return;
     setTitle(draftOffer.title);
     setContent(draftOffer.text);
     setDirty(true);
     setTab("edit");
+    setTextArrived((n) => n + 1);
     setDraftOffer(null);
     setDraftStale(false);
     // Restored, not saved: the content repo still holds what it held, and
@@ -3077,12 +3164,18 @@ function PageEditor({
   }
 
   async function onSave() {
+    // In the visual editor the latest keystrokes may not have reached
+    // `content` yet (see VisualEditorHandle.markdown): take the text from
+    // the editor itself, and make it the editor's state too.
+    const latestVisual = visualActive && tab === "edit" ? visualRef.current?.markdown() : null;
+    const text = latestVisual ?? content;
+    if (latestVisual != null && latestVisual !== content) setContent(latestVisual);
     setSaving(true);
     try {
       if (loadedId === null) {
         const created = await api.adminCreatePage({
           title,
-          markdown_content: content,
+          markdown_content: text,
           category_id: targetCategoryId,
           // Both only matter on a multilingual instance; the backend reads
           // an empty language as "the default" and an empty slug as "a new
@@ -3097,7 +3190,7 @@ function PageEditor({
         setSlug(created.slug);
         setExisting((codes) => (codes.includes(created.language) ? codes : [...codes, created.language]));
       } else {
-        const input = { title, markdown_content: content, category_id: targetCategoryId, language };
+        const input = { title, markdown_content: text, category_id: targetCategoryId, language };
         let saved;
         try {
           saved = await api.adminUpdatePage(loadedId, { ...input, base_revision: revision || undefined });
@@ -3139,7 +3232,7 @@ function PageEditor({
       setDraftStale(false);
       // What was just saved is what the server now has, so a draft written
       // from here on is written on top of THIS text.
-      serverBase.current = fingerprint(content);
+      serverBase.current = fingerprint(text);
       toast.success(reviewRequired && livePublished ? t("review.savedAsProposal") : t("admin.save"));
       // The list behind the editor is refreshed, but the editor stays open
       // on this page -- writing the other language is the very next thing
@@ -3349,7 +3442,7 @@ function PageEditor({
   /** A drop is only ours on the two tabs that have Markdown behind them, and
    *  never on a frozen version -- there is nothing to upload into there, and
    *  the server would refuse it. */
-  const dropTarget = !readOnly && tab !== "history";
+  const dropTarget = !readOnly && tab !== "history" && !(tab === "edit" && visualActive);
 
   function onDragEnter(event: DragEvent) {
     if (!dropTarget || !isFileDrag(event)) return;
@@ -3552,6 +3645,29 @@ function PageEditor({
           <History className="h-3.5 w-3.5" aria-hidden="true" />
           {t("admin.historyTab")}
         </button>
+        {tab === "edit" && (
+          <div
+            role="group"
+            aria-label={t("visual.modeLabel")}
+            className="mb-1 ml-auto inline-flex h-8 items-center self-center rounded-lg border border-[var(--border)] p-0.5 text-xs font-medium"
+          >
+            {(["visual", "markdown"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={editorMode === mode}
+                onClick={() => chooseEditorMode(mode)}
+                className={`rounded-md px-2 py-1 transition-colors ${
+                  editorMode === mode
+                    ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                    : "text-[var(--muted)] hover:text-[var(--ink)]"
+                }`}
+              >
+                {mode === "visual" ? t("visual.modeVisual") : t("visual.modeMarkdown")}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Only while the body is empty, and gone for good once it isn't:
@@ -3588,7 +3704,11 @@ function PageEditor({
           projectSlug={projectSlug}
           version={version}
           reloadKey={assetsKey}
-          onInsert={(asset) => insertSnippet(`![](${asset.markdown_path})`)}
+          onInsert={(asset) =>
+            visualActive && tab === "edit"
+              ? visualRef.current?.insertImage(asset.markdown_path)
+              : insertSnippet(`![](${asset.markdown_path})`)
+          }
         />
       )}
 
@@ -3616,7 +3736,34 @@ function PageEditor({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        {tab === "edit" && (
+        {tab === "edit" && editorMode === "visual" && visualCheck === "lossy" && (
+          <p className="mb-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--muted)]">
+            {t("visual.lossyNotice")}
+          </p>
+        )}
+        {tab === "edit" && editorMode === "visual" && visualCheck === "pending" && (
+          <p className="min-h-[420px] px-1 py-2 text-sm text-[var(--muted)]">{t("visual.loading")}</p>
+        )}
+        {tab === "edit" && visualActive && (
+          <Suspense fallback={<p className="min-h-[420px] px-1 py-2 text-sm text-[var(--muted)]">{t("visual.loading")}</p>}>
+            <VisualEditor
+              // A fresh editor per page and language: undo history must not
+              // reach back into another page's text.
+              key={`${slug}:${language}:${reloadKey}`}
+              ref={visualRef}
+              value={content}
+              readOnly={readOnly}
+              onChange={(markdown) => {
+                setContent(markdown);
+                setDirty(true);
+              }}
+              uploadImage={uploadForVisual}
+              resolveImage={(src) => resolveImageSrc(src, projectSlug, targetCategorySlug, version || undefined)}
+              onKeyDown={onVisualKeyDown}
+            />
+          </Suspense>
+        )}
+        {tab === "edit" && (editorMode === "markdown" || visualCheck === "lossy") && (
           <Textarea
             ref={editorRef}
             value={content}
@@ -3630,7 +3777,7 @@ function PageEditor({
             className="min-h-[420px] font-mono"
           />
         )}
-        {tab === "edit" && <MarkdownCheatSheet />}
+        {tab === "edit" && (editorMode === "markdown" || visualCheck === "lossy") && <MarkdownCheatSheet />}
         {tab === "preview" && (
           <div className="min-h-[420px] rounded-lg border border-[var(--border)] p-4">
             <ResolvedPreview

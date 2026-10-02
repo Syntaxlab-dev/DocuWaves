@@ -52,10 +52,15 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # There is no frontend test suite yet. The build runs the TypeScript
-      # compiler over the whole app, which is what catches the mistakes a
-      # reviewer of a UI change most often makes -- a renamed prop, a value
-      # that can be null.
+      # The build runs the TypeScript compiler over the whole app, which is
+      # what catches the mistakes a reviewer of a UI change most often makes
+      # -- a renamed prop, a value that can be null.
       - name: Type-check and build
         working-directory: frontend
         run: npm run build
+
+      # The visual editor's round trip: every page in docs/ has to come back
+      # from it unchanged (see src/components/visual/roundtrip.test.ts).
+      - name: Frontend tests
+        working-directory: frontend
+        run: npm test
