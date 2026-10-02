@@ -575,7 +575,8 @@ Pages can be written **visually** — a toolbar for headings, bold, lists,
 tables (with row/column tools), links, code blocks, formulas and images,
 pasted screenshots included; callouts as their coloured boxes, `{{variables}}`
 and snippets as chips (inserted from a menu), formulas rendered, Mermaid
-diagrams previewed under their source — or in
+diagrams previewed under their source, tab groups as tabs (rename, add,
+remove) — or in
 **Markdown**: **Visual | Markdown** next to the editor's tabs, remembered per
 browser, Visual by default. Either way the file is Markdown; the visual
 editor (Milkdown, MIT, on the same remark parser the site renders with) reads

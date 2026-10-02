@@ -278,3 +278,122 @@ export const insertMathCommand = $command("InsertMath", (ctx) => (value: string 
   dispatch?.(state.tr.replaceSelectionWith(mathInlineSchema.type(ctx).create({ value })).scrollIntoView());
   return true;
 });
+
+// ---- Tabs ----
+//
+// `<!-- tabs -->`, a heading per tab, `<!-- /tabs -->` (see lib/tabs.ts for
+// the rule the site renders by, which this follows exactly). A group the
+// site would accept becomes a tab group here; anything else -- no heading
+// first, never closed, a tab title with formatting in it -- is left exactly
+// as written, so nothing about it can change.
+
+const TABS_OPEN = /^<!--\s*tabs\s*-->$/i;
+const TABS_CLOSE = /^<!--\s*\/tabs\s*-->$/i;
+
+type TabMd = { type: string; value?: string; depth?: number; title?: string; children?: TabMd[] };
+
+function isTabMarker(node: TabMd | undefined, marker: RegExp): boolean {
+  if (node?.type === "html") return typeof node.value === "string" && marker.test(node.value.trim());
+  // Milkdown's HTML node is inline, so it wraps a block of HTML in a
+  // paragraph before this runs: a paragraph holding nothing but the marker
+  // is the marker.
+  return node?.type === "paragraph" && node.children?.length === 1 && isTabMarker(node.children[0], marker);
+}
+
+function toTabGroup(nodes: TabMd[]): TabMd | null {
+  const first = nodes[0];
+  if (first?.type !== "heading" || !first.depth) return null;
+  const depth = first.depth;
+  const panels: TabMd[] = [];
+  for (const node of nodes) {
+    if (node.type === "heading" && node.depth === depth) {
+      // Only a plain-text title: anything richer would not survive being
+      // a tab's label, and the group stays as written instead.
+      if (!(node.children ?? []).every((c) => c.type === "text")) return null;
+      const title = (node.children ?? []).map((c) => c.value ?? "").join("");
+      if (!title.trim()) return null;
+      panels.push({ type: "tabPanel", title, depth, children: [] });
+    } else {
+      panels[panels.length - 1].children!.push(node);
+    }
+  }
+  for (const panel of panels) if (!panel.children!.length) panel.children!.push({ type: "paragraph", children: [] });
+  return { type: "tabGroup", depth, children: panels };
+}
+
+function groupTabs(node: TabMd) {
+  const children = node.children;
+  if (!children) return;
+  for (let i = 0; i < children.length; i += 1) {
+    if (isTabMarker(children[i], TABS_OPEN)) {
+      const end = children.findIndex((child, j) => j > i && isTabMarker(child, TABS_CLOSE));
+      const group = end === -1 ? null : toTabGroup(children.slice(i + 1, end));
+      if (group) {
+        group.children!.forEach((panel) => panel.children!.forEach(groupTabs));
+        children.splice(i, end - i + 1, group);
+        continue;
+      }
+    }
+    groupTabs(children[i]);
+  }
+}
+
+export const remarkVisualTabs = $remark("remarkVisualTabs", () => () => (tree) => {
+  groupTabs(tree as unknown as TabMd);
+});
+
+export const tabGroupSchema = $nodeSchema("tab_group", () => ({
+  group: "block",
+  content: "tab_panel+",
+  defining: true,
+  isolating: true,
+  attrs: { depth: { default: 4, validate: "number" } },
+  parseDOM: [{ tag: "div[data-type=tabs]", getAttrs: (dom) => ({ depth: Number((dom as HTMLElement).dataset.depth ?? 4) }) }],
+  toDOM: (node) => ["div", { "data-type": "tabs", "data-depth": String(node.attrs.depth) }, 0],
+  parseMarkdown: {
+    match: ({ type }) => type === "tabGroup",
+    runner: (state, node, type) => {
+      state.openNode(type, { depth: Number((node as unknown as TabMd).depth ?? 4) }).next(node.children).closeNode();
+    },
+  },
+  toMarkdown: {
+    match: (node) => node.type.name === "tab_group",
+    runner: (state, node) => {
+      state.addNode("html", undefined, "<!-- tabs -->");
+      state.next(node.content);
+      state.addNode("html", undefined, "<!-- /tabs -->");
+    },
+  },
+}));
+
+export const tabPanelSchema = $nodeSchema("tab_panel", () => ({
+  content: "block+",
+  defining: true,
+  isolating: true,
+  attrs: { title: { default: "Tab", validate: "string" }, depth: { default: 4, validate: "number" } },
+  parseDOM: [{ tag: "div[data-type=tab]", getAttrs: (dom) => ({ title: (dom as HTMLElement).dataset.title ?? "Tab" }) }],
+  toDOM: (node) => ["div", { "data-type": "tab", "data-title": node.attrs.title }, 0],
+  parseMarkdown: {
+    match: ({ type }) => type === "tabPanel",
+    runner: (state, node, type) => {
+      const md = node as unknown as TabMd;
+      state.openNode(type, { title: md.title ?? "Tab", depth: Number(md.depth ?? 4) }).next(node.children).closeNode();
+    },
+  },
+  toMarkdown: {
+    match: (node) => node.type.name === "tab_panel",
+    runner: (state, node) => {
+      state.openNode("heading", undefined, { depth: node.attrs.depth }).addNode("text", undefined, node.attrs.title).closeNode();
+      state.next(node.content);
+    },
+  },
+}));
+
+/** A new tab group at the cursor: two tabs to start from. */
+export const insertTabsCommand = $command("InsertTabs", (ctx) => (titles: string[] = ["Tab 1", "Tab 2"]) => (state, dispatch) => {
+  const paragraph = state.schema.nodes.paragraph;
+  const panels = titles.map((title) => tabPanelSchema.type(ctx).create({ title, depth: 4 }, paragraph.create()));
+  const group = tabGroupSchema.type(ctx).create({ depth: 4 }, panels);
+  dispatch?.(state.tr.replaceSelectionWith(group).scrollIntoView());
+  return true;
+});

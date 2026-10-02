@@ -20,6 +20,7 @@ import {
   Code,
   Columns3,
   MessageSquareWarning,
+  PanelsTopLeft,
   Rows3,
   Sigma,
   Heading2,
@@ -66,7 +67,7 @@ import "@milkdown/kit/prose/view/style/prosemirror.css";
 import "@milkdown/kit/prose/tables/style/tables.css";
 import { useI18n } from "@/lib/i18n";
 import { createVisualEditor, type VisualHandle } from "./milkdown";
-import { CALLOUT_KINDS, insertMathCommand, setCalloutCommand } from "./extensions";
+import { CALLOUT_KINDS, insertMathCommand, insertTabsCommand, setCalloutCommand } from "./extensions";
 
 /** What can be inserted with the { } button: variable names and snippets. */
 export interface Insertables {
@@ -230,6 +231,7 @@ const VisualEditor = forwardRef<VisualEditorHandle, Props>(function VisualEditor
       { label: t("visual.table"), icon: Table, action: run(insertTableCommand, { row: 3, col: 3 }) },
       { label: t("visual.rule"), icon: Minus, action: run(insertHrCommand) },
       { label: t("visual.image"), icon: ImagePlus, action: () => fileInput.current?.click() },
+      { label: t("visual.tabs"), icon: PanelsTopLeft, action: run(insertTabsCommand, ["Tab 1", "Tab 2"]) },
       {
         label: t("visual.formula"),
         icon: Sigma,
