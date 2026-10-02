@@ -266,3 +266,9 @@ def test_a_github_callout_keeps_its_kind(world):
     text = full_page("gh", "a")["markdown_content"]
     assert "> [!CAUTION]\n> Rot." in text
     assert "> [!CAUTION]\n> **Obsidian**" in text
+
+
+def test_inline_code_is_never_converted(world):
+    body = "Write `{% hint style=\"info\" %}`, `[[wiki links]]` or `![x](../assets/x.png)` -- as examples.\n"
+    importer.apply(make_zip({"a.md": "# A\n\n" + body}), "chef", new_project_name="Ic")
+    assert full_page("ic", "a")["markdown_content"].strip() == body.strip()

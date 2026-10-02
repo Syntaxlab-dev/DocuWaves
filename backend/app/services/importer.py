@@ -76,7 +76,7 @@ _BOMB_RATIO = 200
 _BOMB_MIN_BYTES = 1024 * 1024
 
 MARKDOWN_EXTENSIONS = (".md", ".markdown", ".mdx")
-_NAV_FILES = ("mkdocs.yml", "mkdocs.yaml", "summary.md", "_category_.json", ".gitbook.yaml")
+_NAV_FILES = ("mkdocs.yml", "mkdocs.yaml", "summary.md", "_category_.json", "_category.yml", ".gitbook.yaml")
 _SKIP_DIRS = {"__macosx", "node_modules", ".git", ".github", "site", "build", ".docusaurus"}
 
 
@@ -104,6 +104,7 @@ class CategoryPlan:
     name: str
     order: int
     exists: bool = False
+    icon: str = ""
     pages: list[PagePlan] = field(default_factory=list)
 
 
@@ -467,12 +468,23 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "", syn
 
     category_meta: dict[str, dict] = {}
     for path in files:
-        if path.split("/")[-1] == "_category_.json" and path.startswith(root_prefix):
-            try:
-                data_json = json.loads(_text(files[path]))
-            except ValueError:
-                continue
-            category_meta[posixpath.dirname(path[len(root_prefix):])] = data_json
+        name = path.split("/")[-1]
+        if not path.startswith(root_prefix) or name not in ("_category_.json", "_category.yml"):
+            continue
+        try:
+            if name == "_category_.json":
+                meta = json.loads(_text(files[path]))
+            else:
+                # DocuWaves' own category file: a content folder from another
+                # instance -- or this project's own docs/ -- imports as it is.
+                raw = yaml.safe_load(_text(files[path])) or {}
+                meta = {"label": raw.get("name"), "position": raw.get("order"), "icon": raw.get("icon")}
+        except (ValueError, yaml.YAMLError):
+            continue
+        if isinstance(meta, dict):
+            category_meta.setdefault(posixpath.dirname(path[len(root_prefix):]), {}).update(
+                {k: v for k, v in meta.items() if v is not None}
+            )
 
     keys = sorted({category_key(p) for p in markdown})
     nav_first = {}
@@ -509,10 +521,14 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "", syn
         )
         # A synced category's address comes from its folder, like a page's
         # from its file -- renaming the label must not move the URL.
-        basis = (key.replace("/", "-") if key else _general_name()) if sync else name
+        basis = (
+            "-".join(_strip_number(part)[1] for part in key.split("/")) if key else _general_name()
+        ) if sync else name
         slug = content_files.unique_slug(basis, category_taken)
         planned_category_slugs.add(slug)
-        categories.append(CategoryPlan(key=key, slug=slug, name=name, order=order_base + index))
+        categories.append(
+            CategoryPlan(key=key, slug=slug, name=name, order=order_base + index, icon=str(meta.get("icon") or ""))
+        )
     by_key = {c.key: c for c in categories}
 
     # -- Pages: slugs first (links need them), bodies after --
@@ -662,6 +678,26 @@ _OBSIDIAN_CALLOUT = re.compile(r"^>\s*\[!(\w+)\][+-]?\s*(.*)$")
 _MDX_LINE = re.compile(r"^(import|export)\s.+")
 
 
+_INLINE_CODE = re.compile(r"(`+)(?!`)(.+?)(?<!`)\1(?!`)")
+
+
+def _shield(line: str) -> tuple[str, list[str]]:
+    """Inline code taken out of the line before any conversion, and put back
+    after: `{% hint %}` or `[[wiki links]]` written as an EXAMPLE in a page
+    about those tools must come through as written."""
+    spans: list[str] = []
+
+    def keep(match: re.Match) -> str:
+        spans.append(match.group(0))
+        return f"\x00{len(spans) - 1}\x00"
+
+    return _INLINE_CODE.sub(keep, line), spans
+
+
+def _unshield(line: str, spans: list[str]) -> str:
+    return re.sub("\x00(\\d+)\x00", lambda m: spans[int(m.group(1))], line)
+
+
 def _blocks(markdown: str, context: _Context) -> list[str]:
     """The structural pass: callouts and tool syntax, never inside a fenced
     code block (a tutorial ABOUT MkDocs must keep its `!!! note` example)."""
@@ -743,11 +779,12 @@ def _blocks(markdown: str, context: _Context) -> list[str]:
                 i += 1
                 continue
 
+        line, spans = _shield(line)
         line = _GITBOOK_EMBED.sub(lambda m: f"<{m.group(1)}>", line)
         if _GITBOOK_TAG.search(line):
             context.warn.append(f"GitBook tag removed: {_GITBOOK_TAG.search(line).group(0)[:60]}")
             line = _GITBOOK_TAG.sub("", line)
-        out.append(line)
+        out.append(_unshield(line, spans))
         i += 1
 
     if mdx_dropped:
@@ -791,7 +828,9 @@ def _resolve(target: str, context: _Context) -> str | None:
 
 def _rewrite_target(raw: str, context: _Context, is_image: bool) -> str:
     target = raw[1:-1] if raw.startswith("<") and raw.endswith(">") else raw
-    if _EXTERNAL.match(target):
+    if _EXTERNAL.match(target) or target.startswith("/p/"):
+        # External, or already a DocuWaves reading address (a content folder
+        # written for DocuWaves links that way): nothing to rewrite.
         return raw
     path_part, _, fragment = target.partition("#")
     path_part = unquote(path_part.split("?")[0])
@@ -855,6 +894,7 @@ def convert(markdown: str, context: _Context) -> str:
         if fence is not None:
             out.append(line)
             continue
+        line, spans = _shield(line)
         line = _WIKI.sub(lambda m: _wiki(m, context), line)
         line = _LINK.sub(
             lambda m: f"{m.group(1)}[{m.group(2)}]({_rewrite_target(m.group(3), context, bool(m.group(1)))}{m.group(4) or ''})",
@@ -864,7 +904,7 @@ def convert(markdown: str, context: _Context) -> str:
         ref = _REF_DEF.match(line)
         if ref:
             line = ref.group(1) + _rewrite_target(ref.group(2), context, False) + ref.group(3)
-        out.append(line)
+        out.append(_unshield(line, spans))
     return "\n".join(out).strip("\n") + "\n"
 
 
@@ -884,7 +924,8 @@ def apply(data: bytes, author: str, *, archive_name: str = "", project_slug: str
         if not category.pages:
             continue
         paths += content_files.write_category(
-            result.project_slug, category.slug, category.name, "", "", category.order, version=result.version
+            result.project_slug, category.slug, category.name, category.icon, "", category.order,
+            version=result.version,
         )
         for page in category.pages:
             paths += content_files.write_page(
