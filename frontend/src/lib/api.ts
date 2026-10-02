@@ -9,6 +9,9 @@ export interface Project {
   id: number;
   /** Only signed-in accounts see it (backend services/visibility.py). */
   private: boolean;
+  /** Nothing goes live without a second person's approval (backend
+   *  services/page_review.py). */
+  review_required?: boolean;
   name: string;
   name_i18n: LocalizedText;
   slug: string;
@@ -138,6 +141,60 @@ export interface Page extends PageSummary {
    *  `base_revision` on save, so a save on top of someone else's newer
    *  change is refused (409 `page_changed`) instead of silently winning. */
   revision?: string;
+  /** The review workflow as the index knows it (list rows): "" | "pending"
+   *  | "changes_requested", and whether proposed changes to a live page
+   *  wait for approval. */
+  review_status?: ReviewStatus;
+  has_pending?: boolean;
+}
+
+export type ReviewStatus = "" | "pending" | "changes_requested";
+
+/** Where a page stands in the review workflow (backend
+ *  services/page_review.py), as the editor gets it. */
+export interface ReviewState {
+  /** The project needs approval before anything goes live. */
+  required: boolean;
+  status: ReviewStatus;
+  /** Proposed changes to a LIVE page wait in _pending/: the editor shows
+   *  them, readers still see the live text. */
+  pending: boolean;
+  submitted_by: string;
+  submitted_at: string;
+  /** What the author asked the reviewer to look at. */
+  note: string;
+  /** What the reviewer asked to change. */
+  comment: string;
+  decided_by: string;
+  /** Who last changed the text -- the one person who may not approve it. */
+  changed_by: string;
+}
+
+/** One entry of the approval queue. */
+export interface ReviewQueueEntry {
+  id: number;
+  title: string;
+  slug: string;
+  language: string;
+  version: string;
+  published: boolean;
+  project_slug: string;
+  project_name: string;
+  category_name: string;
+  category_id: number;
+  pending: boolean;
+  submitted_by: string;
+  submitted_at: string;
+  note: string;
+  changed_by: string;
+}
+
+export interface ReviewDiff {
+  /** null for a draft: it has never been live. */
+  live: { title: string; markdown_content: string } | null;
+  proposed: { title: string; markdown_content: string };
+  diff: string;
+  review: ReviewState;
 }
 
 /** A live link that shows one unpublished page to somebody with no login
@@ -170,6 +227,14 @@ export interface PreviewData {
  *  much as the present ones. */
 export interface AdminPage extends Page {
   languages: string[];
+}
+
+/** A page as the editor opens it: the PROPOSED text when changes wait for
+ *  approval, plus the review state. */
+export interface EditorPage extends Page {
+  review?: ReviewState;
+  /** The live title, when a proposal renames the page. */
+  live_title?: string;
 }
 
 /** A project's versions as the admin panel needs them. `versioned` false is
@@ -514,6 +579,7 @@ export interface ProjectInput {
   private?: boolean;
   /** Required to make a project private while the content repo is public. */
   acknowledge_public_repo?: boolean;
+  review_required?: boolean;
 }
 
 export interface CategoryInput {
@@ -766,7 +832,7 @@ export const api = {
    *  a language this page has no version in yet (a tab to create, not an
    *  error), and `languages` is every language it does exist in. */
   adminFindPage: (projectSlug: string, pageSlug: string, language: string, version?: string) =>
-    request<{ page: Page | null; languages: string[]; frozen: boolean }>(
+    request<{ page: EditorPage | null; languages: string[]; frozen: boolean }>(
       `/api/admin/projects/${encodeURIComponent(projectSlug)}/pages/by-slug/${encodeURIComponent(pageSlug)}` +
         `?language=${encodeURIComponent(language)}${version ? `&version=${encodeURIComponent(version)}` : ""}`,
     ),
@@ -779,7 +845,17 @@ export const api = {
   // the reindex keys rows by (version, slug, language). Anything following up
   // on the same page must use the id this returns, not the one it sent.
   adminUpdatePage: (id: number, data: PageInput) =>
-    request<{ ok: boolean; id: number; slug: string; reviewed_by: string; reviewed_at: string; revision: string }>(
+    request<{
+      ok: boolean;
+      id: number;
+      slug: string;
+      reviewed_by: string;
+      reviewed_at: string;
+      revision: string;
+      /** Whether the save went live or became a proposal, and where the
+       *  review stands now. */
+      review: ReviewState | null;
+    }>(
       `/api/admin/pages/${id}`,
       {
         method: "PUT",
@@ -800,6 +876,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reviewed_by: reviewedBy }),
     }),
+
+  // Admin: approval before publishing (backend services/page_review.py).
+  // Each action answers with the page as the editor should now show it.
+  adminReviewQueue: () => request<{ reviews: ReviewQueueEntry[]; count: number }>("/api/admin/reviews"),
+  adminReviewDiff: (id: number) => request<ReviewDiff>(`/api/admin/pages/${id}/review/diff`),
+  adminReviewSubmit: (id: number, note: string) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/submit`, { method: "POST", body: JSON.stringify({ note }) }),
+  adminReviewApprove: (id: number) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/approve`, { method: "POST" }),
+  adminReviewRequestChanges: (id: number, comment: string) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/request-changes`, {
+      method: "POST",
+      body: JSON.stringify({ comment }),
+    }),
+  adminReviewWithdraw: (id: number) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/withdraw`, { method: "POST" }),
+  adminReviewDiscard: (id: number) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/discard`, { method: "POST" }),
 
   adminListPreviewLinks: (id: number) =>
     request<{ links: PreviewLink[]; max_links: number; max_days: number; default_days: number }>(
