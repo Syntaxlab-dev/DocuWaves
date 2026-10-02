@@ -875,7 +875,7 @@ def apply(data: bytes, author: str, *, archive_name: str = "", project_slug: str
     """Runs plan() and writes the result: drafts only, one commit."""
     result = plan(data, project_slug=project_slug, new_project_name=new_project_name)
     if not result.new_project:
-        content_versions.ensure_writable(result.project_slug, result.version)
+        content_versions.ensure_editable(result.project_slug, result.version)
     paths: list[str] = []
     if result.new_project:
         order = max((p["sort_order"] for p in projects_store.list_projects()), default=-1) + 1

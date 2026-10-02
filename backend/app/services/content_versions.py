@@ -274,6 +274,31 @@ def ensure_writable(project_slug: str, version: str) -> None:
     )
 
 
+class SyncedProjectError(FrozenVersionError):
+    """A write to the pages or categories of a project whose documentation
+    comes from a code repository (services/docs_sync.py): the next sync
+    would replace it, so it is refused rather than lost. A subclass of
+    FrozenVersionError on purpose -- the same "this is read-only here, and
+    here is where to change it" answer, through the same handler."""
+
+
+def ensure_editable(project_slug: str, version: str) -> None:
+    """ensure_writable, plus: not a docs-as-code project. For the pages and
+    categories -- assets and snippets stay editable, a sync does not own
+    them."""
+    ensure_writable(project_slug, version)
+    from app.services import projects_store  # local: projects_store imports this module
+
+    project = projects_store.get_project_by_slug(project_slug)
+    source = (project or {}).get("source")
+    if source is not None:
+        where = f" ({source['repo']}, {source['path'] or '/'})" if source.get("repo") else ""
+        raise SyncedProjectError(
+            f"The pages of this project come from a code repository{where} and are updated by its sync. "
+            f"Change them there -- an edit here would be replaced by the next sync."
+        )
+
+
 def content_dir(project_slug: str, version: str = "") -> Path:
     """Where this project's categories and `assets/` actually live for
     `version`. The whole optional-version rule lives in this one function:

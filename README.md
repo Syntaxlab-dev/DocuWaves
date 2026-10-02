@@ -1270,8 +1270,28 @@ secret set in the repository's settings).
 - Webhooks announce new and changed pages as for any edit -- except on the
   first sync into an empty project, which would announce every page at once.
 
-The repository is the source: anything edited in DocuWaves inside a synced
-project (in the editor, a translation) is replaced by the next sync.
+**In the admin area** a synced project says so above its categories: which
+repository, branch and folder, when the last sync ran, from which commit and
+what it changed (with the last 20 runs). Its pages and categories are
+**read-only** -- the editor, the MCP endpoint and the import all refuse to
+change them, since the next sync would replace the change -- and each page
+has **Edit in the repository**, which opens the file in GitHub's, GitLab's
+or Forgejo's/Gitea's editor. Images, snippets and versions stay editable;
+the sync does not own them.
+
+The first sync marks the project as synced (`source:` in its
+`_project.yml`). Add the repository's address in the project settings
+(*Where the pages come from -> From a code repository*) to get the edit
+links; switch back to *Here, in the editor* to edit the pages in DocuWaves
+again -- until the next sync.
+
+```yaml
+# content/<project>/_project.yml
+source:
+  repo: https://github.com/acme/my-project
+  branch: main
+  path: docs
+```
 
 ## Importing existing documentation
 

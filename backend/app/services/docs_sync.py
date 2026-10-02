@@ -33,6 +33,9 @@ an edit in the editor, a translation -- is replaced by the next sync. The
 repository is the source.
 """
 from datetime import datetime, timezone
+from urllib.parse import quote, urlsplit
+
+import yaml
 
 from app.services import (
     categories_store,
@@ -48,6 +51,10 @@ from app.services import (
 )
 
 _REF_MAX = 80
+# Which page came from which file: what "edit in the repository" links to.
+# In the project's version directory, next to its categories; rewritten by
+# every sync, and unchanged (so no diff) when the files did not change.
+SOURCES_FILE = "_sync.yml"
 
 
 class SyncError(Exception):
@@ -108,6 +115,23 @@ def sync(data: bytes, project_slug: str, author: str, ref: str = "") -> dict:
                     "title": page.title, "markdown_content": page.body, "published": page.published,
                     "category_slug": category.slug, "slug": page.slug, "language": "", "version": version,
                 }
+        sources_path = content_files.project_content_dir(project_slug, version) / SOURCES_FILE
+        sources_path.write_text(
+            yaml.safe_dump(
+                {"pages": {p.slug: p.source for c in result.categories for p in c.pages}},
+                sort_keys=True, allow_unicode=True,
+            ),
+            encoding="utf-8",
+        )
+        paths.append(content_files._rel(sources_path))
+        # The first sync makes it official: from now on the project's pages
+        # are read-only in the editor (content_versions.ensure_editable).
+        if project.get("source") is None:
+            paths += content_files.write_project(
+                project["slug"], project["name"], project["icon"], project["color"], project["image"],
+                project["description"], project["sort_order"], project["name_i18n"], project["description_i18n"],
+                project["private"], project["review_required"], {},
+            )
         asset_dir = content_files.project_content_dir(project_slug, version) / "assets"
         for source, target in result.assets.items():
             destination = asset_dir / target
@@ -201,3 +225,33 @@ def runs(project_slug: str, limit: int = 20) -> list[dict]:
          "committed": bool(r[6])}
         for r in rows
     ]
+
+
+def source_file(project_slug: str, version: str, page_slug: str) -> str:
+    """The page's file inside the synced docs folder, or ""."""
+    path = content_files.project_content_dir(project_slug, version) / SOURCES_FILE
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return ""
+    value = (data.get("pages") or {}).get(page_slug)
+    return value if isinstance(value, str) else ""
+
+
+def edit_url(source: dict | None, file: str) -> str:
+    """Where to change this file in the repository's web interface, or ""
+    when the project names no repository. GitHub, GitLab and
+    Forgejo/Gitea (Codeberg included) each spell the editor differently."""
+    if not source or not source.get("repo") or not file:
+        return ""
+    repo = source["repo"].rstrip("/")
+    if repo.endswith(".git"):
+        repo = repo[:-4]
+    host = (urlsplit(repo).hostname or "").lower()
+    path = "/".join(part for part in (source.get("path") or "", file) if part)
+    branch = quote(source.get("branch") or "main", safe="")
+    if host == "github.com" or host.endswith(".github.com"):
+        return f"{repo}/edit/{branch}/{quote(path)}"
+    if "gitlab" in host:
+        return f"{repo}/-/edit/{branch}/{quote(path)}"
+    return f"{repo}/_edit/{branch}/{quote(path)}"

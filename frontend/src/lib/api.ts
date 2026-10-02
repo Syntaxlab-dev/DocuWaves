@@ -12,6 +12,9 @@ export interface Project {
   /** Nothing goes live without a second person's approval (backend
    *  services/page_review.py). */
   review_required?: boolean;
+  /** Docs-as-code: the pages come from this code repository and are
+   *  read-only here (backend services/docs_sync.py); null = edited here. */
+  source?: ProjectSource | null;
   name: string;
   name_i18n: LocalizedText;
   slug: string;
@@ -109,6 +112,25 @@ export interface NavCategory extends Category {
    *  stay on this category when the target version has it, and fall back to
    *  that version's home when it doesn't. */
   available_versions?: string[];
+}
+
+export interface ProjectSource {
+  /** The repository's web address, "" when not given. */
+  repo: string;
+  branch: string;
+  /** The docs folder inside it, "" = the top. */
+  path: string;
+}
+
+/** One docs-as-code sync, as recorded. */
+export interface SyncRun {
+  ref: string;
+  author: string;
+  synced_at: string;
+  added: number;
+  changed: number;
+  removed: number;
+  committed: boolean;
 }
 
 export interface ProjectNav {
@@ -263,6 +285,9 @@ export interface EditorPage extends Page {
   review?: ReviewState;
   /** The live title, when a proposal renames the page. */
   live_title?: string;
+  /** Docs-as-code: read-only here, and where to change it instead. */
+  synced?: boolean;
+  source_edit_url?: string;
 }
 
 /** A project's versions as the admin panel needs them. `versioned` false is
@@ -611,6 +636,7 @@ export interface ProjectInput {
   /** Required to make a project private while the content repo is public. */
   acknowledge_public_repo?: boolean;
   review_required?: boolean;
+  source?: ProjectSource | null;
 }
 
 export interface CategoryInput {
@@ -926,6 +952,8 @@ export const api = {
   adminReviewDiscard: (id: number) =>
     request<EditorPage>(`/api/admin/pages/${id}/review/discard`, { method: "POST" }),
 
+  adminProjectSync: (slug: string) =>
+    request<{ source: ProjectSource | null; runs: SyncRun[] }>(`/api/admin/projects/${encodeURIComponent(slug)}/sync`),
   adminImportPreview: (file: File, target: ImportTarget) =>
     upload<ImportSummary>(`/api/admin/import/preview?${new URLSearchParams(target).toString()}`, file),
   adminImport: (file: File, target: ImportTarget) =>

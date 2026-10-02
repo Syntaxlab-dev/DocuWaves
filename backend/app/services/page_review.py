@@ -157,7 +157,7 @@ def _label(page: dict, pending: dict | None) -> str:
 def submit(page_id: int, author: str, note: str = "") -> dict:
     with pages_store._update_lock:
         page, project, category, pending, review = _load(page_id)
-        content_versions.ensure_writable(project["slug"], page["version"])
+        content_versions.ensure_editable(project["slug"], page["version"])
         if pending is None and page["published"] and project.get("review_required"):
             raise ReviewError("nothing_to_review")
         if review.get("review_status") == PENDING:
@@ -184,7 +184,7 @@ def submit(page_id: int, author: str, note: str = "") -> dict:
 def request_changes(page_id: int, reviewer: str, comment: str = "") -> dict:
     with pages_store._update_lock:
         page, project, category, pending, review = _load(page_id)
-        content_versions.ensure_writable(project["slug"], page["version"])
+        content_versions.ensure_editable(project["slug"], page["version"])
         if review.get("review_status") != PENDING:
             raise ReviewError("not_submitted")
         review = {
@@ -203,7 +203,7 @@ def withdraw(page_id: int, author: str) -> dict:
     """Takes a submission back -- the text stays exactly as it is."""
     with pages_store._update_lock:
         page, project, category, pending, review = _load(page_id)
-        content_versions.ensure_writable(project["slug"], page["version"])
+        content_versions.ensure_editable(project["slug"], page["version"])
         if review.get("review_status") != PENDING:
             raise ReviewError("not_submitted")
         review = {**review, "review_status": ""}
@@ -216,7 +216,7 @@ def discard(page_id: int, author: str) -> dict:
     untouched -- it never had them."""
     with pages_store._update_lock:
         page, project, category, pending, _review = _load(page_id)
-        content_versions.ensure_writable(project["slug"], page["version"])
+        content_versions.ensure_editable(project["slug"], page["version"])
         if pending is None:
             raise ReviewError("nothing_to_review")
         paths = content_files.delete_pending(project["slug"], category["slug"], page["slug"], page["language"], page["version"])
@@ -231,7 +231,7 @@ def approve(page_id: int, reviewer: str) -> dict:
     workflow state, in one commit."""
     with pages_store._update_lock:
         page, project, category, pending, review = _load(page_id)
-        content_versions.ensure_writable(project["slug"], page["version"])
+        content_versions.ensure_editable(project["slug"], page["version"])
         if review.get("review_status") != PENDING:
             raise ReviewError("not_submitted")
         wrote = review.get("review_changed_by") or review.get("review_submitted_by") or ""
