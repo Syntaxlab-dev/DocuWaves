@@ -130,6 +130,8 @@ function storedEditorMode(): EditorMode {
   }
 }
 
+type AdminPanel = "account" | "branding" | "insights" | "tokens" | "diagnostics" | "users" | "reviews" | "import";
+
 type FieldValues = Record<string, string>;
 
 const SINGLE = [""];
@@ -220,16 +222,45 @@ export function AdminApp() {
   // collapse them) -- PagesPanel groups them by slug for display.
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<EditorTarget | null>(null);
-  const [showAccount, setShowAccount] = useState(false);
-  const [showBranding, setShowBranding] = useState(false);
-  const [showInsights, setShowInsights] = useState(false);
-  const [showTokens, setShowTokens] = useState(false);
-  const [showDiagnostics, setShowDiagnostics] = useState(false);
-  const [showUsers, setShowUsers] = useState(false);
+  // The header's areas (Branding, Accounts, Insights, ...): ONE at a time,
+  // shown in place of the projects. Opening another replaces it; its own
+  // menu item, × or Escape closes it. They used to be eight independent
+  // switches, and opening a few stacked them all above the projects.
+  const [panel, setPanel] = useState<AdminPanel | null>(null);
+  const panelSetter = (key: AdminPanel) => (value: boolean | ((open: boolean) => boolean)) =>
+    setPanel((current) => {
+      const open = current === key;
+      const next = typeof value === "function" ? value(open) : value;
+      if (next) return key;
+      return open ? null : current;
+    });
+  const showAccount = panel === "account";
+  const setShowAccount = panelSetter("account");
+  const showBranding = panel === "branding";
+  const setShowBranding = panelSetter("branding");
+  const showInsights = panel === "insights";
+  const setShowInsights = panelSetter("insights");
+  const showTokens = panel === "tokens";
+  const setShowTokens = panelSetter("tokens");
+  const showDiagnostics = panel === "diagnostics";
+  const setShowDiagnostics = panelSetter("diagnostics");
+  const showUsers = panel === "users";
+  const setShowUsers = panelSetter("users");
   // The approval queue (services/page_review.py): its count in the header,
   // re-read after every save so it never claims work that was just done.
-  const [showReviews, setShowReviews] = useState(false);
-  const [showImport, setShowImport] = useState(false);
+  const showReviews = panel === "reviews";
+  const setShowReviews = panelSetter("reviews");
+  const showImport = panel === "import";
+  const setShowImport = panelSetter("import");
+  useEffect(() => {
+    if (!panel) return;
+    window.scrollTo({ top: 0 });
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setPanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panel]);
   const [reviewCount, setReviewCount] = useState(0);
   const [reviewsKey, setReviewsKey] = useState(0);
   /** A queue entry being opened: the project, then the category, then the
@@ -468,7 +499,14 @@ export function AdminApp() {
               {t("nav.public")}
             </Link>
             {headerItems.map((item) => (
-              <Button key={item.key} variant="ghost" size="sm" onClick={item.onClick}>
+              <Button
+                key={item.key}
+                variant="ghost"
+                size="sm"
+                onClick={item.onClick}
+                aria-pressed={panel === item.key}
+                className={panel === item.key ? "bg-[var(--surface-2)] text-[var(--accent)]" : undefined}
+              >
                 {item.label}
                 {item.badge}
               </Button>
@@ -488,7 +526,13 @@ export function AdminApp() {
               row pushed the page sideways on a phone, and still overflowed
               on a laptop. */}
           <div className="ml-auto flex items-center gap-1 xl:hidden">
-            <Button variant="ghost" size="sm" onClick={() => setShowReviews((v) => !v)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowReviews((v) => !v)}
+              aria-pressed={showReviews}
+              className={showReviews ? "bg-[var(--surface-2)] text-[var(--accent)]" : undefined}
+            >
               {t("review.queueButton")}
               {reviewBadge}
             </Button>
@@ -520,7 +564,10 @@ export function AdminApp() {
                   <button
                     key={item.key}
                     type="button"
-                    className="rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--surface-2)]"
+                    aria-pressed={panel === item.key}
+                    className={`rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--surface-2)] ${
+                      panel === item.key ? "bg-[var(--surface-2)] font-medium text-[var(--accent)]" : ""
+                    }`}
                     onClick={() => {
                       item.onClick();
                       setMenuOpen(false);
@@ -580,6 +627,10 @@ export function AdminApp() {
         )}
         {showUsers && <AdminUsersCard onClose={() => setShowUsers(false)} onSelfChanged={() => void refresh()} />}
 
+        {/* The projects, categories and editor: hidden -- not unmounted --
+            while an area is open, so an open editor and its unsaved text are
+            exactly as they were when the area is closed again. */}
+        <div hidden={panel !== null}>
         {/* Said once, at the top, rather than as a disabled tooltip on every
             control that isn't there: a reader who cannot find the Save
             button should learn why from the page, not from hunting. */}
@@ -713,6 +764,7 @@ export function AdminApp() {
               </>
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>
