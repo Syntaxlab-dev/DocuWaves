@@ -1199,6 +1199,43 @@ private while the remote is public needs an explicit confirmation, in the
 form and in the API. The answer is cached for an hour; "unknown" means the
 remote could not be asked (network, a host without https).
 
+## Importing existing documentation
+
+**Import** in the admin header takes a ZIP of Markdown files -- an export
+from another tool, or simply a folder of `.md` files -- into a new project or
+an existing one. A preview first says what would happen; nothing is written
+until you confirm.
+
+- **Structure:** a folder becomes a category, a Markdown file a page. Files
+  at the top go into "General". DocuWaves has one level of categories, so
+  `guide/advanced/` becomes the category "Guide / Advanced".
+- **Titles and order:** from the front matter, else the page's first
+  `# heading`, else the file name; the order from the tool's navigation
+  when there is one, otherwise numbered prefixes (`01-intro.md`), otherwise
+  alphabetical, with `index.md`/`README.md` first.
+- **Links and images:** links to other pages in the archive are rewritten
+  to their new address; images and media are copied into the project's
+  `assets/imported/` (each through the same checks as an upload). Links
+  that point nowhere are listed in the preview and left as they are.
+- **Callouts** become DocuWaves callouts.
+
+Recognised automatically:
+
+| Tool | Recognised by | Taken over |
+|---|---|---|
+| MkDocs | `mkdocs.yml` | `docs_dir`, `nav` order, `!!! note "Title"` admonitions |
+| GitBook | `SUMMARY.md` | summary order, `{% hint %}` blocks, `{% embed %}` as links |
+| Docusaurus | `docusaurus.config.*` | `docs/`, `sidebar_position`, `_category_.json`, `:::tip` containers, `/img/...` from `static/` (MDX `import` lines are dropped) |
+| Obsidian | `.obsidian/` | `[[wiki links]]`, `![[embeds]]`, `> [!info]` callouts |
+
+**Every page arrives as a draft**, in **one commit** -- reverting that commit
+undoes the whole import. Nothing existing is overwritten: a name that is
+taken gets `-2`. Only accounts that may write can import.
+
+Limits, because an uploaded archive is untrusted: at most 50 MB (200 MB
+unpacked, 5000 files); ZIP bombs, absolute paths and `..` are refused; only
+Markdown, image/media files and the navigation files above are read.
+
 ## Approval before publishing
 
 A project can require that nothing goes live without a second person's
