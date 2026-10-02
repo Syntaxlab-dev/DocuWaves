@@ -3,16 +3,16 @@ fastapi==0.141.1
 # upper bound: this file pins everything else, and leaving the one dependency
 # that carried the CVEs this upgrade was about free to float means a rebuild
 # months from now silently ships a version nobody tested. Bump it deliberately.
-starlette==1.6.0
-uvicorn[standard]==0.52.4
+starlette==1.7.0
+uvicorn[standard]==0.54.0
 requests==2.34.2
 python-dotenv==1.2.3
 bcrypt==5.0.0
 itsdangerous==2.2.0
-psycopg[binary]==3.3.5
+psycopg[binary]==3.3.6
 joserfc==1.7.5
 python-slugify==8.0.4
-GitPython==3.1.61
+GitPython==3.1.62
 python-frontmatter==1.3.0
 PyYAML==6.0.3
 # The Confluence import (services/import_confluence.py): HTML -> Markdown.
