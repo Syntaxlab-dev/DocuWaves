@@ -168,6 +168,8 @@ class TestALivePage:
         assert not any(k.startswith("review_") for k in live.metadata)
         assert ben.get("/api/admin/reviews").json()["count"] == 0
         assert ("updated", "start") in world["events"]
+        assert ("review_requested", "start") in world["events"]
+        assert ("review_decided", "start") in world["events"]
 
     def test_four_eyes_the_author_cannot_approve(self, world):
         anna = client(world, ANNA)

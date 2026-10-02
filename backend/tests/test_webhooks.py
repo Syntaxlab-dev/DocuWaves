@@ -191,3 +191,46 @@ def test_nothing_is_sent_without_urls(monkeypatch):
     monkeypatch.setattr(webhooks._pool, "submit", lambda *a: submitted.append(a))
     webhooks.notify("published", PAGE, PROJECT, CATEGORY)
     assert submitted == []
+
+
+class TestReviewEvents:
+    """review_requested / review_decided (services/page_review.py): off
+    unless named, and never carrying unpublished text."""
+
+    @pytest.fixture
+    def submitted(self, monkeypatch):
+        monkeypatch.setattr(
+            settings, "webhook_events", frozenset({"published", "review_requested", "review_decided"})
+        )
+        queued = []
+        monkeypatch.setattr(webhooks._pool, "submit", lambda fn, url, event, d: queued.append((event, d)))
+        return queued
+
+    def test_off_by_default(self, monkeypatch):
+        monkeypatch.setattr(settings, "webhook_events", frozenset({"published"}))
+        queued = []
+        monkeypatch.setattr(webhooks._pool, "submit", lambda *a: queued.append(a))
+        webhooks.notify("review_requested", PAGE, PROJECT, CATEGORY, {"kind": "new"})
+        assert queued == []
+
+    def test_a_request_for_a_draft_carries_no_text_and_no_public_link(self, submitted):
+        draft = {**PAGE, "published": False}
+        webhooks.notify("review_requested", draft, PROJECT, CATEGORY, {"kind": "new"})
+        event, d = submitted[0]
+        assert event == "review_requested"
+        assert d["page"]["summary"] == "" and d["page"]["url"] == ""
+        assert d["review"] == {"kind": "new"}
+        assert d["admin_url"] == "https://docs.example.com/admin"
+        assert "So installierst" not in json.dumps(d)
+
+    def test_a_decision_is_labelled_by_its_outcome(self, submitted):
+        webhooks.notify("review_decided", PAGE, PROJECT, CATEGORY, {"decision": "changes_requested"})
+        _, d = submitted[0]
+        body = webhooks.build_body("https://hooks.slack.com/services/x", "review_decided", d)
+        assert body["text"].startswith("*Änderungen angefordert:*")
+        discord = webhooks.build_body("https://discord.com/api/webhooks/1/abc", "review_decided", d)
+        assert discord["embeds"][0]["color"] == 0xDC2626
+
+    def test_never_about_a_private_project(self, submitted):
+        webhooks.notify("review_requested", PAGE, {**PROJECT, "private": True}, CATEGORY, {"kind": "change"})
+        assert submitted == []

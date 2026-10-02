@@ -2,6 +2,7 @@ import { useCallback, useState, type FormEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Languages, LogIn, LogOut, Moon, Search, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { UiLanguageToggle } from "@/components/UiLanguageToggle";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
@@ -121,9 +122,7 @@ export function PublicLayout() {
           {contentLang.multilingual ? (
             <ContentLanguageSwitcher />
           ) : (
-            <Button variant="ghost" size="sm" onClick={() => setUiLang(uiLang === "de" ? "en" : "de")}>
-              {uiLang === "de" ? "EN" : "DE"}
-            </Button>
+            <UiLanguageToggle lang={uiLang} onChange={setUiLang} />
           )}
         </div>
       </header>

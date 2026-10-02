@@ -1124,7 +1124,7 @@ const en: Dict = {
 
 const dictionaries: Record<string, Dict> = { de, en };
 
-type Lang = "de" | "en";
+export type Lang = "de" | "en";
 
 /** Whether a CONTENT language code is one the interface has words for --
  *  what lets the UI follow a reader's content-language choice on a

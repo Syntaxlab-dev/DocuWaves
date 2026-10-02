@@ -15,6 +15,14 @@ someone fixes a typo. So:
 - published    a page went from draft to published   (on by default)
 - updated      a published page's title or text changed
 - unpublished  a published page went back to draft, or was deleted
+- review_requested  a page (or changes to a live page) was submitted for
+                    approval (services/page_review.py)
+- review_decided    a submission was approved or sent back
+
+The two review events are for a team's own channel and are off unless
+WEBHOOK_EVENTS names them. They carry no text from the page -- what waits
+for approval is by definition not published yet -- only its title, whether
+it is a new page or a change, the decision, and the admin address.
 
 WHAT IT MUST NEVER DO: slow a save down or fail it. Delivery runs on a small
 background pool with a short timeout and one retry; a dead endpoint is a log
@@ -40,7 +48,8 @@ from app.settings import settings
 
 log = logging.getLogger("docuwaves")
 
-EVENTS = ("published", "updated", "unpublished")
+EVENTS = ("published", "updated", "unpublished", "review_requested", "review_decided")
+_REVIEW_EVENTS = ("review_requested", "review_decided")
 _TIMEOUT_SECONDS = 5
 _RETRY_DELAY_SECONDS = 2
 _SUMMARY_CHARS = 280
@@ -50,18 +59,43 @@ _SUMMARY_CHARS = 280
 _pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="webhook")
 
 _LABELS = {
-    "de": {"published": "Neu veröffentlicht", "updated": "Aktualisiert", "unpublished": "Zurückgezogen"},
-    "en": {"published": "Published", "updated": "Updated", "unpublished": "Unpublished"},
+    "de": {
+        "published": "Neu veröffentlicht",
+        "updated": "Aktualisiert",
+        "unpublished": "Zurückgezogen",
+        "review_requested": "Wartet auf Freigabe",
+        "approved": "Freigegeben",
+        "changes_requested": "Änderungen angefordert",
+    },
+    "en": {
+        "published": "Published",
+        "updated": "Updated",
+        "unpublished": "Unpublished",
+        "review_requested": "Waiting for approval",
+        "approved": "Approved",
+        "changes_requested": "Changes requested",
+    },
 }
-_DISCORD_COLOURS = {"published": 0x16A34A, "updated": 0x4F6DF5, "unpublished": 0x6B7280}
+_DISCORD_COLOURS = {
+    "published": 0x16A34A,
+    "updated": 0x4F6DF5,
+    "unpublished": 0x6B7280,
+    "review_requested": 0x0EA5E9,
+    "approved": 0x16A34A,
+    "changes_requested": 0xDC2626,
+}
 
 
 def is_enabled() -> bool:
     return bool(settings.webhook_urls)
 
 
-def notify(event: str, page: dict, project: dict, category: dict | None = None) -> None:
-    """Queue one event for every configured URL. Returns at once."""
+def notify(
+    event: str, page: dict, project: dict, category: dict | None = None, review: dict | None = None
+) -> None:
+    """Queue one event for every configured URL. Returns at once. `review`
+    is the review events' own part: {"kind": "new"|"change"} for a request,
+    {"decision": "approved"|"changes_requested"} for a decision."""
     if event not in EVENTS or event not in settings.webhook_events or not settings.webhook_urls:
         return
     # Never about a private project: the channel's members are unknown
@@ -69,6 +103,14 @@ def notify(event: str, page: dict, project: dict, category: dict | None = None) 
     if project.get("private"):
         return
     data = _event_data(event, page, project, category)
+    if event in _REVIEW_EVENTS:
+        # Not published, so not announced: no summary, and the public URL
+        # only when the page is live (it is, for a change to a live page).
+        data["page"]["summary"] = ""
+        if not page.get("published"):
+            data["page"]["url"] = ""
+        data["review"] = dict(review or {})
+        data["admin_url"] = f"{settings.public_base_url}/admin" if settings.public_base_url else ""
     for url in settings.webhook_urls:
         _pool.submit(_deliver, url, event, data)
 
@@ -126,30 +168,39 @@ def _kind(url: str) -> str:
     return "json"
 
 
-def _label(event: str) -> str:
+def _label_key(event: str, data: dict) -> str:
+    """What the message says happened: a decision is named by its outcome."""
+    if event == "review_decided":
+        return data.get("review", {}).get("decision") or "approved"
+    return event
+
+
+def _label(key: str) -> str:
     from app.services import site_languages
 
     lang = "de" if site_languages.default_language().startswith("de") else "en"
-    return _LABELS[lang][event]
+    return _LABELS[lang][key]
 
 
 def build_body(url: str, event: str, data: dict) -> dict:
     page, project = data["page"], data["project"]
-    label = _label(event)
+    key = _label_key(event, data)
+    label = _label(key)
+    link = page["url"] or data.get("admin_url", "")
     if _kind(url) == "discord":
         embed = {
             "title": page["title"][:256],
             "description": page["summary"][:2000],
-            "color": _DISCORD_COLOURS[event],
+            "color": _DISCORD_COLOURS[key],
             "footer": {"text": project["name"][:2048]},
         }
-        if page["url"]:
-            embed["url"] = page["url"]
+        if link:
+            embed["url"] = link
         # allowed_mentions empty: a page title containing "@everyone" must not
         # ping a whole server.
         return {"content": f"**{label}**", "embeds": [embed], "allowed_mentions": {"parse": []}}
     if _kind(url) == "slack":
-        title = f"<{page['url']}|{_slack_escape(page['title'])}>" if page["url"] else _slack_escape(page["title"])
+        title = f"<{link}|{_slack_escape(page['title'])}>" if link else _slack_escape(page["title"])
         return {"text": f"*{label}:* {title} ({_slack_escape(project['name'])})"}
     return data
 
