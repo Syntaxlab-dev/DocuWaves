@@ -89,6 +89,41 @@ Worth knowing before you change anything:
 - If you found something broken along the way that's unrelated to your change,
   mention it separately rather than fixing it in the same pull request.
 
+## Trying the installer before a release
+
+`installer/install.sh` installs the `stable` image by default, and that
+tag only exists once there is a release. To try the installer from `main`
+on a throwaway server:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Syntaxlab-dev/DocuWaves/main/installer/install.sh | sudo sh -s -- --channel latest
+```
+
+CI already runs it on every pull request that touches it, on the runner
+and inside a container of each supported distribution
+(`.github/workflows/installer.yml`, `installer/tests/in-distro.sh`). What
+CI cannot do is a real domain with a real certificate. Only a real server
+tests that.
+
+## Making a release
+
+1. The pages that describe a not-yet-released feature carry
+   `published: false`. Set it to `true` in the same pull request that
+   prepares the release, and link them from the existing pages.
+2. Merge that pull request, then tag the merge commit:
+   ```bash
+   git tag -a v1.2.0 -m "DocuWaves 1.2.0" && git push origin v1.2.0
+   ```
+   A tag with a hyphen (`v1.2.0-rc.1`) is a pre-release. It does not move
+   `stable`, and the GitHub release is marked as one.
+3. The tag is all it takes. `docker-publish.yml` builds the images
+   `1.2.0`, `1.2` and `stable`. `release.yml` creates the GitHub release with
+   notes and attaches `install.sh` and its checksum. `docs.yml` freezes
+   DocuWaves' own documentation as version 1.2 on docs.docuwaves.app.
+4. `get.docuwaves.app` redirects to
+   `https://github.com/Syntaxlab-dev/DocuWaves/releases/latest/download/install.sh`,
+   so it serves the new installer without any change of its own.
+
 ## Reporting a bug
 
 Include what you did, what you expected, and what happened instead — plus your
