@@ -129,11 +129,11 @@ case $(uname -m) in
   *) die "DocuWaves images exist for amd64 and arm64; this server is $(uname -m)." ;;
 esac
 
-OS_ID=unknown OS_LIKE="" OS_VERSION="" OS_NAME="this system"
+OS_ID=unknown OS_VERSION="" OS_NAME="this system"
 if [ -r /etc/os-release ]; then
   # shellcheck disable=SC1091
   . /etc/os-release
-  OS_ID=${ID:-unknown} OS_LIKE=${ID_LIKE:-} OS_VERSION=${VERSION_ID:-} OS_NAME=${PRETTY_NAME:-$OS_ID}
+  OS_ID=${ID:-unknown} OS_VERSION=${VERSION_ID:-} OS_NAME=${PRETTY_NAME:-$OS_ID}
 fi
 FAMILY=other
 case "$OS_ID" in
@@ -258,7 +258,9 @@ if [ -n "$REPO_URL" ]; then
         say "The PRIVATE key of a deploy key with write access, as a file on this server."
         ask REPO_KEY_FILE "Path to the private key file:" ""
       fi
-      [ -n "$REPO_KEY_FILE" ] && [ -r "$REPO_KEY_FILE" ] || die "A git@/ssh:// remote needs --repo-ssh-key FILE (a readable private key)."
+      if [ -z "$REPO_KEY_FILE" ] || [ ! -r "$REPO_KEY_FILE" ]; then
+        die "A git@/ssh:// remote needs --repo-ssh-key FILE (a readable private key)."
+      fi
       grep -q 'PRIVATE KEY' "$REPO_KEY_FILE" || die "$REPO_KEY_FILE does not look like a private key."
       ;;
     *) die "The remote URL must start with https://, git@ or ssh://." ;;

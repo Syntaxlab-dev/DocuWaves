@@ -30,6 +30,8 @@ else
   BOLD="" DIM="" RED="" GREEN="" YELLOW="" RESET=""
 fi
 QUIET=0
+# backup's scratch directory, global so the EXIT trap can still see it.
+BACKUP_WORK=""
 
 say() { [[ $QUIET == 1 ]] || printf '%s\n' "$*"; }
 ok() { [[ $QUIET == 1 ]] || printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
@@ -136,7 +138,15 @@ wait_healthy() {
 }
 
 image_version() {
-  docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}} ({{printf "%.7s" (index .Config.Labels "org.opencontainers.image.revision")}})' "$1" 2>/dev/null || echo "?"
+  local version revision
+  version=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.version"}}' "$1" 2>/dev/null || true)
+  revision=$(docker image inspect -f '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$1" 2>/dev/null || true)
+  if [[ -n $version ]]; then
+    echo "$version${revision:+ (${revision:0:7})}"
+  else
+    # Built locally, without the labels the published images carry.
+    docker image inspect -f '{{printf "%.19s" .Id}}' "$1" 2>/dev/null || echo "?"
+  fi
 }
 
 address() {
@@ -197,6 +207,7 @@ cmd_status() {
   fi
   say "  data      $(du -sh "$DIR/data" 2>/dev/null | cut -f1)"
   local last
+  # shellcheck disable=SC2012 # our own file names: docuwaves-<date>-<time>.tar.gz
   last=$(ls -1t "$DIR"/backups/docuwaves-*.tar.gz 2>/dev/null | head -n 1 || true)
   if [[ -n $last ]]; then
     say "  backup    $(basename "$last") ${DIM}($(du -h "$last" | cut -f1))${RESET}"
@@ -223,12 +234,13 @@ cmd_backup() {
   [[ -n $(container) ]] || die "DocuWaves is not running; start it with: docker compose -f $DIR/compose.yml up -d"
   umask 077
   mkdir -p "$DIR/backups"
-  local stamp work archive sqlite rel
+  local stamp archive sqlite rel
   stamp=$(date -u +%Y%m%d-%H%M%S)
   archive="$DIR/backups/docuwaves-$stamp.tar.gz"
-  work=$(mktemp -d "$DIR/backups/.work.XXXXXX")
+  BACKUP_WORK=$(mktemp -d "$DIR/backups/.work.XXXXXX")
+  local work=$BACKUP_WORK
   # EXIT, not RETURN: a failure below ends the whole script through die.
-  trap 'rm -rf "$work" "$DIR/data/.backup-snapshot.db"' EXIT
+  trap 'rm -rf "$BACKUP_WORK" "$DIR/data/.backup-snapshot.db"' EXIT
 
   # The database: copied consistently while it runs, not as a file mid-write.
   local excludes=()
@@ -255,6 +267,7 @@ cmd_backup() {
   # The content repository, also as one self-contained Git bundle: the
   # files under data/ are what a restore uses; the bundle is what you can
   # clone from anywhere, even without DocuWaves.
+  # shellcheck disable=SC2016 # expanded inside the container, on purpose
   compose exec -T docuwaves sh -c 'cd "${CONTENT_REPO_PATH:-/data/content-repo}" && git rev-parse -q --verify HEAD >/dev/null && git bundle create - --all' \
     >"$work/content.bundle" 2>/dev/null || rm -f "$work/content.bundle"
 
@@ -269,6 +282,7 @@ cmd_backup() {
   chmod 600 "$archive"
 
   # Rotation: the newest $KEEP stay.
+  # shellcheck disable=SC2012 # our own file names, see above
   ls -1t "$DIR"/backups/docuwaves-*.tar.gz 2>/dev/null | tail -n +$((KEEP + 1)) | while read -r old; do
     rm -f -- "$old"
   done
@@ -336,7 +350,7 @@ cmd_update() {
   if [[ ${DOCUWAVES_SKIP_PULL:-0} != 1 ]]; then
     say "Pulling $image ..."
     docker pull -q "$image" >/dev/null || die "Could not pull $image. Nothing changed."
-    has_service caddy && compose pull -q caddy >/dev/null 2>&1 || true
+    if has_service caddy; then compose pull -q caddy >/dev/null 2>&1 || true; fi
   fi
   new=$(docker image inspect -f '{{.Id}}' "$image")
   if [[ -n $old && $old == "$new" && ${DOCUWAVES_SKIP_PULL:-0} != 1 ]]; then
