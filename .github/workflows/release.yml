@@ -4,7 +4,7 @@ name: Release
 # which also moves `stable` for anything that is not a pre-release), a frozen
 # version of DocuWaves' own documentation (docs.yml), and -- here -- the
 # GitHub release page with notes from the merged pull requests since the
-# last one. The installer is attached to it from the next pull request on.
+# last one, with the installer and its checksum attached.
 on:
   push:
     tags: ["v*"]
@@ -25,4 +25,7 @@ jobs:
         run: |
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$TAG" --verify-tag --generate-notes --title "DocuWaves ${TAG#v}" $prerelease
+          cp installer/install.sh install.sh
+          sha256sum install.sh > install.sh.sha256
+          gh release create "$TAG" --verify-tag --generate-notes --title "DocuWaves ${TAG#v}" $prerelease \
+            install.sh install.sh.sha256

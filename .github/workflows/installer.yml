@@ -1,0 +1,101 @@
+name: Installer
+
+# The installer and the `docuwaves` command, run for real: a fresh image,
+# installed on the runner the way a user would, then set up, backed up,
+# restored and updated -- once behind the bundled Caddy, once without it.
+on:
+  pull_request:
+    paths:
+      - installer/**
+      - Dockerfile
+      - backend/app/cli.py
+      - .github/workflows/installer.yml
+  workflow_dispatch: {}
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck installer/install.sh installer/docuwaves
+
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [proxy, no-proxy]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the image
+        run: docker build -t docuwaves:ci .
+
+      - name: Install
+        run: |
+          if [ "${{ matrix.mode }}" = proxy ]; then flags="--no-domain"; else flags="--no-proxy"; fi
+          sudo DOCUWAVES_SKIP_PULL=1 sh installer/install.sh --yes --image docuwaves:ci $flags
+          if [ "${{ matrix.mode }}" = proxy ]; then echo "BASE=http://localhost" >> "$GITHUB_ENV"; else echo "BASE=http://127.0.0.1:8091" >> "$GITHUB_ENV"; fi
+
+      - name: Running, and asking for the setup code
+        run: |
+          curl -fsS "$BASE/health"
+          curl -fsS "$BASE/api/auth/status" | grep -q '"setup_token_required":true'
+          sudo docuwaves status
+          test "$(stat -c %a /opt/docuwaves/.env)" = 600
+
+      - name: First-run setup needs the code
+        run: |
+          token=$(sudo sed -n 's/^SETUP_TOKEN=//p' /opt/docuwaves/.env)
+          echo "::add-mask::$token"
+          pw=$(openssl rand -hex 12); echo "::add-mask::$pw"; echo "PW1=$pw" >> "$GITHUB_ENV"
+          setup() { curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/auth/setup" \
+            -H 'Content-Type: application/json' -H "Origin: $BASE" \
+            -d "{\"username\":\"test-ci\",\"password\":\"$pw\",\"setup_token\":\"$1\"}"; }
+          test "$(setup wrong-code)" = 403
+          test "$(setup "$token")" = 200
+          sudo docuwaves users | grep -q '^test-ci'
+
+      - name: reset-password, backup, restore
+        run: |
+          login() { curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/auth/login" \
+            -H 'Content-Type: application/json' -H "Origin: $BASE" \
+            -d "{\"username\":\"test-ci\",\"password\":\"$1\"}"; }
+          test "$(login "$PW1")" = 200
+          pw2=$(openssl rand -hex 12); echo "::add-mask::$pw2"
+          printf '%s\n' "$pw2" | sudo docuwaves reset-password test-ci
+          test "$(login "$pw2")" = 200
+          sudo docuwaves backup
+          archive=$(sudo sh -c 'ls -1t /opt/docuwaves/backups/*.tar.gz | head -n 1')
+          sudo tar -tzf "$archive" | grep -q '^./BACKUP-INFO$'
+          sudo tar -tzf "$archive" | grep -q '^./database.sqlite$'
+          test "$(sudo stat -c %a "$archive")" = 600
+          pw3=$(openssl rand -hex 12); echo "::add-mask::$pw3"
+          printf '%s\n' "$pw3" | sudo docuwaves reset-password test-ci
+          sudo docuwaves restore "$archive" --yes
+          test "$(login "$pw2")" = 200
+          test "$(login "$pw3")" = 401
+
+      - name: update, channel, domain
+        run: |
+          sudo DOCUWAVES_SKIP_PULL=1 docuwaves update
+          curl -fsS "$BASE/health"
+          sudo docuwaves channel latest
+          sudo docuwaves channel | grep -q ':latest$'
+          if [ "${{ matrix.mode }}" = proxy ]; then sudo docuwaves domain --none; curl -fsS "$BASE/health"; fi
+
+      - name: A second install refuses
+        run: |
+          if sudo DOCUWAVES_SKIP_PULL=1 sh installer/install.sh --yes --image docuwaves:ci; then exit 1; fi
+
+      - name: Uninstall
+        run: |
+          sudo docuwaves uninstall --purge --yes
+          test ! -e /opt/docuwaves
+          test ! -e /usr/local/bin/docuwaves
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          sudo docker compose -f /opt/docuwaves/compose.yml logs --tail 100 || true
