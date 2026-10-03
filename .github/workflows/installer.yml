@@ -3,6 +3,8 @@ name: Installer
 # The installer and the `docuwaves` command, run for real: a fresh image,
 # installed on the runner the way a user would, then set up, backed up,
 # restored and updated -- once behind the bundled Caddy, once without it.
+# And on each tested distribution, from a system without Docker: the part
+# that differs between them is how Docker gets installed.
 on:
   pull_request:
     paths:
@@ -10,6 +12,10 @@ on:
       - Dockerfile
       - backend/app/cli.py
       - .github/workflows/installer.yml
+  # Weekly too: Docker's package repositories and the distributions move
+  # without anything changing here. Monday 04:00 UTC.
+  schedule:
+    - cron: "0 4 * * 1"
   workflow_dispatch: {}
 
 jobs:
@@ -18,9 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck installer/install.sh installer/docuwaves
+        run: shellcheck installer/install.sh installer/docuwaves installer/tests/*.sh
+
+  # Built once, used by every job below.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image
+        run: docker build -t docuwaves:ci . && docker save docuwaves:ci -o docuwaves.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: docuwaves.tar
+          retention-days: 1
 
   install:
+    needs: image
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -29,8 +49,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build the image
-        run: docker build -t docuwaves:ci .
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+      - name: Load the image
+        run: docker load -q -i docuwaves.tar
 
       - name: Install
         run: |
@@ -99,3 +122,29 @@ jobs:
         if: failure()
         run: |
           sudo docker compose -f /opt/docuwaves/compose.yml logs --tail 100 || true
+
+  distros:
+    needs: image
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro:
+          - debian:12
+          - debian:13
+          - ubuntu:22.04
+          - ubuntu:24.04
+          - rockylinux/rockylinux:9
+          - almalinux:9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+          path: image
+      - name: Install on ${{ matrix.distro }}
+        run: |
+          docker run --rm --privileged --cgroupns=private \
+            -v "$PWD:/src:ro" -v "$PWD/image:/image:ro" \
+            "${{ matrix.distro }}" sh /src/installer/tests/in-distro.sh
+

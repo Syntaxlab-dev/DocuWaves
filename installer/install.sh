@@ -203,6 +203,23 @@ else
 fi
 docker info >/dev/null 2>&1 || die "Docker is installed but not running. Start it (systemctl start docker) and run this again."
 
+# What the docuwaves command needs besides Docker. Any server has these;
+# a minimal or container image may not.
+missing=""
+for tool in tar gzip awk sha256sum; do
+  command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+done
+if [ -n "$missing" ]; then
+  packages=$(printf '%s' "$missing" | sed 's/sha256sum/coreutils/; s/awk/gawk/')
+  # shellcheck disable=SC2086 # $packages: one word per package
+  case $FAMILY in
+    debian) apt-get install -y -qq $packages >/dev/null ;;
+    rhel | fedora) dnf -y -q install $packages >/dev/null ;;
+    *) die "Please install:$missing" ;;
+  esac
+  ok "Installed:$missing"
+fi
+
 port_in_use() {
   command -v ss >/dev/null 2>&1 || return 1
   [ -n "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]
@@ -273,7 +290,8 @@ step "Getting DocuWaves ($IMAGE)"
 if docker image inspect "$IMAGE" >/dev/null 2>&1 && [ "${DOCUWAVES_SKIP_PULL:-0}" = 1 ]; then
   ok "Using the local image"
 else
-  docker pull -q "$IMAGE" >/dev/null || die "Could not download $IMAGE. Is the server online? Does the channel exist?"
+  docker pull -q "$IMAGE" >/dev/null ||
+    die "Could not download $IMAGE. Is the server online? (Before the first release there is no stable channel yet: --channel latest)"
   ok "Downloaded"
 fi
 

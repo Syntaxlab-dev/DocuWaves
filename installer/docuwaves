@@ -109,6 +109,12 @@ env_set() {
   mv "$tmp" "$DIR/.env"
 }
 
+# Whether two files have the same content -- with coreutils alone, since
+# cmp (diffutils) is not on every minimal system.
+same_content() {
+  [[ $(sha256sum <"$1") == $(sha256sum <"$2") ]]
+}
+
 container() {
   compose ps -q docuwaves 2>/dev/null || true
 }
@@ -176,7 +182,7 @@ refresh_cli() {
   tmp=$(mktemp)
   if docker run --rm --entrypoint cat "$image" "$CLI_IN_IMAGE" >"$tmp" 2>/dev/null && [[ -s $tmp ]] &&
     head -n 1 "$tmp" | grep -q bash; then
-    if ! cmp -s "$tmp" /usr/local/bin/docuwaves; then
+    if ! [[ -f /usr/local/bin/docuwaves ]] || ! same_content "$tmp" /usr/local/bin/docuwaves; then
       install -m 755 "$tmp" /usr/local/bin/docuwaves
       ok "docuwaves command updated"
     fi
@@ -332,7 +338,7 @@ cmd_restore() {
   else
     die "The restored instance did not come up healthy. The data from before is in $aside; see: docuwaves logs"
   fi
-  if ! cmp -s <(tar -xzOf "$archive" ./.env) "$DIR/.env"; then
+  if ! same_content <(tar -xzOf "$archive" ./.env) "$DIR/.env"; then
     say "${DIM}The archive's .env differs from the current one and was not restored; read it with: tar -xzOf $archive ./.env${RESET}"
   fi
 }
