@@ -98,6 +98,12 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # The weekly (and a manual) rebuild exists to pick up Debian's fixes --
+          # but with the layer cache, `apt-get upgrade` is replayed from the last
+          # build and the "rebuilt" image is byte for byte last week's. So those
+          # two build from scratch, on a freshly pulled base image.
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          pull: true
 
   # `stable` -- the tag installed instances follow -- is the newest release,
   # not main. The weekly rebuild above only refreshes main, so without this
@@ -161,4 +167,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.release.outputs.tags }}
-          cache-from: type=gha
+          # Only ever runs to refresh the release's Debian userland: no cache (see above).
+          no-cache: true
+          pull: true
