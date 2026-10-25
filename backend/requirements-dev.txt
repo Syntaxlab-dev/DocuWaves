@@ -3,4 +3,4 @@
 -r requirements.txt
 pytest==8.4.2
 # FastAPI/Starlette's TestClient -- the end-to-end tests drive the real app.
-httpx2==2.13.1
+httpx2==2.16.0
