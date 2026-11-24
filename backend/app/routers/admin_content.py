@@ -30,6 +30,8 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from app.services import (
+    doc_chat,
+    gap_drafts,
     backup,
     diagnostics,
     editing_presence,
@@ -1633,7 +1635,31 @@ def admin_clear_feedback(project_slug: str, page_slug: str):
     "and last day; never who searched (services/search_gaps.py). `enabled` false when SEARCH_GAPS=off.",
 )
 def admin_search_gaps(limit: int = 50):
-    return {"enabled": search_gaps.is_enabled(), "gaps": search_gaps.top(limit)}
+    # can_draft: whether "draft with AI" can be offered (services/gap_drafts.py).
+    return {"enabled": search_gaps.is_enabled(), "gaps": search_gaps.top(limit), "can_draft": doc_chat.is_enabled()}
+
+
+class GapDraftIn(BaseModel):
+    query: str
+    project_slug: str = ""
+    language: str = ""
+
+
+@router.post(
+    "/search-gaps/draft",
+    summary="A first draft for a page readers searched for",
+    description="Uses the documentation chat's model, and only facts from existing pages: everything the docs "
+    "do not say comes back as a **TODO:** line. Nothing is saved; the editor opens it as a new unpublished page. "
+    "409 `not_configured` without a chat model, 502 when the model fails.",
+)
+def admin_draft_from_gap(body: GapDraftIn):
+    language = body.language or site_languages.default_language()
+    try:
+        return gap_drafts.draft(body.query, language, body.project_slug)
+    except doc_chat.ChatError as exc:
+        code = str(exc)
+        status = 409 if code == "not_configured" else 400 if code == "empty_question" else 502
+        raise HTTPException(status_code=status, detail=code) from exc
 
 
 @router.delete("/search-gaps/{gap_id}", summary="Forget one search, e.g. once a page covers it")

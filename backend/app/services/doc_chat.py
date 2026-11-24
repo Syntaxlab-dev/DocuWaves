@@ -253,7 +253,7 @@ def cited_indexes(answer: str, source_count: int) -> list[int]:
     return seen
 
 
-def _post_chat(messages: list[dict]) -> str:
+def _post_chat(messages: list[dict], max_tokens: int = 600) -> str:
     """One OpenAI-compatible completion, or ChatError with a sentence a
     reader can be shown.
 
@@ -275,7 +275,7 @@ def _post_chat(messages: list[dict]) -> str:
                 # Low but not zero: this is a factual answer built from
                 # supplied text, and creativity is the failure mode.
                 "temperature": 0.2,
-                "max_tokens": 600,
+                "max_tokens": max_tokens,
             },
             timeout=_TIMEOUT_SECONDS,
         )

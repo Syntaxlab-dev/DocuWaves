@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, X } from "lucide-react";
-import { api, type FeedbackSummary, type ReviewDuePage, type SearchGap } from "@/lib/api";
+import { FilePlus2, Sparkles, X } from "lucide-react";
+import { api, ApiError, type FeedbackSummary, type ReviewDuePage, type SearchGap } from "@/lib/api";
 import { formatIsoDate } from "@/lib/dates";
 import { useI18n } from "@/lib/i18n";
 import { usePermissions } from "@/lib/auth";
@@ -33,7 +33,7 @@ export function AdminInsightsCard({
   onClose: () => void;
   /** Starts a new page with this title, in this project when the search
    *  was scoped to one ("" = the one currently selected). */
-  onCreatePage: (title: string, projectSlug: string) => void;
+  onCreatePage: (title: string, projectSlug: string, body?: string) => void;
 }) {
   const { t, lang } = useI18n();
   // Forgetting a page's votes is a DELETE, so a read-only account does not
@@ -42,7 +42,8 @@ export function AdminInsightsCard({
   const { canWrite } = usePermissions();
   const [feedback, setFeedback] = useState<FeedbackSummary[] | null>(null);
   const [broken, setBroken] = useState<Broken[] | null>(null);
-  const [gaps, setGaps] = useState<{ enabled: boolean; gaps: SearchGap[] } | null>(null);
+  const [gaps, setGaps] = useState<{ enabled: boolean; gaps: SearchGap[]; can_draft?: boolean } | null>(null);
+  const [drafting, setDrafting] = useState<number | null>(null);
   const [due, setDue] = useState<ReviewDuePage[] | null>(null);
 
   async function load() {
@@ -56,6 +57,21 @@ export function AdminInsightsCard({
     setFeedback(f.pages);
     setBroken(b.broken);
     setGaps(g);
+  }
+
+  async function draftGap(gap: SearchGap) {
+    setDrafting(gap.id);
+    const waiting = toast.loading(t("gaps.drafting"));
+    try {
+      const result = await api.adminDraftFromGap(gap.query, gap.project_slug, gap.language);
+      toast.dismiss(waiting);
+      onCreatePage(result.title, gap.project_slug, result.markdown);
+    } catch (error) {
+      toast.dismiss(waiting);
+      toast.error(error instanceof ApiError && error.message === "not_configured" ? t("gaps.draftNoModel") : t("gaps.draftFailed"));
+    } finally {
+      setDrafting(null);
+    }
   }
 
   async function forgetGap(id: number | null) {
@@ -126,6 +142,19 @@ export function AdminInsightsCard({
                   </span>
                   {canWrite && (
                     <>
+                      {gaps?.can_draft && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          title={t("gaps.draftPage")}
+                          aria-label={t("gaps.draftPage")}
+                          disabled={drafting !== null}
+                          onClick={() => void draftGap(gap)}
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"

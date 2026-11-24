@@ -335,24 +335,24 @@ export function AdminApp() {
    *  The category is the author's choice -- the radar knows what readers
    *  looked for, not where it belongs -- so the editor opens once one is
    *  picked. */
-  const [newPageTitle, setNewPageTitle] = useState<string | null>(null);
-  function startPageFromGap(title: string, projectSlug: string) {
+  const [newPage, setNewPage] = useState<{ title: string; body?: string } | null>(null);
+  function startPageFromGap(title: string, projectSlug: string, body?: string) {
     const project = projects.find((p) => p.slug === projectSlug) ?? selectedProject;
     const nice = title.charAt(0).toUpperCase() + title.slice(1);
     setShowInsights(false);
     setEditing(null);
     setSelectedCategory(null);
     if (project && project.id !== selectedProject?.id) setSelectedProject(project);
-    setNewPageTitle(nice);
+    setNewPage({ title: nice, body });
     toast.info(
       (project ? t("gaps.pickCategory") : t("gaps.pickProject")).replace("{title}", nice),
     );
   }
   useEffect(() => {
-    if (newPageTitle === null || !selectedCategory) return;
-    setEditing({ kind: "new", title: newPageTitle });
-    setNewPageTitle(null);
-  }, [newPageTitle, selectedCategory]);
+    if (newPage === null || !selectedCategory) return;
+    setEditing({ kind: "new", title: newPage.title, body: newPage.body });
+    setNewPage(null);
+  }, [newPage, selectedCategory]);
 
   function loadRepoStatus() {
     api.contentRepoStatus().then(setRepoStatus);
@@ -2519,7 +2519,7 @@ function CategoriesPanel({
 type EditorTarget =
   /** A page that doesn't exist yet: no slug until it is first saved.
    *  `title` prefills it (a page started from the gaps radar). */
-  | { kind: "new"; title?: string }
+  | { kind: "new"; title?: string; body?: string }
   /** An existing page, opened in one of the languages it exists in. */
   | { kind: "page"; slug: string; language: string }
   /** A translation that does not exist yet, of a page that does. */
@@ -2993,7 +2993,11 @@ function PageEditor({
       // Brand-new page: nothing to load, and no other language to offer
       // until it has been saved once and has a slug of its own.
       setTitle(target.kind === "new" ? target.title ?? "" : "");
-      setContent("");
+      // A draft written from a search gap (backend services/gap_drafts.py):
+      // unsaved, so the editor treats it as a change from the start.
+      const body = target.kind === "new" ? target.body ?? "" : "";
+      setContent(body);
+      if (body) setDirty(true);
       setTargetCategoryId(categoryId);
       setPublished(false);
       setLivePublished(false);

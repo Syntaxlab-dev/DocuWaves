@@ -1039,7 +1039,13 @@ export const api = {
       file,
     ),
   adminReviewDue: () => request<{ pages: ReviewDuePage[]; count: number }>("/api/admin/review-due"),
-  adminSearchGaps: () => request<{ enabled: boolean; gaps: SearchGap[] }>("/api/admin/search-gaps"),
+  adminSearchGaps: () =>
+    request<{ enabled: boolean; gaps: SearchGap[]; can_draft?: boolean }>("/api/admin/search-gaps"),
+  adminDraftFromGap: (query: string, projectSlug: string, language: string) =>
+    request<{ title: string; markdown: string; sources: { title: string; project_slug: string; page_slug: string }[] }>(
+      "/api/admin/search-gaps/draft",
+      { method: "POST", body: JSON.stringify({ query, project_slug: projectSlug, language }) },
+    ),
   adminForgetSearchGap: (id: number) =>
     request<{ cleared: number }>(`/api/admin/search-gaps/${id}`, { method: "DELETE" }),
   adminClearSearchGaps: () => request<{ cleared: number }>("/api/admin/search-gaps", { method: "DELETE" }),

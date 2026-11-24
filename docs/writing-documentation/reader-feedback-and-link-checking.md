@@ -17,6 +17,10 @@ when they were last searched.
 
 - **Create a page with this title** starts a new page with the search words
   as its title: pick the category, and the editor opens.
+- **Draft with AI** (only when the documentation chat's model is set up)
+  does the same, but the editor opens with a first draft written from the
+  existing pages only. Whatever those pages don't say comes back as a
+  **TODO:** line for you to fill in, and nothing is saved until you save.
 - **Remove from the list** once a page covers it; **Clear list** empties it.
 
 What is stored is deliberately little: the words (lower-cased, at most 100
