@@ -96,7 +96,7 @@ class TestWhatCounts:
         assert "secret commit message" not in str(entry) and "Author Name" not in str(entry)
         assert set(entry) == {
             "kind", "date", "timestamp", "title", "summary", "page_slug", "language",
-            "project_slug", "project_name", "category_name",
+            "project_slug", "project_name", "category_slug", "category_name",
         }
 
 

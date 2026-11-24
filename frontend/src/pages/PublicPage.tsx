@@ -8,6 +8,7 @@ import { PrintSource } from "@/components/PrintSource";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { PageFooterNav } from "@/components/PageFooterNav";
+import { FeedLink } from "@/components/FeedLink";
 import { TableOfContents } from "@/components/TableOfContents";
 import { collectHeadings } from "@/lib/headings";
 import { formatIsoDate } from "@/lib/dates";
@@ -196,6 +197,15 @@ export function PublicPage() {
             .replace("{name}", data.page.reviewed_by)
             .replace("{date}", formatIsoDate(data.page.reviewed_at, uiLang))}
         </p>
+      )}
+      {/* Told when this page changes. Only on the version a reader lands on,
+          and never for a private project: feed readers never sign in. */}
+      {!version && !data.project.private && (
+        <div className="mt-2">
+          <FeedLink
+            path={`/p/${encodeURIComponent(data.project.slug)}/pages/${encodeURIComponent(data.page.slug)}`}
+          />
+        </div>
       )}
       <PageFeedback
         project={data.project.slug}

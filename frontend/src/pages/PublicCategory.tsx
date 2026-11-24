@@ -5,6 +5,7 @@ import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
 import { FallbackBadge } from "@/components/FallbackBadge";
+import { FeedLink } from "@/components/FeedLink";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
 import { useDocPath, useReportProjectVersion } from "@/lib/version";
@@ -71,6 +72,14 @@ export function PublicCategory() {
       >
         {t("book.linkCategory")} →
       </Link>
+      {/* Feeds follow the version a reader lands on, and a private project
+          has none (feed readers never sign in). */}
+      {!version && !nav.project.private && (
+        <FeedLink
+          path={`/p/${encodeURIComponent(nav.project.slug)}/c/${encodeURIComponent(category.slug)}`}
+          className="ml-4"
+        />
+      )}
 
       <div className="mt-6 flex flex-col divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         {category.pages.map((p) => (

@@ -15,7 +15,24 @@ The same list is an **RSS feed**: `/feed.xml` for the whole site,
 `?lang=en` for another language. Every page announces the site feed in its
 `<head>`, so a feed reader finds it from wherever somebody subscribes.
 
-Point a Slack, Discord or Mattermost **feed integration** at it and the docs'
+## Following one page or one category
+
+A reader who only cares about part of the docs can subscribe to just that.
+Every category and every page has **Subscribe via RSS** under its title or
+at the end of its text:
+
+- `/p/<project>/c/<category>/feed.xml` for one category
+- `/p/<project>/pages/<page>/feed.xml` for one page
+
+A page's feed holds one item, its latest change, and every new change
+arrives as a new item. That is what subscribing to a page is for: being
+told when it changes. Both are also announced in the page's `<head>`, next
+to the site feed, so a browser extension or a feed reader offers them too.
+
+They follow the version a reader lands on. A draft, a category with nothing
+published in it, and anything in a private project have no feed.
+
+Point a Slack, Discord or Mattermost **feed integration** at any of these feeds and the docs'
 news arrives in a channel — no [webhooks](/p/docuwaves/pages/webhooks) to
 configure.
 

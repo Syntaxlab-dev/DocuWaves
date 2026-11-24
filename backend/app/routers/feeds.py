@@ -1,6 +1,14 @@
-"""RSS feeds of the changelog: /feed.xml for the whole site and
-/p/<project>/feed.xml for one project, `?lang=` for a language other than
-the default one.
+"""RSS feeds of the changelog: /feed.xml for the whole site,
+/p/<project>/feed.xml for one project, /p/<project>/c/<category>/feed.xml
+for one category and /p/<project>/pages/<page>/feed.xml for one page --
+`?lang=` for a language other than the default one. Each sits next to the
+public address it follows, with /feed.xml on the end.
+
+A page's feed has one item per change rather than a history: the changelog
+keeps a page's newest change, and the item's guid carries its date, so every
+update arrives in the reader as a new item. That is what subscribing to a
+page is for -- "tell me when this changes" -- and it needs no list of every
+edit ever made.
 
 Root paths rather than /api/public/*, for the same reason as the sitemap:
 a feed URL is something people paste into a reader, and it should read like
@@ -18,7 +26,16 @@ from xml.sax.saxutils import escape
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
-from app.services import changelog, content_versions, projects_store, seo, site_branding, site_languages
+from app.services import (
+    categories_store,
+    changelog,
+    content_versions,
+    pages_store,
+    projects_store,
+    seo,
+    site_branding,
+    site_languages,
+)
 
 router = APIRouter(tags=["public"])
 
@@ -48,12 +65,22 @@ def _rfc822(timestamp: str) -> str:
         return ""
 
 
-def feed_xml(base: str, language: str, project: dict | None) -> str:
+def feed_xml(
+    base: str, language: str, project: dict | None, category: dict | None = None, page: dict | None = None
+) -> str:
     branding = site_branding.read_branding()
     site_name = site_languages.pick(branding["name"], branding.get("name_i18n") or {}, language)
     labels = _labels(language)
     lang_prefix = language if site_languages.is_multilingual() else ""
-    if project:
+    if project and page:
+        default = content_versions.default_version(project["slug"])
+        title = f"{page['title']} – {project['name']}"
+        home = seo.page_url(base, lang_prefix, project["slug"], default, default, page["slug"])
+    elif project and category:
+        default = content_versions.default_version(project["slug"])
+        title = f"{category['name']} – {project['name']} – {labels['title']}"
+        home = seo.section_url(base, lang_prefix, project["slug"], default, default, category["slug"])
+    elif project:
         default = content_versions.default_version(project["slug"])
         title = f"{project['name']} – {labels['title']}"
         home = seo.section_url(base, lang_prefix, project["slug"], default, default)
@@ -62,7 +89,14 @@ def feed_xml(base: str, language: str, project: dict | None) -> str:
         home = seo.home_url(base, lang_prefix)
 
     items = []
-    for entry in changelog.entries(language, project["slug"] if project else "", limit=_ITEMS):
+    selected = changelog.entries(
+        language,
+        project["slug"] if project else "",
+        limit=_ITEMS,
+        category_slug=category["slug"] if category else "",
+        page_slug=page["slug"] if page else "",
+    )
+    for entry in selected:
         default = content_versions.default_version(entry["project_slug"])
         link = seo.page_url(base, lang_prefix, entry["project_slug"], default, default, entry["page_slug"])
         # The guid changes with the date, so an update is a NEW item to a feed
@@ -105,9 +139,48 @@ def site_feed(request: Request, lang: str | None = Query(default=None, max_lengt
 )
 def project_feed(project_slug: str, request: Request, lang: str | None = Query(default=None, max_length=20)):
     language = _language(lang)
+    project = _public_project(project_slug, language)
+    return _response(feed_xml(seo.public_base_url(request), language, project))
+
+
+def _public_project(project_slug: str, language: str) -> dict:
     project = projects_store.get_project_by_slug(project_slug, language)
     # A private project has no feed: feed readers never sign in, and what is
     # in a feed reader stays there (services/visibility.py).
     if project is None or project.get("private"):
         raise HTTPException(status_code=404, detail="Project not found.")
-    return _response(feed_xml(seo.public_base_url(request), language, project))
+    return project
+
+
+@router.api_route(
+    "/p/{project_slug}/c/{category_slug}/feed.xml",
+    methods=["GET", "HEAD"],
+    summary="RSS feed: new and updated pages, one category",
+)
+def category_feed(
+    project_slug: str, category_slug: str, request: Request, lang: str | None = Query(default=None, max_length=20)
+):
+    language = _language(lang)
+    project = _public_project(project_slug, language)
+    default = content_versions.default_version(project_slug)
+    category = categories_store.get_category_by_slug(project["id"], category_slug, language, default)
+    # Only a category a reader can see: one with a published page in it.
+    if category is None or not pages_store.list_pages(category["id"], published_only=True):
+        raise HTTPException(status_code=404, detail="Category not found.")
+    return _response(feed_xml(seo.public_base_url(request), language, project, category=category))
+
+
+@router.api_route(
+    "/p/{project_slug}/pages/{page_slug}/feed.xml",
+    methods=["GET", "HEAD"],
+    summary="RSS feed: when one page is published or changed",
+)
+def page_feed(project_slug: str, page_slug: str, request: Request, lang: str | None = Query(default=None, max_length=20)):
+    language = _language(lang)
+    project = _public_project(project_slug, language)
+    default = content_versions.default_version(project_slug)
+    page = pages_store.resolve_page(project["id"], page_slug, language, published_only=True, version=default)
+    # A draft has no feed: from out here it does not exist.
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    return _response(feed_xml(seo.public_base_url(request), language, project, page=page))

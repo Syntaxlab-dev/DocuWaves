@@ -30,7 +30,9 @@ import threading
 from app.services import content_versions, db, git_content_repo, prose, seo, site_languages, snippets
 from app.services.content_files import parse_page_document
 
-MAX_ENTRIES = 100
+# Enough that a feed of one category or one page still finds its pages on a
+# large site: the walk is cached per HEAD, so this is paid once per change.
+MAX_ENTRIES = 500
 _SUMMARY_CHARS = 240
 
 _lock = threading.Lock()
@@ -116,15 +118,28 @@ def _all() -> list[dict]:
         return _cache[1]
 
 
-def entries(language: str = "", project_slug: str = "", limit: int = 50, include_private: bool = False) -> list[dict]:
+def entries(
+    language: str = "",
+    project_slug: str = "",
+    limit: int = 50,
+    include_private: bool = False,
+    category_slug: str = "",
+    page_slug: str = "",
+) -> list[dict]:
     """The changelog as a reader in `language` sees it, newest first,
-    optionally for one project. Private projects only for a signed-in reader
-    (services/visibility.py) -- never in a feed, which passes the default."""
+    optionally for one project, and within it for one category or one page
+    (the feeds a reader subscribes to). Private projects only for a
+    signed-in reader (services/visibility.py) -- never in a feed, which
+    passes the default."""
     out = []
     for entry in _all():
         if entry.get("private") and not include_private:
             continue
         if project_slug and entry["project_slug"] != project_slug:
+            continue
+        if category_slug and entry["category_slug"] != category_slug:
+            continue
+        if page_slug and entry["slug"] != page_slug:
             continue
         # On a multilingual site each language has its own changelog: a
         # German reader is not told about an English text they won't get.
@@ -139,6 +154,7 @@ def entries(language: str = "", project_slug: str = "", limit: int = 50, include
             "page_slug": entry["slug"],
             "language": entry["language"],
             "project_slug": entry["project_slug"],
+            "category_slug": entry["category_slug"],
             "project_name": site_languages.pick(
                 entry["project_name"], site_languages.parse_i18n(entry["project_name_i18n"]), language
             ),

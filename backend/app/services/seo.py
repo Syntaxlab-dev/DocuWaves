@@ -243,6 +243,9 @@ class Meta:
     # The changelog's RSS feed, announced on every page so a feed reader (or
     # a browser extension) finds it from whatever page someone subscribes on.
     feed_url: str = ""
+    # On a category or a page: the feed of just that one, so "subscribe"
+    # in a reader offers what the visitor is looking at as well. (title, url)
+    topic_feed: tuple[str, str] | None = None
 
 
 def _language(lang: str) -> str:
@@ -304,6 +307,16 @@ def _alternates(base: str, tail: list[str]) -> list[tuple[str, str]]:
     return entries
 
 
+def _feed_query(lang: str) -> str:
+    return f"?lang={lang}" if lang and lang != site_languages.default_language() else ""
+
+
+def _topic_feed(base: str, lang: str, title: str, *tail: str) -> tuple[str, str]:
+    """A category's or a page's own feed (routers/feeds.py). Always about
+    the default version, the one a reader lands on."""
+    return title, base + "/" + "/".join(tail) + "/feed.xml" + _feed_query(lang)
+
+
 def _defaults(base: str, lang: str, branding: dict, noindex: bool) -> Meta:
     """The site's own metadata and nothing else -- what the home page says
     about itself, and the ONLY thing an unknown URL, the search page or a URL
@@ -318,7 +331,7 @@ def _defaults(base: str, lang: str, branding: dict, noindex: bool) -> Meta:
         language=lang,
         document_language=lang,
         noindex=noindex,
-        feed_url=f"{base}/feed.xml" + (f"?lang={lang}" if lang and lang != site_languages.default_language() else ""),
+        feed_url=f"{base}/feed.xml" + _feed_query(lang),
     )
 
 
@@ -436,6 +449,10 @@ def _category_meta(base: str, route: Route, lang: str, branding: dict) -> Meta |
     # noindex only when this frozen category has no equivalent to point at
     # -- see _page_meta, where the same rule is spelled out in full.
     meta.noindex = canonical_version != default
+    if canonical_version == default:
+        meta.topic_feed = _topic_feed(
+            base, lang, f"{category['name']} – {project['name']}", "p", project["slug"], "c", category["slug"]
+        )
     if canonical_version == version:
         meta.alternates = _alternates(base, tail)
     meta.structured = [
@@ -507,6 +524,10 @@ def _page_meta(base: str, route: Route, lang: str, branding: dict) -> Meta | Non
     here = _version_segment(version, default)
     tail = ["p", project["slug"], _version_segment(canonical_version, default), "pages", page["slug"]]
     meta.canonical = base + _path(lang, *tail)
+    if canonical_version == default:
+        meta.topic_feed = _topic_feed(
+            base, lang, f"{page['title']} – {project['name']}", "p", project["slug"], "pages", page["slug"]
+        )
     meta.noindex = canonical_version != default
     # hreflang only on a page that is its own canonical. Every alternate has
     # to be self-canonical for the set to mean anything; a frozen page that
@@ -659,6 +680,11 @@ def render_head(meta: Meta) -> str:
     if meta.feed_url:
         lines.append(
             f'<link rel="alternate" type="application/rss+xml" title="{_attr(meta.site_name)}" href="{_attr(meta.feed_url)}" />'
+        )
+    if meta.topic_feed:
+        lines.append(
+            f'<link rel="alternate" type="application/rss+xml" title="{_attr(meta.topic_feed[0])}" '
+            f'href="{_attr(meta.topic_feed[1])}" />'
         )
 
     lines.append(_tag("property", "og:type", meta.og_type))

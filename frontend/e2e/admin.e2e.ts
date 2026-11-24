@@ -82,6 +82,9 @@ test("the page is on the public site", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Installing the widget" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Checking it works" })).toBeVisible();
   await expect(page.getByText("The light turns green.")).toBeVisible();
+  const feed = page.getByRole("link", { name: "Subscribe via RSS" });
+  await expect(feed).toHaveAttribute("href", "/p/handbook/pages/installing-the-widget/feed.xml");
+  expect((await page.request.get("/p/handbook/pages/installing-the-widget/feed.xml")).status()).toBe(200);
   expect(errors).toEqual([]);
 });
 

@@ -38,15 +38,15 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 
 ## v1.2: teams
 
-| Item | Effort |
-|---|---|
-| Permissions per project (for example, Write for project A only) | L |
-| E-mail notifications: approval requested or decided, page changed | M |
-| A log of admin actions (accounts, tokens, branding) | M |
-| Scheduled publishing | M |
-| Bulk actions: publish, move or delete several pages at once | M |
-| Search and replace across a project, with a preview, as one commit | M |
-| Readers subscribe to one page or category (RSS) | S |
+| | Item | Effort |
+|---|---|---|
+| ✅ | Permissions per project (for example, Write for project A only) | L |
+| ✅ | E-mail notifications: approval requested or decided, page changed | M |
+| ✅ | A log of admin actions (accounts, tokens, branding) | M |
+| ✅ | Scheduled publishing | M |
+| ✅ | Bulk actions: publish, move or delete several pages at once | M |
+| ✅ | Search and replace across a project, with a preview, as one commit | M |
+| ✅ | Readers subscribe to one page or category (RSS) | S |
 
 ## v1.3: reach
 
