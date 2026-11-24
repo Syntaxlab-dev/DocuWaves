@@ -426,6 +426,30 @@ export interface MfaStatus {
   recovery_codes?: string[] | null;
 }
 
+/** One commit to the content repo, for the admin activity feed (backend
+ *  services/activity.py). */
+export interface ActivityEntry {
+  sha: string;
+  date: string;
+  author: string;
+  message: string;
+  pages: {
+    project_slug: string;
+    project_name: string;
+    version: string;
+    slug: string;
+    language: string;
+    /** A proposal waiting for approval, not the live page. */
+    pending: boolean;
+    /** "" = no page has this slug any more. */
+    title: string;
+    /** git's A / M / D. */
+    status: string;
+  }[];
+  /** Project, category and other non-page files the commit touched. */
+  other_files: number;
+}
+
 export interface OidcStatus {
   enabled: boolean;
   provider_name: string;
@@ -1038,6 +1062,7 @@ export const api = {
       `/api/admin/import?${new URLSearchParams({ ...target, filename: file.name }).toString()}`,
       file,
     ),
+  adminActivity: (limit = 50) => request<{ entries: ActivityEntry[] }>(`/api/admin/activity?limit=${limit}`),
   adminReviewDue: () => request<{ pages: ReviewDuePage[]; count: number }>("/api/admin/review-due"),
   adminSearchGaps: () =>
     request<{ enabled: boolean; gaps: SearchGap[]; can_draft?: boolean }>("/api/admin/search-gaps"),
