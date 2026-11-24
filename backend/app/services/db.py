@@ -382,6 +382,19 @@ _SQLITE_SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS mfa_recovery_username ON mfa_recovery_codes (username)",
+    # Scheduled publishing (services/scheduled_publish.py). Keyed by the
+    # page's address like a preview link. Real state, never dropped.
+    """
+    CREATE TABLE IF NOT EXISTS scheduled_publish (
+        project_slug TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        publish_at TEXT NOT NULL,
+        scheduled_by TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (project_slug, page_slug, language, version)
+    )
+    """,
     # Permissions per project (services/project_access.py): exceptions to
     # an account's role, keyed by project SLUG because ids belong to the
     # content index, which is rebuilt. Real state, never dropped.
@@ -629,6 +642,19 @@ _POSTGRES_SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS mfa_recovery_username ON mfa_recovery_codes (username)",
+    # Scheduled publishing (services/scheduled_publish.py). Keyed by the
+    # page's address like a preview link. Real state, never dropped.
+    """
+    CREATE TABLE IF NOT EXISTS scheduled_publish (
+        project_slug TEXT NOT NULL,
+        page_slug TEXT NOT NULL,
+        language TEXT NOT NULL DEFAULT '',
+        version TEXT NOT NULL DEFAULT '',
+        publish_at TEXT NOT NULL,
+        scheduled_by TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (project_slug, page_slug, language, version)
+    )
+    """,
     # Permissions per project (services/project_access.py): exceptions to
     # an account's role, keyed by project SLUG because ids belong to the
     # content index, which is rebuilt. Real state, never dropped.
@@ -654,7 +680,7 @@ _REQUIRED_COLUMNS = {
 }
 
 # Only the content index is ever rebuilt. `auth`, `sessions`, `api_tokens`,
-# `page_feedback`, `preview_links`, `project_roles` and the `mfa_*` tables are real state that exists nowhere else
+# `page_feedback`, `preview_links`, `project_roles`, `scheduled_publish` and the `mfa_*` tables are real state that exists nowhere else
 # (the admin's password hash, live logins, the credentials handed to an AI
 # assistant, readers' votes, the links people were sent) -- none of them is
 # in this list and none is ever dropped. That is the whole difference between

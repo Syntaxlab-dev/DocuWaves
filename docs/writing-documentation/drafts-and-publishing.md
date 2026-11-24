@@ -46,6 +46,35 @@ There is deliberately no separate switch for this. A project with nothing to sho
 
 Be precise about what that is, though. It removes the project from the listings a visitor browses; it is **not access control**. A direct link to such a project's URL still resolves — the page just has no category tiles on it, because a category with nothing published in it is not shown either. Anything that must actually be secret does not belong in a documentation instance.
 
+## Publishing at a set time
+
+A saved draft can go live by itself. Under the title, **Schedule
+publishing** takes a date and time, in your own time zone. From then on the
+editor says when the page goes live and who scheduled it, and **Unschedule**
+takes it back.
+
+At that time DocuWaves publishes the page exactly as the toggle would: one
+commit, `Publish page: <title>`, in the name of whoever scheduled it. The
+[e-mail notifications](/p/docuwaves/pages/e-mail-notifications) and
+[webhooks](/p/docuwaves/pages/webhooks) for a published page go out then,
+not when it was scheduled. It happens within a minute of the time. If the
+instance was down at that moment, it happens right after it starts again,
+late rather than never.
+
+A few things change the plan on their own:
+
+- **Publishing the page by hand first** clears the schedule; there is
+  nothing left for it to do.
+- **Renaming the page** keeps the schedule; **deleting it** removes it.
+- **In a project that [requires approval](/p/docuwaves/pages/approval-before-publishing)**
+  scheduling is not offered: there, going live is what the approval does,
+  and a timer must not be a way around it. A schedule left over when a
+  project starts requiring approval is dropped rather than carried out.
+
+The schedule is kept in the instance's database, not in the page file, so
+it is not part of the content repository's history and not in a pull
+request. The commit that publishes the page is.
+
 ## Practical order of work
 
 1. Create the page. It is a draft.

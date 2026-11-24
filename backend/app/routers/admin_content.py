@@ -20,6 +20,7 @@ stores raise FrozenVersionError before touching a file, and main.py turns
 that into a 403 with the reason spelled out, so a write can't reach a frozen
 version through any route, including one the UI never offers."""
 
+from datetime import datetime, timezone
 import tempfile
 from pathlib import Path
 
@@ -43,6 +44,7 @@ from app.services import (
     page_feedback_store,
     page_review,
     project_access,
+    scheduled_publish,
     categories_store,
     content_assets,
     content_files,
@@ -845,6 +847,67 @@ def admin_publish_page(page_id: int, published: bool, request: Request):
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"ok": True}
+
+
+# ---- Scheduled publishing (services/scheduled_publish.py) ----
+
+
+class ScheduleIn(BaseModel):
+    # ISO 8601 WITH an offset, e.g. 2026-12-01T09:00:00+01:00.
+    publish_at: str
+
+
+def _page_and_project(page_id: int) -> tuple[dict, dict]:
+    page = pages_store.get_page(page_id)
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    project = projects_store.get_project(page["project_id"])
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return page, project
+
+
+def _schedule_key(page: dict, project: dict) -> tuple[str, str, str, str]:
+    return project["slug"], page["slug"], page["language"], page["version"]
+
+
+@router.get("/pages/{page_id}/schedule", summary="When this draft goes live by itself, if at all")
+def admin_get_schedule(page_id: int):
+    page, project = _page_and_project(page_id)
+    return {"schedule": scheduled_publish.get(*_schedule_key(page, project))}
+
+
+@router.put(
+    "/pages/{page_id}/schedule",
+    summary="Publish this draft at a set time",
+    description="`publish_at` is a moment with its UTC offset, in the future. Only for a draft, and not in a "
+    "project that requires approval -- there, going live is what the approval does. The page is published by "
+    "the scheduler within a minute of the time, in the name of whoever scheduled it.",
+)
+def admin_set_schedule(page_id: int, body: ScheduleIn, request: Request):
+    page, project = _page_and_project(page_id)
+    content_versions.ensure_editable(project["slug"], page["version"])
+    if page["published"]:
+        raise HTTPException(status_code=409, detail="already_published")
+    if pages_store.review_required(project):
+        raise HTTPException(status_code=409, detail="review_required")
+    moment = scheduled_publish.parse(body.publish_at)
+    if moment is None:
+        raise HTTPException(status_code=400, detail="publish_at must be an ISO 8601 time with an offset.")
+    if moment <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="That time has already passed.")
+    return {"schedule": scheduled_publish.set_schedule(*_schedule_key(page, project), moment, _author(request))}
+
+
+@router.delete("/pages/{page_id}/schedule", summary="Stop this draft from going live by itself")
+def admin_cancel_schedule(page_id: int):
+    page, project = _page_and_project(page_id)
+    return {"cancelled": scheduled_publish.cancel(*_schedule_key(page, project))}
+
+
+@router.get("/schedule", summary="Every draft that is scheduled to go live, soonest first")
+def admin_upcoming_schedule():
+    return {"scheduled": scheduled_publish.upcoming()}
 
 
 class ReviewIn(BaseModel):

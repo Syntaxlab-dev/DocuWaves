@@ -23,6 +23,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { SchedulePanel } from "@/components/SchedulePanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -1040,6 +1041,12 @@ export function PageEditor({
             setReviewedAt(at);
           }}
         />
+      )}
+
+      {/* A saved draft can go live by itself later -- not where going live
+          is what an approval does, and not in a frozen version. */}
+      {loadedId !== null && !livePublished && !reviewRequired && !frozen && (
+        <SchedulePanel pageId={loadedId} readOnly={readOnly} />
       )}
 
       {sourceEditUrl && (

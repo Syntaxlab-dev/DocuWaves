@@ -400,6 +400,12 @@ export interface AuthStatus {
   project_roles?: Record<string, ProjectRole>;
 }
 
+/** A draft's scheduled publication (backend services/scheduled_publish.py). */
+export interface PageSchedule {
+  publish_at: string;
+  scheduled_by: string;
+}
+
 /** E-mail notifications an account can choose (backend services/mail_notifications.py). */
 export type NotificationKind = "review_requested" | "review_decided" | "changed";
 
@@ -1097,6 +1103,15 @@ export const api = {
       `/api/admin/import?${new URLSearchParams({ ...target, filename: file.name }).toString()}`,
       file,
     ),
+  adminPageSchedule: (pageId: number) =>
+    request<{ schedule: PageSchedule | null }>(`/api/admin/pages/${pageId}/schedule`),
+  adminSetPageSchedule: (pageId: number, publishAt: string) =>
+    request<{ schedule: PageSchedule }>(`/api/admin/pages/${pageId}/schedule`, {
+      method: "PUT",
+      body: JSON.stringify({ publish_at: publishAt }),
+    }),
+  adminCancelPageSchedule: (pageId: number) =>
+    request<{ cancelled: boolean }>(`/api/admin/pages/${pageId}/schedule`, { method: "DELETE" }),
   adminActivity: (limit = 50) => request<{ entries: ActivityEntry[] }>(`/api/admin/activity?limit=${limit}`),
   adminReviewDue: () => request<{ pages: ReviewDuePage[]; count: number }>("/api/admin/review-due"),
   adminSearchGaps: () =>

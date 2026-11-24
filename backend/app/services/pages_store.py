@@ -62,6 +62,7 @@ from app.services import (
     git_content_repo,
     page_redirects,
     preview_links_store,
+    scheduled_publish,
     projects_store,
     prose,
     site_languages,
@@ -531,6 +532,8 @@ def _update_page(
     # page. Left behind instead, a link somebody sent a reviewer yesterday
     # would 404 because a typo in the title got fixed today.
     preview_links_store.repoint_page(project["slug"], current["slug"], slug, version)
+    # A scheduled publication too (services/scheduled_publish.py).
+    scheduled_publish.repoint_page(project["slug"], current["slug"], slug, version)
     # And the old address keeps working for everybody else: a permanent
     # redirect to the new one, in the same commit (services/page_redirects.py).
     paths += page_redirects.record_rename(project["slug"], current["slug"], slug)
@@ -629,6 +632,9 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
         review=review,
     )
     verb = "Publish" if published else "Unpublish"
+    if published:
+        # Published by hand before its time: the schedule has nothing left to do.
+        scheduled_publish.cancel(project["slug"], current["slug"], current["language"], current["version"])
     git_content_repo.commit_and_push(paths, f"{verb} page: {current['title']}", author)
     content_sync.full_sync()
     # Only a real change of state is announced: the editor publishes after
@@ -736,6 +742,7 @@ def delete_page(page_id: int, author: str) -> None:
         # would mean a slug somebody reuses later inherits a live link to the
         # page they just created.
         preview_links_store.revoke_for_page(project["slug"], current["slug"], current["version"])
+        scheduled_publish.forget_page(project["slug"], current["slug"], current["version"])
         git_content_repo.commit_and_push(paths, f"Remove page: {current['title']}", author)
         content_sync.full_sync()
         if current["published"]:

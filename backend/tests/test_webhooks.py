@@ -134,6 +134,8 @@ class TestWhenItFires:
         monkeypatch.setattr(pages_store.content_files, "delete_page", lambda *a, **k: ["x.md"])
         monkeypatch.setattr(pages_store.preview_links_store, "repoint_page", lambda *a: None)
         monkeypatch.setattr(pages_store.preview_links_store, "revoke_for_page", lambda *a: None)
+        for name in ("repoint_page", "forget_page", "cancel"):
+            monkeypatch.setattr(pages_store.scheduled_publish, name, lambda *a: None)
         monkeypatch.setattr(pages_store.git_content_repo, "commit_and_push", lambda *a, **k: None)
         monkeypatch.setattr(pages_store.content_sync, "full_sync", lambda: None)
         return events, state

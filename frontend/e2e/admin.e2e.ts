@@ -131,6 +131,18 @@ test("an unpublished page leaves the public site", async ({ page, request }) => 
     .toBe(404);
 });
 
+test("a draft can be scheduled and unscheduled", async ({ page }) => {
+  const errors = watchErrors(page);
+  await openPageInEditor(page, "Setting up the widget");
+  await page.getByRole("button", { name: "Schedule publishing" }).click();
+  await page.getByLabel("Publish on").fill("2031-03-01T09:30");
+  await page.getByRole("button", { name: "Schedule", exact: true }).click();
+  await expect(page.getByText(/Goes live on .*2031.* \(scheduled by admin\)/)).toBeVisible();
+  await page.getByRole("button", { name: "Unschedule" }).click();
+  await expect(page.getByRole("button", { name: "Schedule publishing" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("every admin panel opens without an error", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);

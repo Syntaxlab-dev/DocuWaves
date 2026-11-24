@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
 from app.routers import admin_content, api_tokens, auth, feeds, mcp, mfa, public_content, sitemap, sync, users
-from app.services import content_sync, content_versions, db, git_content_repo, seo, session_registry_store, session_secret
+from app.services import content_sync, content_versions, db, git_content_repo, scheduled_publish, seo, session_registry_store, session_secret
 from app import version
 from app.settings import settings
 
@@ -32,6 +32,18 @@ async def _periodic_content_sync() -> None:
             content_sync.full_sync()
         except git_content_repo.GitContentError as exc:
             log.warning("Periodic content repo sync failed: %s", exc)
+
+
+async def _scheduled_publishing() -> None:
+    """Background loop: once a minute, publishes the drafts whose scheduled
+    time has come (services/scheduled_publish.py). Runs on every instance,
+    remote or not -- unlike the sync loop, its work originates here."""
+    while True:
+        await asyncio.sleep(scheduled_publish.TICK_SECONDS)
+        try:
+            await asyncio.to_thread(scheduled_publish.run_due)
+        except Exception:  # noqa: BLE001 -- logged; the next tick tries again
+            log.exception("Scheduled publishing failed")
 
 
 @asynccontextmanager
@@ -83,7 +95,9 @@ async def lifespan(_app: FastAPI):
         # local-only instance this process is the sole writer and every write
         # reindexes itself, so there is nothing for it to find.
         sync_task = asyncio.create_task(_periodic_content_sync())
+    schedule_task = asyncio.create_task(_scheduled_publishing())
     yield
+    schedule_task.cancel()
     if sync_task is not None:
         sync_task.cancel()
 
