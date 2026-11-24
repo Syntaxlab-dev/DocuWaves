@@ -2,14 +2,14 @@
 # image is for: its output is HTML, CSS and JavaScript, the same bytes for
 # amd64 and arm64. Built under emulation for arm64 instead, `npm ci` and
 # Vite would take several times as long and give the identical result.
-FROM --platform=$BUILDPLATFORM node:22-slim AS frontend-build
+FROM --platform=$BUILDPLATFORM node:26-slim AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 WORKDIR /app
 
 # git: the content repo (Markdown+YAML files, the actual source of truth for
