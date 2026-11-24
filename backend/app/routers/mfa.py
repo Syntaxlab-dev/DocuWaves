@@ -226,7 +226,7 @@ def login_webauthn(body: CredentialIn, request: Request):
         )
     except (InvalidAuthenticationResponse, ValueError, KeyError, TypeError):
         login_throttle.record_failure(address, username)
-        raise HTTPException(status_code=401, detail="mfa_invalid")
+        raise HTTPException(status_code=401, detail="mfa_invalid") from None
     mfa_store.key_used(key["id"], verified.new_sign_count)
     _finish_login(request, username)
     return {"ok": True}
