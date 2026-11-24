@@ -587,6 +587,9 @@ export interface SiteBranding {
   /** Whether there are private projects -- only then does the header offer
    *  "Sign in". */
   sign_in?: boolean;
+  /** A public demo (backend services/demo.py): its login is shown on the
+   *  sign-in page, on purpose. */
+  demo?: { enabled: boolean; username?: string; password?: string };
   chat?: ChatStatus;
 }
 

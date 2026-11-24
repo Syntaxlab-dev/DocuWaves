@@ -9,6 +9,7 @@ import { api, ApiError, type MfaMethod, type OidcStatus } from "@/lib/api";
 import { getAssertion, webauthnSupported } from "@/lib/webauthn";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { useSite } from "@/lib/site";
 
 export function Login({
   setupRequired,
@@ -28,9 +29,12 @@ export function Login({
 }) {
   const { t } = useI18n();
   const { refresh } = useAuth();
+  const { site } = useSite();
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  // A demo instance fills in its own login: it is shown to everybody anyway.
+  const demo = site.demo?.enabled && !setupRequired ? site.demo : null;
+  const [username, setUsername] = useState(demo?.username ?? "");
+  const [password, setPassword] = useState(demo?.password ?? "");
   const [setupToken, setSetupToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [oidcStatus, setOidcStatus] = useState<OidcStatus | null>(null);
@@ -217,6 +221,13 @@ export function Login({
             </div>
           ) : (
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
+            {demo && (
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm">
+                {t("demo.login")
+                  .replace("{username}", demo.username ?? "")
+                  .replace("{password}", demo.password ?? "")}
+              </p>
+            )}
             {setupRequired && setupTokenRequired && (
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="setup-token" className="text-sm font-medium">

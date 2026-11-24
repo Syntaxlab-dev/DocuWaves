@@ -27,6 +27,7 @@ from pydantic import BaseModel
 from fastapi.responses import FileResponse, RedirectResponse
 
 from app.services import (
+    demo,
     categories_store,
     content_assets,
     doc_chat,
@@ -509,7 +510,8 @@ def public_get_site():
     return {
         **site_branding.read_branding(),
         "chat": doc_chat.public_status(),
-        "sign_in": bool(visibility.private_project_ids()),
+        "sign_in": bool(visibility.private_project_ids()) or demo.is_enabled(),
+        "demo": demo.public_status(),
     }
 
 

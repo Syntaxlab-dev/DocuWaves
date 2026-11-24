@@ -69,7 +69,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.services import admin_log, api_tokens_store, project_access, session_registry_store, users_store
+from app.services import admin_log, api_tokens_store, demo, project_access, session_registry_store, users_store
 from app.services.same_origin import is_same_origin
 
 _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
@@ -130,6 +130,9 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
 
         if not path.startswith("/api/"):
             return await call_next(request)
+
+        if demo.blocked(request.method, path):
+            return JSONResponse(status_code=403, content={"detail": demo.MESSAGE})
 
         if path.startswith("/api/public/"):
             response = await call_next(request)

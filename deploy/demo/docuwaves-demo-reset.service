@@ -1,0 +1,10 @@
+[Unit]
+Description=Reset the DocuWaves demo
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# The folder with docker-compose.yml, reset.sh and an .env holding DEMO_PASSWORD.
+WorkingDirectory=/opt/docuwaves-demo
+ExecStart=/opt/docuwaves-demo/reset.sh

@@ -1,0 +1,27 @@
+# A public demo of DocuWaves that resets every night (docs/running-it/a-demo-instance.md).
+#
+#   DEMO_PASSWORD=choose-one docker compose up -d
+#   docker compose exec docuwaves python -m app.cli demo-seed /seed
+#
+# reset.sh does both, after throwing the data away; run it nightly with
+# docuwaves-demo-reset.timer. The data lives in a named volume that the reset
+# deletes -- never point this file at a volume that holds real documentation.
+services:
+  docuwaves:
+    image: ghcr.io/syntaxlab-dev/docuwaves:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8000"
+    environment:
+      DEMO_MODE: "1"
+      DEMO_USERNAME: ${DEMO_USERNAME:-demo}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?set DEMO_PASSWORD}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+    volumes:
+      - demo-data:/data
+      # What the demo starts with: any docs folder, e.g. a checkout of
+      # DocuWaves' own docs/.
+      - ${DEMO_SEED:-./seed}:/seed:ro
+
+volumes:
+  demo-data:

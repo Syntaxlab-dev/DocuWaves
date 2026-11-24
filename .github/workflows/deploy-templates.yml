@@ -38,3 +38,8 @@ jobs:
 
       - name: Coolify compose file
         run: SERVICE_FQDN_DOCUWAVES=https://docs.example.com docker compose -f deploy/coolify/docker-compose.yml config > /dev/null
+
+      - name: Demo compose file and reset script
+        run: |
+          DEMO_PASSWORD=x docker compose -f deploy/demo/docker-compose.yml config > /dev/null
+          shellcheck deploy/demo/reset.sh

@@ -160,6 +160,12 @@ class Settings:
     # same machine or network, port 25).
     smtp_security: str = os.environ.get("SMTP_SECURITY", "starttls").strip().lower()
 
+    # A public demo (services/demo.py, deploy/demo/): the login below is shown
+    # on the sign-in page, and what a visitor could misuse is switched off.
+    demo_mode: bool = os.environ.get("DEMO_MODE", "").strip().lower() in ("1", "true", "yes", "on")
+    demo_username: str = os.environ.get("DEMO_USERNAME", "demo").strip()
+    demo_password: str = os.environ.get("DEMO_PASSWORD", "").strip()
+
     session_cookie_secure: bool = _cookie_secure(
         os.environ.get("SESSION_COOKIE_SECURE", ""), os.environ.get("PUBLIC_BASE_URL", "")
     )

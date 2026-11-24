@@ -75,10 +75,8 @@ def preview_site(docs_dir: str, target: str, name: str, summary: str = "") -> in
     no webhooks, no e-mail, nothing kept. The same import as a real sync
     (services/docs_sync.py), so what the preview shows and warns about is
     what the sync will do."""
-    import io
     import json
     import tempfile
-    import zipfile
 
     from app.services import (
         content_sync,
@@ -95,12 +93,7 @@ def preview_site(docs_dir: str, target: str, name: str, summary: str = "") -> in
     if not source.is_dir():
         print(f"{docs_dir} is not a folder.", file=sys.stderr)
         return 1
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as packed:
-        for file in sorted(source.rglob("*")):
-            relative = file.relative_to(source).as_posix()
-            if file.is_file() and not file.is_symlink() and importer.wanted_path(relative):
-                packed.write(file, relative)
+    archive = _zip_folder(source)
 
     with tempfile.TemporaryDirectory(prefix="docuwaves-preview-") as tmp:
         settings.content_repo_path = str(Path(tmp) / "content-repo")
@@ -116,7 +109,7 @@ def preview_site(docs_dir: str, target: str, name: str, summary: str = "") -> in
         content_sync.full_sync()
         projects_store.create_project(name, "preview", "", "", "", "preview")
         try:
-            result = docs_sync.sync(buffer.getvalue(), "preview", "preview")
+            result = docs_sync.sync(archive, "preview", "preview")
         except (docs_sync.SyncError, importer.ImportError_) as exc:
             print(f"The docs could not be read: {exc}", file=sys.stderr)
             return 1
@@ -134,6 +127,51 @@ def preview_site(docs_dir: str, target: str, name: str, summary: str = "") -> in
     return 0
 
 
+def _zip_folder(source: Path) -> bytes:
+    import io
+    import zipfile
+
+    from app.services import importer
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as packed:
+        for file in sorted(source.rglob("*")):
+            relative = file.relative_to(source).as_posix()
+            if file.is_file() and not file.is_symlink() and importer.wanted_path(relative):
+                packed.write(file, relative)
+    return buffer.getvalue()
+
+
+def demo_seed(docs_dir: str, name: str) -> int:
+    """Fills an EMPTY demo instance (services/demo.py, deploy/demo/): the
+    demo account from DEMO_USERNAME / DEMO_PASSWORD as admin, and the docs
+    folder as a project to play with. Does nothing to an instance that
+    already has accounts or projects, so it is safe to run on every start."""
+    from app.services import content_sync, docs_sync, git_content_repo, projects_store
+
+    if not settings.demo_mode or not settings.demo_password:
+        print("demo-seed needs DEMO_MODE=1 and DEMO_PASSWORD.", file=sys.stderr)
+        return 1
+    db.init_schema()
+    git_content_repo.ensure_clone()
+    content_sync.full_sync()
+    if not users_store.list_users():
+        users_store.create_first_admin(settings.demo_username, settings.demo_password)
+        print(f"Created the demo account {settings.demo_username}.")
+    if projects_store.list_projects():
+        print("The instance already has projects; nothing imported.")
+        return 0
+    source = Path(docs_dir)
+    if not source.is_dir():
+        print(f"{docs_dir} is not a folder.", file=sys.stderr)
+        return 1
+    slug = "docs"
+    projects_store.create_project(name, slug, "📘", "", "", settings.demo_username)
+    result = docs_sync.sync(_zip_folder(source), slug, settings.demo_username, ref="demo")
+    print(f"Imported {name}: {len(result['added'])} pages.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -147,6 +185,9 @@ def main(argv: list[str] | None = None) -> int:
     preview.add_argument("target", help="the ZIP to write")
     preview.add_argument("--name", default="Documentation", help="the project's name on the site")
     preview.add_argument("--summary", default="", help="also write pages and warnings as JSON to this file")
+    seed = commands.add_parser("demo-seed", help="fill an empty demo instance (DEMO_MODE) with its account and docs")
+    seed.add_argument("docs_dir")
+    seed.add_argument("--name", default="DocuWaves")
     args = parser.parse_args(argv)
 
     if args.command == "reset-password":
@@ -154,6 +195,8 @@ def main(argv: list[str] | None = None) -> int:
         return reset_password(args.username, password)
     if args.command == "users":
         return list_users()
+    if args.command == "demo-seed":
+        return demo_seed(args.docs_dir, args.name)
     if args.command == "preview-site":
         return preview_site(args.docs_dir, args.target, args.name, args.summary)
     return snapshot_db(args.target)
