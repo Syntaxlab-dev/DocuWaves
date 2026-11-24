@@ -473,6 +473,27 @@ def public_preview(token: str):
     }
 
 
+def _allow_widget(request: Request, response: Response) -> None:
+    """Let the embeddable search widget (frontend/public/widget.js) read the
+    answer from another site, as SEARCH_WIDGET_ORIGINS allows.
+
+    Never with credentials: the header is "*" or one named origin, and
+    Access-Control-Allow-Credentials is never sent, so a browser only hands
+    another site the answer to a request WITHOUT the reader's cookies -- what
+    an anonymous reader may see anyway. A GET with no custom headers needs
+    no preflight, so no OPTIONS route either."""
+    allowed = settings.search_widget_origins
+    origin = request.headers.get("origin", "")
+    if not origin or allowed.lower() in ("", "off"):
+        return
+    if allowed == "*":
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return
+    response.headers["Vary"] = "Origin"
+    if origin in {o.strip().rstrip("/") for o in allowed.split(",") if o.strip()}:
+        response.headers["Access-Control-Allow-Origin"] = origin
+
+
 @router.get(
     "/search",
     summary="Full-text search across published pages",
@@ -483,6 +504,7 @@ def public_preview(token: str):
 )
 def public_search(
     request: Request,
+    response: Response,
     q: str = Query(..., min_length=1, max_length=200),
     lang: str | None = _LANG_QUERY,
     project: str | None = Query(default=None, max_length=200, description="Project slug to scope the search to."),
@@ -493,6 +515,7 @@ def public_search(
         "never by search-as-you-type (services/search_gaps.py).",
     ),
 ):
+    _allow_widget(request, response)
     project_id: int | None = None
     resolved: str | None = None
     private_scope = False

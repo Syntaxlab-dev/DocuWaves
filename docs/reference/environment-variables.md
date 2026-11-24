@@ -91,6 +91,7 @@ See [E-mail notifications](/p/docuwaves/pages/e-mail-notifications).
 |---|---|---|
 | `FEEDBACK_COMMENTS` | `on` | The optional note after "Was this page helpful?", read by editors under **Insights**. `off` keeps the thumbs only. See [Reader feedback](/p/docuwaves/pages/reader-feedback-and-link-checking#was-this-page-helpful) |
 | `SEARCH_GAPS` | `on` | The anonymous tally of searches that found nothing, under **Insights**. `off` writes nothing. See [Reader feedback](/p/docuwaves/pages/reader-feedback-and-link-checking#what-readers-searched-for-and-did-not-find) |
+| `SEARCH_WIDGET_ORIGINS` | `*` | Which other websites may use the [search widget](/p/docuwaves/pages/a-search-box-on-your-own-website): `*` any, `off` none, or a comma-separated list of origins |
 
 ## Updates
 

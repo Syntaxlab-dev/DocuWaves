@@ -175,6 +175,12 @@ class Settings:
     # token is set, and then only for a scraper that sends it as a bearer.
     metrics_token: str = os.environ.get("METRICS_TOKEN", "").strip()
 
+    # The embeddable search widget (frontend/public/widget.js): which other
+    # sites may call the public search from a reader's browser. "*" = any
+    # (the default: search only ever returns what an anonymous reader may
+    # see), "off" = none, or a comma-separated list of origins.
+    search_widget_origins: str = os.environ.get("SEARCH_WIDGET_ORIGINS", "*").strip()
+
     # A public demo (services/demo.py, deploy/demo/): the login below is shown
     # on the sign-in page, and what a visitor could misuse is switched off.
     demo_mode: bool = os.environ.get("DEMO_MODE", "").strip().lower() in ("1", "true", "yes", "on")

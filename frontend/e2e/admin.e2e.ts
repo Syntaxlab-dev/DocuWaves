@@ -129,6 +129,30 @@ test("a glossary term explains itself on the page", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("the search widget works on another site", async ({ browser, baseURL }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  // Another origin embedding the widget: this instance under "localhost"
+  // while the widget comes from 127.0.0.1. Both real loopback answers, so
+  // Chrome's private-network rule (which a mocked page would trip) stays out.
+  await page.goto(baseURL!.replace("127.0.0.1", "localhost") + "/robots.txt");
+  await page.evaluate((src) => {
+    const tag = document.createElement("script");
+    tag.src = src;
+    tag.dataset.project = "handbook";
+    tag.dataset.newTab = "off";
+    document.body.append(tag);
+  }, `${baseURL}/widget.js`);
+  await page.getByRole("button", { name: /Search the docs/ }).click();
+  await page.getByRole("combobox", { name: "Search the docs" }).fill("widget");
+  const hit = page.getByRole("option", { name: /Installing the widget/ });
+  await expect(hit).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(`${baseURL}/p/handbook/pages/installing-the-widget`);
+  await context.close();
+});
+
 async function openPageInEditor(page: Page, title: string) {
   await signIn(page);
   await page.getByRole("button", { name: "Handbook" }).click();
