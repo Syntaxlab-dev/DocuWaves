@@ -1,11 +1,12 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogIn } from "lucide-react";
+import { KeyRound, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { api, ApiError, type OidcStatus } from "@/lib/api";
+import { api, ApiError, type MfaMethod, type OidcStatus } from "@/lib/api";
+import { getAssertion, webauthnSupported } from "@/lib/webauthn";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 
@@ -33,6 +34,11 @@ export function Login({
   const [setupToken, setSetupToken] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [oidcStatus, setOidcStatus] = useState<OidcStatus | null>(null);
+  // The second step: set once the password was right and the account has
+  // two-factor sign-in. `mfaMode` is the factor being asked for right now.
+  const [mfaMethods, setMfaMethods] = useState<MfaMethod[] | null>(null);
+  const [mfaMode, setMfaMode] = useState<MfaMethod>("webauthn");
+  const [code, setCode] = useState("");
 
   useEffect(() => {
     api.oidcStatus().then(setOidcStatus).catch(() => setOidcStatus(null));
@@ -59,10 +65,16 @@ export function Login({
       if (setupRequired) {
         await api.setup(username, password, setupToken);
       } else {
-        await api.login(username, password);
+        const result = await api.login(username, password);
+        if (!result.ok && result.mfa_required) {
+          const usable = result.methods.filter((m) => m !== "webauthn" || webauthnSupported());
+          setMfaMethods(usable);
+          setMfaMode(usable[0] ?? "recovery");
+          setCode("");
+          return;
+        }
       }
-      await refresh();
-      if (next) navigate(next, { replace: true });
+      await finish();
     } catch (err) {
       toast.error(
         err instanceof ApiError
@@ -75,6 +87,62 @@ export function Login({
       setSubmitting(false);
     }
   }
+
+  async function finish() {
+    setMfaMethods(null);
+    await refresh();
+    if (next) navigate(next, { replace: true });
+  }
+
+  function mfaError(err: unknown) {
+    if (err instanceof ApiError && err.message === "mfa_login_expired") {
+      toast.error(t("mfa.loginExpired"));
+      setMfaMethods(null);
+      setPassword("");
+      return;
+    }
+    toast.error(
+      err instanceof ApiError
+        ? err.message === "mfa_invalid"
+          ? t("mfa.invalid")
+          : err.message
+        : t("mfa.keyCancelled"),
+    );
+  }
+
+  async function onKey() {
+    setSubmitting(true);
+    try {
+      const options = await api.mfaLoginKeyOptions();
+      const credential = await getAssertion(options);
+      await api.mfaLoginKey(credential);
+      await finish();
+    } catch (err) {
+      mfaError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onCode(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      if (mfaMode === "recovery") {
+        const { recovery_codes_left } = await api.mfaLoginRecovery(code);
+        toast.warning(t("mfa.recoveryUsed").replace("{n}", String(recovery_codes_left)));
+      } else {
+        await api.mfaLoginTotp(code);
+      }
+      await finish();
+    } catch (err) {
+      mfaError(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const otherMethods = (mfaMethods ?? []).filter((m) => m !== mfaMode);
 
   return (
     <div
@@ -92,6 +160,62 @@ export function Login({
           {setupRequired && <p className="text-sm text-[var(--muted)]">{t("setup.subtitle")}</p>}
         </CardHeader>
         <CardContent>
+          {mfaMethods ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-sm text-[var(--muted)]">{t(`mfa.ask.${mfaMode}` as never)}</p>
+              {mfaMode === "webauthn" ? (
+                <Button type="button" className="w-full" disabled={submitting} onClick={() => void onKey()} autoFocus>
+                  <KeyRound className="h-4 w-4" />
+                  {t("mfa.useKey")}
+                </Button>
+              ) : (
+                <form onSubmit={onCode} className="flex flex-col gap-3">
+                  <Input
+                    id="mfa-code"
+                    value={code}
+                    onChange={(e) => setCode(e.target.value)}
+                    autoComplete="one-time-code"
+                    inputMode={mfaMode === "totp" ? "numeric" : "text"}
+                    spellCheck={false}
+                    placeholder={mfaMode === "totp" ? "123456" : "abcde-fghij"}
+                    aria-label={t(`mfa.ask.${mfaMode}` as never)}
+                    required
+                    autoFocus
+                  />
+                  <Button type="submit" className="w-full" disabled={submitting}>
+                    {t("mfa.verify")}
+                  </Button>
+                </form>
+              )}
+              {otherMethods.length > 0 && (
+                <div className="flex flex-col gap-1 text-xs">
+                  {otherMethods.map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className="text-left text-[var(--accent)] hover:underline"
+                      onClick={() => {
+                        setMfaMode(m);
+                        setCode("");
+                      }}
+                    >
+                      {t(`mfa.switch.${m}` as never)}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                className="text-left text-xs text-[var(--muted)] hover:underline"
+                onClick={() => {
+                  setMfaMethods(null);
+                  setPassword("");
+                }}
+              >
+                {t("common.back")}
+              </button>
+            </div>
+          ) : (
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
             {setupRequired && setupTokenRequired && (
               <div className="flex flex-col gap-1.5">
@@ -139,8 +263,9 @@ export function Login({
               {setupRequired ? t("setup.submit") : t("login.submit")}
             </Button>
           </form>
+          )}
 
-          {oidcStatus?.enabled && (
+          {oidcStatus?.enabled && !mfaMethods && (
             <>
               <div className="my-4 flex items-center gap-3 text-xs text-[var(--muted)]">
                 <div className="h-px flex-1 bg-[var(--border)]" />

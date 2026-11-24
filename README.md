@@ -75,6 +75,9 @@ later".
 - **Accounts with four roles** — Reader, Read, Write and Manage (see
   "Accounts and roles"); password login, or single sign-on via any
   standard OIDC provider (Authentik, Keycloak, Authelia, Zitadel, ...).
+- **Two-factor sign-in** — security keys such as a YubiKey and passkeys
+  (WebAuthn/FIDO2), authenticator-app codes (TOTP) and single-use recovery
+  codes, per account, with an admin reset for anyone locked out.
 - **An AI assistant can read and write the docs** — generate an API token
   in the admin UI, hand it to Claude (or anything else that speaks MCP),
   and it can browse, search and — if the token says so — write the

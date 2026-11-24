@@ -342,6 +342,42 @@ _SQLITE_SCHEMA = [
     CREATE INDEX IF NOT EXISTS preview_links_page
         ON preview_links (project_slug, page_slug, version)
     """,
+    # Two-factor sign-in (services/mfa_store.py). Like `auth` beside it this
+    # is state that exists nowhere else -- a security key's public half, an
+    # authenticator app's secret, the hashes of the recovery codes -- so none
+    # of it is in _CONTENT_TABLES and none of it is ever dropped.
+    """
+    CREATE TABLE IF NOT EXISTS mfa_keys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        credential_id TEXT UNIQUE NOT NULL,
+        public_key TEXT NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        transports TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS mfa_keys_username ON mfa_keys (username)",
+    """
+    CREATE TABLE IF NOT EXISTS mfa_totp (
+        username TEXT PRIMARY KEY,
+        secret TEXT NOT NULL,
+        confirmed INTEGER NOT NULL DEFAULT 0,
+        last_step INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mfa_recovery_codes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS mfa_recovery_username ON mfa_recovery_codes (username)",
 ]
 
 _POSTGRES_SCHEMA = [
@@ -537,6 +573,42 @@ _POSTGRES_SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS preview_links_page ON preview_links (project_slug, page_slug, version)",
+    # Two-factor sign-in (services/mfa_store.py). Like `auth` beside it this
+    # is state that exists nowhere else -- a security key's public half, an
+    # authenticator app's secret, the hashes of the recovery codes -- so none
+    # of it is in _CONTENT_TABLES and none of it is ever dropped.
+    """
+    CREATE TABLE IF NOT EXISTS mfa_keys (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        credential_id TEXT UNIQUE NOT NULL,
+        public_key TEXT NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        transports TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS mfa_keys_username ON mfa_keys (username)",
+    """
+    CREATE TABLE IF NOT EXISTS mfa_totp (
+        username TEXT PRIMARY KEY,
+        secret TEXT NOT NULL,
+        confirmed INTEGER NOT NULL DEFAULT 0,
+        last_step INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS mfa_recovery_codes (
+        id SERIAL PRIMARY KEY,
+        username TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS mfa_recovery_username ON mfa_recovery_codes (username)",
 ]
 
 
@@ -550,7 +622,7 @@ _REQUIRED_COLUMNS = {
 }
 
 # Only the content index is ever rebuilt. `auth`, `sessions`, `api_tokens`,
-# `page_feedback` and `preview_links` are real state that exists nowhere else
+# `page_feedback`, `preview_links` and the `mfa_*` tables are real state that exists nowhere else
 # (the admin's password hash, live logins, the credentials handed to an AI
 # assistant, readers' votes, the links people were sent) -- none of them is
 # in this list and none is ever dropped. That is the whole difference between

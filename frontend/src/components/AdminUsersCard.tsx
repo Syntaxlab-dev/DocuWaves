@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { KeyRound, Trash2 } from "lucide-react";
+import { KeyRound, ShieldOff, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,6 +116,17 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
     }
   }
 
+  async function onResetMfa(user: User) {
+    if (!confirm(t("users.mfaResetConfirm").replace("{name}", user.username))) return;
+    try {
+      await api.adminResetUserMfa(user.username);
+      toast.success(t("users.mfaReset").replace("{name}", user.username));
+      await load();
+    } catch (err) {
+      fail(err);
+    }
+  }
+
   async function onDelete(user: User) {
     if (!confirm(t("users.deleteConfirm").replace("{name}", user.username))) return;
     try {
@@ -162,6 +173,7 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
                       ? t("users.lastLogin").replace("{date}", formatIsoDate(user.last_login_at.slice(0, 10), uiLang))
                       : t("users.neverSignedIn")}
                     {user.sessions > 0 && ` · ${t("users.sessions").replace("{n}", String(user.sessions))}`}
+                    {user.mfa && ` · ${t("users.mfaOn")}`}
                   </span>
 
                   {/* The role is offered on every row, your own included --
@@ -192,6 +204,18 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
                       >
                         <KeyRound className="h-3.5 w-3.5" />
                       </Button>
+                      {user.mfa && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          aria-label={t("users.mfaResetButton")}
+                          title={t("users.mfaResetButton")}
+                          onClick={() => void onResetMfa(user)}
+                        >
+                          <ShieldOff className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"

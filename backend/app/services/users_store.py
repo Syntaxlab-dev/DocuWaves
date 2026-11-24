@@ -245,6 +245,11 @@ def delete_user(username: str) -> bool:
     placeholder = _placeholder()
     with db.get_connection() as conn:
         conn.execute(f"DELETE FROM auth WHERE username = {placeholder}", (username,))
+    # Its keys and codes go with it: a later account given the same name
+    # must not inherit somebody else's second factor.
+    from app.services import mfa_store
+
+    mfa_store.delete_all(username)
     return True
 
 

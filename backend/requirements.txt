@@ -22,3 +22,14 @@ soupsieve==2.10
 typing_extensions==4.16.0
 markdownify==1.2.4
 six==1.17.0
+# Two-factor sign-in with security keys and passkeys (routers/mfa.py):
+# WebAuthn/FIDO2 verification. BSD-3; the rest are its own dependencies,
+# pinned like everything else here.
+webauthn==3.0.1
+cbor2==6.3.0
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.12
+pyasn1==0.6.5
+pyasn1_modules==0.4.2
+pyOpenSSL==26.4.0

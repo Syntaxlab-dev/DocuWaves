@@ -36,7 +36,7 @@ THE THREE THINGS THAT MUST NOT HAPPEN, and where each is stopped:
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.services import session_registry_store, users_store
+from app.services import mfa_store, session_registry_store, users_store
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin"])
 
@@ -90,7 +90,11 @@ def _require_valid_password(password: str) -> str:
 
 
 def _with_sessions(user: dict) -> dict:
-    return {**user, "sessions": len(session_registry_store.sessions_for(user["username"]))}
+    return {
+        **user,
+        "sessions": len(session_registry_store.sessions_for(user["username"])),
+        "mfa": mfa_store.enabled(user["username"]),
+    }
 
 
 @router.get(
@@ -181,4 +185,19 @@ def delete_user(username: str, request: Request):
             status_code=409,
             detail="This is the only administrator left. Make somebody else an administrator first.",
         )
+    return {"ok": True, "sessions_ended": session_registry_store.revoke_for_user(username)}
+
+
+@router.post(
+    "/{username}/mfa/reset",
+    summary="Switch off an account's two-factor sign-in",
+    description="For somebody who lost every key, their phone AND their recovery codes. Removes all of the "
+    "account's security keys, its authenticator app and its recovery codes, and signs it out everywhere; the "
+    "password is unchanged, so they sign in with it and set 2FA up again. Not for your own account -- yours "
+    "is managed from your account settings, which ask for your password.",
+)
+def reset_mfa(username: str, request: Request):
+    _require_existing(username)
+    _require_other_account(request, username, "reset the two-factor sign-in of")
+    mfa_store.delete_all(username)
     return {"ok": True, "sessions_ended": session_registry_store.revoke_for_user(username)}

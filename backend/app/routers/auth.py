@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.services import login_throttle, oidc_client, session_registry_store, users_store, visibility
+from app.services import login_throttle, mfa_store, oidc_client, session_registry_store, users_store, visibility
 from app.services.client_address import client_address
 from app.services.same_origin import is_same_origin
 from app.settings import settings
@@ -128,6 +128,13 @@ def auth_login(body: Credentials, request: Request):
     if not users_store.verify_credentials(username, body.password):
         login_throttle.record_failure(address, username)
         raise HTTPException(status_code=401, detail="Incorrect username or password.")
+    if mfa_store.enabled(username):
+        # The password was right, and that is all it proves: the session
+        # starts once the second factor is given too (routers/mfa.py). The
+        # throttle is not reset yet, so guessing the code is still counted.
+        from app.routers.mfa import begin_pending_login
+
+        return begin_pending_login(request, username)
     login_throttle.record_success(username)
     _start_session(request, username)
     return {"ok": True}

@@ -88,6 +88,7 @@ class TestLoginRoute:
 
         monkeypatch.setattr(auth.users_store, "verify_credentials", verify)
         monkeypatch.setattr(auth.users_store, "touch_login", lambda username: None)
+        monkeypatch.setattr(auth.mfa_store, "enabled", lambda username: False)
         monkeypatch.setattr(auth.session_registry_store, "create", lambda *args: None)
         return checked
 

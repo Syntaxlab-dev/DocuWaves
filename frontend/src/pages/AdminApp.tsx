@@ -51,6 +51,7 @@ import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
+import { TwoFactorCard } from "@/components/TwoFactorCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { PresenceBanner } from "@/components/PresenceBanner";
@@ -591,7 +592,12 @@ export function AdminApp() {
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-6">
-        {showAccount && <AccountCard onClose={() => setShowAccount(false)} />}
+        {showAccount && (
+          <>
+            <AccountCard onClose={() => setShowAccount(false)} />
+            <TwoFactorCard />
+          </>
+        )}
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
         {showTokens && <ApiTokensCard projects={projects} onClose={() => setShowTokens(false)} />}
         {showInsights && (

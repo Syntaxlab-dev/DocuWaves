@@ -402,6 +402,25 @@ export interface User {
   /** How many sessions this account has open right now -- so an admin who
    *  removes somebody can see that it took effect. */
   sessions: number;
+  /** Whether the account signs in with a second factor. */
+  mfa: boolean;
+}
+
+/** What a password login answers: done, or "now the second factor". */
+export type LoginResult =
+  | { ok: true }
+  | { ok: false; mfa_required: true; methods: MfaMethod[] };
+
+export type MfaMethod = "webauthn" | "totp" | "recovery";
+
+/** An account's own two-factor sign-in (backend routers/mfa.py). */
+export interface MfaStatus {
+  enabled: boolean;
+  keys: { id: number; name: string; created_at: string; last_used_at: string }[];
+  totp: boolean;
+  recovery_codes_left: number;
+  /** Only in the answer that created them, and only once. */
+  recovery_codes?: string[] | null;
 }
 
 export interface OidcStatus {
@@ -810,7 +829,7 @@ export const api = {
       body: JSON.stringify({ username, password, setup_token: setupToken }),
     }),
   login: (username: string, password: string) =>
-    request("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
+    request<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request("/api/auth/password", {
@@ -818,6 +837,34 @@ export const api = {
       body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
     }),
   oidcStatus: () => request<OidcStatus>("/api/auth/oidc/status"),
+
+  // Two-factor sign-in: the second step of a login
+  mfaLoginKeyOptions: () =>
+    request<Record<string, unknown>>("/api/auth/mfa/login/webauthn/options", { method: "POST" }),
+  mfaLoginKey: (credential: unknown) =>
+    request<{ ok: boolean }>("/api/auth/mfa/login/webauthn", { method: "POST", body: JSON.stringify({ credential }) }),
+  mfaLoginTotp: (code: string) =>
+    request<{ ok: boolean }>("/api/auth/mfa/login/totp", { method: "POST", body: JSON.stringify({ code }) }),
+  mfaLoginRecovery: (code: string) =>
+    request<{ ok: boolean; recovery_codes_left: number }>("/api/auth/mfa/login/recovery", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
+  // Two-factor sign-in: this account's own settings
+  mfaStatus: () => request<MfaStatus>("/api/auth/mfa"),
+  mfaKeyOptions: () => request<Record<string, unknown>>("/api/auth/mfa/keys/options", { method: "POST" }),
+  mfaAddKey: (name: string, credential: unknown) =>
+    request<MfaStatus>("/api/auth/mfa/keys", { method: "POST", body: JSON.stringify({ name, credential }) }),
+  mfaDeleteKey: (id: number, password: string) =>
+    request<MfaStatus>(`/api/auth/mfa/keys/${id}/delete`, { method: "POST", body: JSON.stringify({ password }) }),
+  mfaTotpSetup: () => request<{ secret: string; uri: string }>("/api/auth/mfa/totp/setup", { method: "POST" }),
+  mfaTotpConfirm: (code: string) =>
+    request<MfaStatus>("/api/auth/mfa/totp/confirm", { method: "POST", body: JSON.stringify({ code }) }),
+  mfaTotpDisable: (password: string) =>
+    request<MfaStatus>("/api/auth/mfa/totp/disable", { method: "POST", body: JSON.stringify({ password }) }),
+  mfaNewRecoveryCodes: (password: string) =>
+    request<MfaStatus>("/api/auth/mfa/recovery", { method: "POST", body: JSON.stringify({ password }) }),
 
   // Admin: content repo
   contentRepoStatus: () => request<ContentRepoStatus>("/api/admin/content-repo/status"),
@@ -1058,6 +1105,11 @@ export const api = {
     request<{ ok: boolean; sessions_ended: number }>(
       `/api/admin/users/${encodeURIComponent(username)}/password`,
       { method: "PUT", body: JSON.stringify({ password }) },
+    ),
+  adminResetUserMfa: (username: string) =>
+    request<{ ok: boolean; sessions_ended: number }>(
+      `/api/admin/users/${encodeURIComponent(username)}/mfa/reset`,
+      { method: "POST" },
     ),
   adminDeleteUser: (username: string) =>
     request<{ ok: boolean; sessions_ended: number }>(`/api/admin/users/${encodeURIComponent(username)}`, {

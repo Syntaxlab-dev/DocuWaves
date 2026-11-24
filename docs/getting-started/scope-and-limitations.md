@@ -39,6 +39,7 @@ DocuWaves adds three things of its own. They live in the database, which is othe
 | `auth` | One row per [account](/p/docuwaves/pages/accounts-and-roles): the username, a bcrypt hash of the password, the role, when it was created and when it last signed in. Never the password itself. With [single sign-on](/p/docuwaves/pages/single-sign-on) the username comes from your provider and the stored hash is of a random value that is never used |
 | `sessions` | One row per active login: a random session id, the username, when it was created, when it was last seen, the client IP address and the browser's user-agent string. The row is deleted on logout, and when the account is deleted or its role is lowered |
 | `api_tokens` | One row per API token: the name you gave it, a SHA-256 hash of its value, its scope, its expiry, when it was created and when it was last used. Never the token itself |
+| `mfa_keys`, `mfa_totp`, `mfa_recovery_codes` | For accounts that use [two-factor sign-in](/p/docuwaves/pages/two-factor-sign-in): each security key's name, credential id and public key (never anything secret: the private half never leaves the key), when it was added and last used; the authenticator app's secret; SHA-256 hashes of the recovery codes and whether each was used. Deleted with the account |
 | `preview_links` | One row per [preview link](/p/docuwaves/pages/draft-preview-links): a SHA-256 hash of its value, which page it points at, its expiry, when it was made and by whom. Never the link itself. Expired rows are deleted rather than kept |
 | `page_feedback` | One row per ["was this page helpful?"](/p/docuwaves/pages/reader-feedback-and-link-checking) answer: which page, which answer, and when. No address, no identifier, no user-agent — nothing that ties two answers together |
 
@@ -49,7 +50,7 @@ Beyond that:
 - **No request log of its own.** The container is deliberately started without one, because a reverse proxy in front of it already logs requests with the real client IP. That log is yours, in your proxy, under your retention policy.
 - **A little browser storage.** The reader's light/dark preference, and an author's unsaved editor text, are kept in that browser's own storage. Neither is uploaded and neither reaches the server.
 
-That list is complete as of this version. If you need it for a data-protection record, those five tables plus your proxy's access log are the whole inventory the software itself creates. Note what is *not* in it: there is no table of chat questions, no analytics store of DocuWaves' own, and no record of who read what.
+That list is complete as of this version. If you need it for a data-protection record, those tables plus your proxy's access log are the whole inventory the software itself creates. Note what is *not* in it: there is no table of chat questions, no analytics store of DocuWaves' own, and no record of who read what.
 
 ## The licence, in plain words
 
