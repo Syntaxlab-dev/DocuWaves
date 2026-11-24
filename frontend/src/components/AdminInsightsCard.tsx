@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { FilePlus2, X } from "lucide-react";
-import { api, type FeedbackSummary, type SearchGap } from "@/lib/api";
+import { api, type FeedbackSummary, type ReviewDuePage, type SearchGap } from "@/lib/api";
+import { formatIsoDate } from "@/lib/dates";
 import { useI18n } from "@/lib/i18n";
 import { usePermissions } from "@/lib/auth";
 
@@ -34,7 +35,7 @@ export function AdminInsightsCard({
    *  was scoped to one ("" = the one currently selected). */
   onCreatePage: (title: string, projectSlug: string) => void;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   // Forgetting a page's votes is a DELETE, so a read-only account does not
   // get the button. Both reports themselves are reading and stay -- they
   // are, in fact, most of what a reviewer account is for.
@@ -42,13 +43,16 @@ export function AdminInsightsCard({
   const [feedback, setFeedback] = useState<FeedbackSummary[] | null>(null);
   const [broken, setBroken] = useState<Broken[] | null>(null);
   const [gaps, setGaps] = useState<{ enabled: boolean; gaps: SearchGap[] } | null>(null);
+  const [due, setDue] = useState<ReviewDuePage[] | null>(null);
 
   async function load() {
-    const [f, b, g] = await Promise.all([
+    const [f, b, g, d] = await Promise.all([
       api.adminFeedback().catch(() => ({ pages: [] as FeedbackSummary[] })),
       api.adminLinkCheck().catch(() => ({ broken: [] as Broken[] })),
       api.adminSearchGaps().catch(() => ({ enabled: true, gaps: [] as SearchGap[] })),
+      api.adminReviewDue().catch(() => ({ pages: [] as ReviewDuePage[], count: 0 })),
     ]);
+    setDue(d.pages);
     setFeedback(f.pages);
     setBroken(b.broken);
     setGaps(g);
@@ -199,6 +203,46 @@ export function AdminInsightsCard({
                   <div className="truncate text-xs text-[var(--muted)]">
                     <code>{row.target}</code> — {row.reason}
                   </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="lg:col-span-2">
+          <h3 className="mb-1 text-sm font-semibold">
+            {t("reviewDue.title")}
+            {due && due.length > 0 && <span className="ml-2 tabular-nums text-[var(--muted)]">{due.length}</span>}
+          </h3>
+          <p className="mb-3 text-xs text-[var(--muted)]">{t("reviewDue.hint")}</p>
+          {due === null && <p className="text-sm text-[var(--muted)]">{t("common.loading")}</p>}
+          {due?.length === 0 && <p className="text-sm text-[var(--muted)]">{t("reviewDue.none")}</p>}
+          {due && due.length > 0 && (
+            <ul className="flex flex-col gap-2">
+              {due.map((row) => (
+                <li
+                  key={`${row.page_id}`}
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                >
+                  <a
+                    href={`/p/${row.project_slug}/pages/${row.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 truncate font-medium hover:underline"
+                  >
+                    {row.title}
+                    {row.language && <span className="text-[var(--muted)]"> · {row.language}</span>}
+                  </a>
+                  <span className="truncate text-xs text-[var(--muted)]">
+                    {row.project_name} / {row.category_name}
+                  </span>
+                  <span className="shrink-0 text-xs text-[var(--muted)]">
+                    {row.days_overdue === null
+                      ? t("reviewDue.never")
+                      : t("reviewDue.overdue")
+                          .replace("{date}", formatIsoDate(row.reviewed_at.slice(0, 10), lang))
+                          .replace("{n}", String(row.days_overdue))}
+                  </span>
                 </li>
               ))}
             </ul>

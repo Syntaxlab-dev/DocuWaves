@@ -205,7 +205,33 @@ def read_project(slug: str) -> dict | None:
         # Docs-as-code (services/docs_sync.py): the project's pages come from
         # a code repository, so they are read-only here.
         "source": normalize_source(data.get("source")),
+        # `review_every: 180` -- a published page whose review note is older
+        # than this many days, or that has none, is due for a review
+        # (services/review_due.py). 0 or missing: off.
+        "review_every_days": _review_every(data),
     }
+
+
+def _review_every(data: dict) -> int:
+    try:
+        return max(0, int(data.get("review_every") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def review_every_days_of_file(path: Path) -> int:
+    if not path.exists():
+        return 0
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError:
+        return 0
+    return _review_every(data) if isinstance(data, dict) else 0
+
+
+def review_every_days(slug: str) -> int:
+    project = read_project(slug)
+    return project["review_every_days"] if project else 0
 
 
 def write_project(
@@ -221,12 +247,19 @@ def write_project(
     private: bool = False,
     review_required: bool = False,
     source: dict | None = None,
+    review_every_days: int | None = None,
 ) -> list[str]:
-    """The two i18n mappings default to None so every existing caller (and
+    """`review_every_days` None = keep whatever the file says now: most
+    callers rewrite the file for another reason (a reorder, a docs-as-code
+    sync) and know nothing about it.
+
+    The two i18n mappings default to None so every existing caller (and
     every single-language install) writes exactly the plain `name: My
     Project` string it always wrote -- a mapping only appears in the file
     once someone actually translates the field."""
     path = content_root() / slug / "_project.yml"
+    if review_every_days is None:
+        review_every_days = review_every_days_of_file(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     default_lang = site_languages.default_language()
     data = {
@@ -252,6 +285,8 @@ def write_project(
         data["visibility"] = "private"
     if review_required:
         data["review"] = "required"
+    if review_every_days and review_every_days > 0:
+        data["review_every"] = int(review_every_days)
     source = normalize_source(source)
     if source is not None:
         data["source"] = source

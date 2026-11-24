@@ -2023,6 +2023,7 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
   const [imageUrl, setImageUrl] = useState<string | null>(project?.image_url ?? null);
   const [isPrivate, setIsPrivate] = useState(project?.private ?? false);
   const [reviewRequired, setReviewRequired] = useState(project?.review_required ?? false);
+  const [reviewEvery, setReviewEvery] = useState(String(project?.review_every_days ?? 0));
   const [fromRepo, setFromRepo] = useState(Boolean(project?.source));
   const [repo, setRepo] = useState(project?.source?.repo ?? "");
   const [branch, setBranch] = useState(project?.source?.branch ?? "main");
@@ -2064,6 +2065,7 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
       private: isPrivate,
       acknowledge_public_repo: needsAck && acknowledged,
       review_required: reviewRequired,
+      review_every_days: Math.max(0, Math.min(3650, Number.parseInt(reviewEvery, 10) || 0)),
       // Sent on every save: a save that left it out would switch a synced
       // project back to editable without anyone asking for that.
       source: fromRepo ? { repo: repo.trim(), branch: branch.trim() || "main", path: docsPath.trim() } : null,
@@ -2137,6 +2139,19 @@ function ProjectForm({ project, onDone }: { project: Project | null; onDone: (sl
           {t("review.projectRequired")}
         </label>
         <p className="text-xs text-[var(--muted)]">{t("review.projectHint")}</p>
+        <label className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+          {t("reviewDue.everyLabel")}
+          <Input
+            type="number"
+            min={0}
+            max={3650}
+            value={reviewEvery}
+            onChange={(e) => setReviewEvery(e.target.value)}
+            className="h-8 w-24"
+          />
+          {t("reviewDue.everyDays")}
+        </label>
+        <p className="text-xs text-[var(--muted)]">{t("reviewDue.everyHint")}</p>
       </fieldset>
       <fieldset className="flex flex-col gap-1.5 rounded-md border border-[var(--border)] p-2">
         <legend className="px-1 text-xs font-medium text-[var(--muted)]">{t("sync.sourceLegend")}</legend>

@@ -25,7 +25,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
@@ -47,6 +47,7 @@ from app.services import (
     git_content_repo,
     page_templates,
     repo_exposure,
+    review_due,
     search_gaps,
     pages_store,
     preview_links_store,
@@ -337,6 +338,10 @@ class ProjectIn(BaseModel):
     # Docs-as-code: {repo, branch, path} when the pages come from a code
     # repository (services/docs_sync.py); null = edited here.
     source: dict | None = None
+    # Pages are due for a review this many days after their last review note
+    # (services/review_due.py); 0 = off. Left out (an older client, the MCP
+    # tools) = keep what the project has.
+    review_every_days: int | None = Field(default=None, ge=0, le=3650)
 
 
 def _refuse_private_on_public_repo(body: "ProjectIn", currently_private: bool = False) -> None:
@@ -365,7 +370,7 @@ def admin_create_project(body: ProjectIn, request: Request):
         project = projects_store.create_project(
             name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
             _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
-            body.review_required, body.source,
+            body.review_required, body.source, review_every_days=body.review_every_days,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -388,7 +393,7 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
         updated = projects_store.update_project(
             project_id, name, slug, body.icon.strip(), body.color.strip(), body.description.strip(), _author(request),
             _clean_i18n(body.name_i18n), _clean_i18n(body.description_i18n), body.image.strip(), body.private,
-            body.review_required, body.source,
+            body.review_required, body.source, review_every_days=body.review_every_days,
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -902,6 +907,18 @@ def admin_activity(limit: int = activity.DEFAULT_LIMIT):
 def admin_review_queue():
     reviews = page_review.queue()
     return {"reviews": reviews, "count": len(reviews)}
+
+
+@router.get(
+    "/review-due",
+    summary="Published pages due for a review",
+    description="For projects with `review_every: <days>` in their _project.yml: every published page of the "
+    "working version whose review note is older than that, or that has none. Never-reviewed pages first "
+    "(`days_overdue` null), then the most overdue.",
+)
+def admin_review_due():
+    pages = review_due.due_pages()
+    return {"pages": pages, "count": len(pages)}
 
 
 @router.get(

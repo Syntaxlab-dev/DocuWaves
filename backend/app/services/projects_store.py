@@ -52,6 +52,9 @@ def _row_to_dict(row, language: str = "") -> dict:
         # Docs-as-code: {repo, branch, path} when the pages come from a code
         # repository (read-only here), else None.
         "source": json.loads(row[12]) if row[12] else None,
+        # Read from _project.yml rather than indexed: only the admin form and
+        # services/review_due.py ask, never a reader's page view.
+        "review_every_days": content_files.review_every_days(row[3]),
     }
 
 
@@ -141,11 +144,12 @@ def create_project(
     private: bool = False,
     review_required: bool = False,
     source: dict | None = None,
+    review_every_days: int | None = None,
 ) -> dict:
     order = _next_order()
     paths = content_files.write_project(
         slug, name, icon, color, image, description, order, name_i18n, description_i18n, private, review_required,
-        source,
+        source, review_every_days=review_every_days,
     )
     git_content_repo.commit_and_push(paths, f"Add project: {name}", author)
     content_sync.full_sync()
@@ -166,6 +170,7 @@ def update_project(
     private: bool = False,
     review_required: bool = False,
     source: dict | None = None,
+    review_every_days: int | None = None,
 ) -> dict | None:
     current = get_project(project_id)
     if current is None:
@@ -175,7 +180,7 @@ def update_project(
         paths += content_files.rename_project(current["slug"], slug)
     paths += content_files.write_project(
         slug, name, icon, color, image, description, current["sort_order"], name_i18n, description_i18n, private,
-        review_required, source,
+        review_required, source, review_every_days=review_every_days,
     )
     git_content_repo.commit_and_push(paths, f"Update project: {name}", author)
     content_sync.full_sync()
