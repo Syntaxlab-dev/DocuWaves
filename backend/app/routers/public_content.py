@@ -24,7 +24,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from app.services import (
     demo,
@@ -36,6 +36,7 @@ from app.services import (
     page_redirects,
     pages_store,
     preview_links_store,
+    project_export,
     projects_store,
     site_branding,
     site_languages,
@@ -248,6 +249,47 @@ def public_get_book(
         if pages:
             chapters.append({"name": c["name"], "slug": c["slug"], "icon": c.get("icon", ""), "pages": pages})
     return {"project": project, "versions": _versions_payload(project_slug, resolved), "categories": chapters}
+
+
+_EXPORTS = {
+    "epub": (project_export.epub, "application/epub+zip", ".epub"),
+    "markdown": (project_export.markdown_zip, "application/zip", "-markdown.zip"),
+}
+
+
+@router.get(
+    "/projects/{project_slug}/export/{kind}",
+    summary="A whole project as an EPUB or as a zip of Markdown files",
+    description="What the print view holds -- every published page of one version, in the reader's language, "
+    "in the sidebar's order, snippets filled in -- as a file to take away: `epub` for an e-reader, `markdown` "
+    "for another tool (services/project_export.py).",
+)
+def public_export_project(
+    request: Request,
+    project_slug: str,
+    kind: str,
+    lang: str | None = _LANG_QUERY,
+    version: str | None = _VERSION_QUERY,
+):
+    if kind not in _EXPORTS:
+        raise HTTPException(status_code=404, detail="Unknown export format.")
+    language = _language(lang)
+    project = _visible_project(project_slug, language, request)
+    resolved = _version(project_slug, version)
+    build, media_type, extension = _EXPORTS[kind]
+    data, pages = build(project, language, resolved)
+    if not pages:
+        raise HTTPException(status_code=404, detail="This project has no published pages to export.")
+    name = project_export.file_name(project, resolved, extension)
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            # A private project's file is for whoever asked, never for a cache.
+            "Cache-Control": "private, no-store" if project.get("private") else "public, max-age=300",
+        },
+    )
 
 
 @router.get("/projects/{project_slug}/categories/{category_slug}")

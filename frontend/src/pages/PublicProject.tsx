@@ -4,6 +4,7 @@ import { CoverImage } from "@/components/CoverImage";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { PrivateBadge } from "@/components/PrivateBadge";
+import { api } from "@/lib/api";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
@@ -58,6 +59,23 @@ export function PublicProject() {
       >
         {t("book.link")} →
       </Link>
+      {/* Plain links: the server answers with the file to save. */}
+      <a
+        href={api.publicProjectExportUrl(nav.project.slug, "epub", lang, version)}
+        title={t("book.epubHint")}
+        download
+        className="ml-4 mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+      >
+        {t("book.epub")} ↓
+      </a>
+      <a
+        href={api.publicProjectExportUrl(nav.project.slug, "markdown", lang, version)}
+        title={t("book.markdownHint")}
+        download
+        className="ml-4 mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+      >
+        {t("book.markdown")} ↓
+      </a>
 
       <h2 className="mt-8 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
         {t("project.categories")}
