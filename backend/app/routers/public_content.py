@@ -122,6 +122,18 @@ def public_list_projects(request: Request, lang: str | None = _LANG_QUERY):
     }
 
 
+def _subtree_counts(categories: list[dict], language: str) -> dict[str, int]:
+    """Published pages in each category and everything under it, by slug."""
+    own = {
+        c["slug"]: len(pages_store.list_pages(c["id"], published_only=True, language=language)) for c in categories
+    }
+    totals = dict(own)
+    for c in categories:
+        for parent in categories_store.ancestors(categories, c["slug"]):
+            totals[parent["slug"]] += own[c["slug"]]
+    return totals
+
+
 @router.get("/projects/{project_slug}")
 def public_get_project(
     request: Request, project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
@@ -135,11 +147,16 @@ def public_get_project(
     # yet would just be a dead end for a visitor. A category whose pages
     # only exist in the fallback language still counts: those pages are
     # readable, and list_pages() marks them.
-    visible = []
-    for c in categories:
-        pages = pages_store.list_pages(c["id"], published_only=True, language=language)
-        if pages:
-            visible.append({**c, "page_count": len(pages)})
+    #
+    # Only the top level gets a tile; a subcategory is reached through its
+    # parent's page. A parent counts everything under it, so a section that
+    # holds nothing but subsections still gets its tile.
+    counts = _subtree_counts(categories, language)
+    visible = [
+        {**c, "page_count": counts[c["slug"]]}
+        for c in categories
+        if not c.get("parent") and counts[c["slug"]]
+    ]
     return {"project": project, "categories": visible, "versions": _versions_payload(project_slug, resolved)}
 
 
@@ -196,7 +213,11 @@ def public_get_project_nav(
                 "pages": pages_by_category.get(c["id"], []),
                 **({"available_versions": availability.get(c["slug"], [])} if versions else {}),
             }
-            for c in categories_store.list_categories(project["id"], language, resolved)
+            # Reading order -- each category followed by its subcategories --
+            # with a `depth` and the `parent` slug, so the sidebar can draw
+            # the tree and every previous/next walk over this list reads the
+            # project the way the sidebar shows it.
+            for c in categories_store.tree_order(categories_store.list_categories(project["id"], language, resolved))
         ],
         "versions": versions,
     }
@@ -222,11 +243,16 @@ def public_get_book(
     language = _language(lang)
     project = _visible_project(project_slug, language, request)
     resolved = _version(project_slug, version)
-    categories = categories_store.list_categories(project["id"], language, resolved)
+    every = categories_store.list_categories(project["id"], language, resolved)
+    categories = categories_store.tree_order(every)
     if category:
-        categories = [c for c in categories if c["slug"] == category]
-        if not categories:
+        # The category and everything under it -- printing a section prints
+        # its subsections too, at depths counted from it.
+        top = next((c for c in categories if c["slug"] == category), None)
+        if top is None:
             raise HTTPException(status_code=404, detail="Category not found.")
+        categories = [top] + categories_store.descendants(every, category)
+        categories = [{**c, "depth": c["depth"] - top["depth"]} for c in categories]
 
     listed = pages_store.list_project_pages(project["id"], published_only=True, language=language, version=resolved)
     by_category: dict[int, list[dict]] = {}
@@ -249,7 +275,9 @@ def public_get_book(
                 "markdown_content": snippets.resolve(page["markdown_content"], project_slug, page["version"], page["language"]),
             })
         if pages:
-            chapters.append({"name": c["name"], "slug": c["slug"], "icon": c.get("icon", ""), "pages": pages})
+            chapters.append(
+                {"name": c["name"], "slug": c["slug"], "icon": c.get("icon", ""), "depth": c["depth"], "pages": pages}
+            )
     return {"project": project, "versions": _versions_payload(project_slug, resolved), "categories": chapters}
 
 
@@ -321,9 +349,19 @@ def public_get_category(
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found.")
     pages = pages_store.list_pages(category["id"], published_only=True, language=language)
+    every = categories_store.list_categories(project["id"], language, resolved)
+    counts = _subtree_counts(every, language)
     return {
         "project": project,
         "category": category,
+        # The breadcrumb above it, outermost first, and the tiles below it --
+        # the same "only what leads somewhere" rule as the project's tiles.
+        "parents": [{"name": c["name"], "slug": c["slug"]} for c in categories_store.ancestors(every, category_slug)],
+        "subcategories": [
+            {**c, "page_count": counts[c["slug"]]}
+            for c in every
+            if c.get("parent") == category_slug and counts[c["slug"]]
+        ],
         "versions": _versions_payload(
             project_slug, resolved, categories_store.category_versions(project["id"]).get(category_slug, [])
         ),

@@ -14,6 +14,29 @@ Documentation in DocuWaves has exactly three levels, and each one is a directory
 
 The rule of thumb for the top level: **one project per thing you ship, not per topic.** Topics are categories. A project's slug is in every URL beneath it, so splitting a single product into three projects is a decision you feel later.
 
+## Categories inside categories
+
+A category can sit inside another one, up to four levels deep: *Installation* inside *Getting started*, *Linux* inside *Installation*. Pick the outer one under **Inside** when you create or edit a category.
+
+Readers see the nesting everywhere it matters:
+
+- The project's tiles show only the top level. Opening a tile shows that category's own pages and a tile for each category inside it, with a path back up above the heading.
+- The sidebar draws the tree. Closing a section closes everything inside it, and the section being read opens together with every section around it.
+- Previous and next, the printed book and the static export all follow the same order: a category's own pages, then the categories inside it.
+- A tile counts everything under it, so a section that holds only subsections is not shown as empty.
+
+On disk the directories stay flat. The nesting is one line in the inner category's `_category.yml`:
+
+```yaml
+name: Linux
+parent: installation
+order: 0
+```
+
+Moving a category somewhere else changes that one line and moves no files. Page addresses never contain a category, so they do not change either. Renaming the outer category updates the `parent:` lines that point to it, in the same commit. Deleting it moves the categories inside it up one level instead of deleting them. If a hand-edited `parent:` names a category that does not exist, makes a loop or nests deeper than four levels, that category is shown at the top level and the server log says why. Nothing disappears.
+
+The **Move up** and **Move down** arrows move a category among the categories that share its parent.
+
 ## Slugs and URLs
 
 You never type a slug. It is derived from the name or title — lowercased, with runs of spaces and punctuation collapsed into single dashes:
@@ -28,7 +51,7 @@ The reading URLs are:
 
 ```
 /p/<project-slug>                          the project's category tiles
-/p/<project-slug>/c/<category-slug>        one category's pages
+/p/<project-slug>/c/<category-slug>        one category's pages and subcategories
 /p/<project-slug>/pages/<page-slug>        a page
 /search                                    search results
 ```
@@ -59,7 +82,7 @@ In the admin area, each row has **Move up** and **Move down** buttons. Pressing 
 Project and category rows each have an **Edit** button:
 
 - A **project** has a name, an icon (a single emoji), a colour, a one-line description shown on its home-page tile, and an optional [cover image](/p/docuwaves/pages/tile-cover-images).
-- A **category** has a name, an icon, and an optional cover image.
+- A **category** has a name, an icon, an optional cover image, and the category it sits inside, if any.
 
 ![The admin area's project list: a content-repo status line reading "Content versioned locally (no remote)" above three project rows, each with an edit pencil, move-up and move-down arrows and a delete bin](../assets/admin-projects.png)
 

@@ -6,7 +6,8 @@ import { CoverImage } from "@/components/CoverImage";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
-import { useProjectNav, visibleCategories } from "@/lib/nav";
+import { topCategories, useProjectNav } from "@/lib/nav";
+import { CategoryTiles } from "@/components/CategoryTiles";
 import { siteText, useDocumentTitle, useSite } from "@/lib/site";
 
 export function PublicHome() {
@@ -33,7 +34,7 @@ export function PublicHome() {
   const soleProject = projects && projects.length === 1 ? projects[0] : null;
   const { nav } = useProjectNav(soleProject?.slug, lang);
   const soleCategories =
-    soleProject && nav && nav.project.slug === soleProject.slug ? visibleCategories(nav) : null;
+    soleProject && nav && nav.project.slug === soleProject.slug ? topCategories(nav) : null;
   // A project with no categories yet falls back to the tile: the alternative
   // is a heading with nothing under it, which is emptier than what we set
   // out to fix.
@@ -65,27 +66,10 @@ export function PublicHome() {
         </h2>
       )}
 
-      {soleProject && soleCategories && soleCategories.length > 0 && (
-        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {soleCategories.map((c) => (
-            <Link key={c.id} to={path(`/p/${soleProject.slug}/c/${c.slug}`)}>
-              {/* Same tile as the project page's, deliberately -- this is
-                  the same list, reached from one level up. */}
-              <Card className={`h-full transition-transform hover:-translate-y-0.5${c.image_url ? " overflow-hidden" : ""}`}>
-                <CoverImage url={c.image_url} />
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    {c.icon && <span className="text-lg">{c.icon}</span>}
-                    <CardTitle className="text-base font-semibold text-[var(--ink)]">{c.name}</CardTitle>
-                  </div>
-                </CardHeader>
-                <CardContent className="text-sm text-[var(--muted)]">
-                  {c.pages.length} {t("category.pages")}
-                </CardContent>
-              </Card>
-            </Link>
-          ))}
-        </div>
+      {soleProject && nav && soleCategories && soleCategories.length > 0 && (
+        // Same tiles as the project page's, deliberately -- this is the
+        // same list, reached from one level up.
+        <CategoryTiles nav={nav} categories={soleCategories} href={(c) => path(`/p/${soleProject.slug}/c/${c.slug}`)} />
       )}
 
       {!showCategories && (

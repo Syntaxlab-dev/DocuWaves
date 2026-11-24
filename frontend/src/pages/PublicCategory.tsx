@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { FileText } from "lucide-react";
 import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
-import { useProjectNav, visibleCategories } from "@/lib/nav";
+import { categoryAncestors, subcategories, useProjectNav, visibleCategories } from "@/lib/nav";
+import { CategoryTiles } from "@/components/CategoryTiles";
 import { FallbackBadge } from "@/components/FallbackBadge";
 import { FeedLink } from "@/components/FeedLink";
 import { useI18n } from "@/lib/i18n";
@@ -54,11 +55,27 @@ export function PublicCategory() {
   if (!nav) return <p className="mx-auto max-w-5xl px-4 py-8 text-[var(--muted)]">{t("common.loading")}</p>;
   if (!category) return <NotFound />;
 
+  const parents = categoryAncestors(nav, category.slug);
+  const children = subcategories(nav, category.slug);
+
   return (
     <DocsShell nav={nav} activeCategorySlug={category.slug}>
-      <Link to={docPath(nav.project.slug, "")} className="text-sm text-[var(--accent)]">
-        ← {nav.project.name}
-      </Link>
+      {/* The way back up: the project, then every section this one sits
+          in, so a reader deep in a nested section is never one "back" link
+          away from losing their place. */}
+      <nav aria-label={t("category.breadcrumb")} className="flex flex-wrap items-center gap-x-1 text-sm">
+        <Link to={docPath(nav.project.slug, "")} className="text-[var(--accent)]">
+          ← {nav.project.name}
+        </Link>
+        {parents.map((p) => (
+          <span key={p.id} className="flex items-center gap-1">
+            <span className="text-[var(--muted)]" aria-hidden="true">/</span>
+            <Link to={docPath(nav.project.slug, `/c/${p.slug}`)} className="text-[var(--accent)]">
+              {p.name}
+            </Link>
+          </span>
+        ))}
+      </nav>
       <div className="mt-2 flex items-center gap-2">
         {category.icon && <span className="text-2xl">{category.icon}</span>}
         <h1 className="text-2xl font-semibold">{category.name}</h1>
@@ -81,6 +98,11 @@ export function PublicCategory() {
         />
       )}
 
+      {children.length > 0 && (
+        <CategoryTiles nav={nav} categories={children} href={(c) => docPath(nav.project.slug, `/c/${c.slug}`)} />
+      )}
+
+      {category.pages.length > 0 && (
       <div className="mt-6 flex flex-col divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface)]">
         {category.pages.map((p) => (
           <Link
@@ -94,6 +116,7 @@ export function PublicCategory() {
           </Link>
         ))}
       </div>
+      )}
     </DocsShell>
   );
 }

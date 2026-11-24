@@ -60,7 +60,8 @@ The directory name is the slug, and the slug is the URL. `image` is the only fie
 | `name` | string, **localizable** | the slug | |
 | `icon` | string | `""` | A single emoji |
 | `image` | string | *(none)* | Cover image, relative to this file's directory — one level below `assets/`, so `../assets/x.png` |
-| `order` | integer | `0` | Lower sorts first |
+| `parent` | string | *(none)* | The slug of the category this one sits inside, in the same version. Up to four levels deep; an unknown parent, a loop or a deeper nesting is ignored and the category shows at the top level. See [Categories inside categories](/p/docuwaves/pages/projects-categories-and-pages) |
+| `order` | integer | `0` | Lower sorts first, among categories with the same parent |
 
 ## A page: `<page-slug>[.<lang>].md`
 

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { ProjectNav } from "@/lib/api";
 import { FallbackBadge } from "@/components/FallbackBadge";
-import { visibleCategories } from "@/lib/nav";
+import { categoryAncestors, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { useDocPath } from "@/lib/version";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,13 @@ export function DocsSidebar({
 
   const categories = visibleCategories(nav);
   const expandAll = categories.reduce((total, c) => total + c.pages.length, 0) <= EXPAND_ALL_UP_TO;
+
+  // The section being read and every section it sits in start open, so the
+  // reader can see where they are however deep that is.
+  const activeChain = new Set(
+    activeCategorySlug ? [activeCategorySlug, ...categoryAncestors(nav, activeCategorySlug).map((c) => c.slug)] : [],
+  );
+  const isOpen = (slug: string) => toggled[slug] ?? (expandAll || activeChain.has(slug));
 
   function toggle(slug: string, open: boolean) {
     setToggled((current) => ({ ...current, [slug]: !open }));
@@ -80,9 +87,14 @@ export function DocsSidebar({
 
         <div className="mt-4 flex flex-col gap-4">
           {categories.map((category) => {
-            const open = toggled[category.slug] ?? (expandAll || category.slug === activeCategorySlug);
+            // A subsection is drawn only while every section above it is
+            // open -- a closed section closes everything under it.
+            const ancestors = categoryAncestors(nav, category.slug);
+            if (!ancestors.every((a) => isOpen(a.slug))) return null;
+            const open = isOpen(category.slug);
+            const depth = ancestors.length;
             return (
-              <div key={category.id}>
+              <div key={category.id} style={depth ? { marginLeft: `${depth * 0.75}rem`, marginTop: "-0.5rem" } : undefined}>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
@@ -96,7 +108,10 @@ export function DocsSidebar({
                   <Link
                     to={docPath(nav.project.slug, `/c/${category.slug}`)}
                     className={cn(
-                      "text-xs font-semibold uppercase tracking-wide hover:text-[var(--accent)]",
+                      "hover:text-[var(--accent)]",
+                      // Only the top level is a shouting section heading; a
+                      // subsection reads as an entry inside it.
+                      depth ? "text-sm font-medium" : "text-xs font-semibold uppercase tracking-wide",
                       category.slug === activeCategorySlug ? "text-[var(--ink)]" : "text-[var(--muted)]",
                     )}
                   >
@@ -104,7 +119,7 @@ export function DocsSidebar({
                   </Link>
                 </div>
 
-                {open && (
+                {open && category.pages.length > 0 && (
                   <ul className="mt-1 flex flex-col border-l border-[var(--border)] pl-3 ml-2.5">
                     {category.pages.map((page) => {
                       const current = page.slug === activePageSlug;

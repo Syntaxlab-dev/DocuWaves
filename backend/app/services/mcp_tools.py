@@ -233,9 +233,12 @@ def list_pages(arguments: dict, _token: dict) -> dict:
                 "slug": category["slug"],
                 "name": category["name"],
                 "icon": category["icon"],
+                # '' at the top level, else the slug of the category it is
+                # nested under; the list is in reading order (parents first).
+                "parent": category["parent"],
                 "pages": [_page_entry(p) for p in pages_store.list_all_pages(category["id"])],
             }
-            for category in categories
+            for category in categories_store.tree_order(categories)
         ],
     }
 
@@ -647,7 +650,11 @@ def create_category(arguments: dict, token: dict) -> dict:
     version = content_versions.writable_version(project["slug"])
     slug = content_files.unique_slug(name, categories_store.slug_taken, project["id"], version)
     author = api_tokens_store.author_name(token["name"])
-    category = categories_store.create_category(project["id"], name, slug, icon, author, None, order)
+    parent = str(arguments.get("parent") or "").strip()
+    try:
+        category = categories_store.create_category(project["id"], name, slug, icon, author, None, order, parent=parent)
+    except categories_store.InvalidParent as exc:
+        raise ToolError(f"{exc} Pass the slug of an existing category as 'parent', or leave it out.") from exc
     if category is None:
         raise ToolError("The category could not be created -- check the server log.")
     return {
@@ -659,6 +666,7 @@ def create_category(arguments: dict, token: dict) -> dict:
             "icon": category["icon"],
             "version": category["version"],
             "order": category["sort_order"],
+            "parent": category["parent"],
         },
         "commit_author": author,
     }
@@ -1141,6 +1149,11 @@ TOOLS: list[dict] = [
                     "type": "integer",
                     "description": "Optional sort position among the project's categories -- lower sorts first. "
                     "Omit to add the category after the existing ones.",
+                },
+                "parent": {
+                    "type": "string",
+                    "description": "Optional slug of an existing category to nest this one under, as a "
+                    "subsection of it (at most 4 levels deep). Omit for a top-level category.",
                 },
             },
             "required": ["project", "name"],

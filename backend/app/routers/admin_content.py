@@ -488,6 +488,10 @@ class CategoryIn(BaseModel):
     # store-verbatim/resolve-on-read contract as ProjectIn.image above.
     image: str = ""
     name_i18n: dict[str, str] = {}
+    # The slug of the category to sit under, '' for the top level. None
+    # (left out) on an update keeps the current one -- see
+    # categories_store.update_category.
+    parent: str | None = None
 
 
 @router.get(
@@ -517,8 +521,10 @@ def admin_create_category(project_id: int, body: CategoryIn, request: Request):
     try:
         category = categories_store.create_category(
             project_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n),
-            image=body.image.strip(),
+            image=body.image.strip(), parent=(body.parent or "").strip(),
         )
+    except categories_store.InvalidParent as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"id": category["id"], "slug": category["slug"]}
@@ -543,8 +549,10 @@ def admin_update_category(category_id: int, body: CategoryIn, request: Request):
     try:
         updated = categories_store.update_category(
             category_id, name, slug, body.icon.strip(), _author(request), _clean_i18n(body.name_i18n),
-            body.image.strip(),
+            body.image.strip(), None if body.parent is None else body.parent.strip(),
         )
+    except categories_store.InvalidParent as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     # `id` too: renaming moves the file, and the reindex that follows keys

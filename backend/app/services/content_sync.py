@@ -206,6 +206,50 @@ def _sync_projects(conn) -> None:
         conn.execute(f"DELETE FROM projects WHERE id={p}", (stale_id,))
 
 
+# Deeper than this is a filing system, not a table of contents -- and every
+# reader-facing surface (sidebar, tiles, breadcrumbs) has to stay usable.
+MAX_CATEGORY_DEPTH = 4
+
+
+def _valid_parents(project_slug: str, version: str, declared: dict[str, str]) -> dict[str, str]:
+    """Each category's `parent:` as it will be indexed: kept when it names
+    another category of the same version, dropped (the category shows at the
+    top level, and the log says why) when it names one that does
+    not exist, the category itself, closes a loop, or nests deeper than
+    MAX_CATEGORY_DEPTH. A hand-edited `_category.yml` must never be able to
+    hide a category -- or hang a renderer walking a loop.
+
+    Decided in the disk's own (sorted) order, so which link of a loop gets
+    cut stays the same from one sync to the next."""
+    parents = dict(declared)
+    for slug in parents:
+        parent = parents[slug]
+        if not parent:
+            continue
+        reason = ""
+        if parent not in parents:
+            reason = f"its parent '{parent}' does not exist"
+        else:
+            seen = {slug}
+            cursor, depth = parent, 1
+            while cursor:
+                if cursor in seen:
+                    reason = f"its parent '{parent}' would make a loop"
+                    break
+                seen.add(cursor)
+                depth += 1
+                cursor = parents.get(cursor, "")
+            if not reason and depth > MAX_CATEGORY_DEPTH:
+                reason = f"it would sit deeper than {MAX_CATEGORY_DEPTH} levels"
+        if reason:
+            parents[slug] = ""
+            log.warning(
+                "Category '%s' in project '%s'%s is shown at the top level: %s.",
+                slug, project_slug, f" (version {version})" if version else "", reason,
+            )
+    return parents
+
+
 def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None:
     p = _placeholder()
 
@@ -226,32 +270,40 @@ def _sync_categories_and_pages(conn, project_id: int, project_slug: str) -> None
     category_ids: dict[tuple[str, str], int] = {}
     seen_category_ids: set[int] = set()
     for version in versions:
+        read = {}
         for slug in content_files.list_category_slugs(project_slug, version):
             data = content_files.read_category(project_slug, slug, version)
-            if data is None:
-                continue
+            if data is not None:
+                read[slug] = data
+        parents = _valid_parents(project_slug, version, {slug: data["parent"] for slug, data in read.items()})
+        for slug, data in read.items():
+            parent = parents[slug]
             if (version, slug) in existing_categories:
                 category_id = existing_categories[(version, slug)]
                 conn.execute(
-                    f"UPDATE categories SET name={p}, name_i18n={p}, icon={p}, image={p}, sort_order={p} WHERE id={p}",
-                    (data["name"], _i18n(data["name_i18n"]), data["icon"], data["image"], data["order"], category_id),
+                    f"UPDATE categories SET name={p}, name_i18n={p}, icon={p}, image={p}, sort_order={p}, parent={p} "
+                    f"WHERE id={p}",
+                    (
+                        data["name"], _i18n(data["name_i18n"]), data["icon"], data["image"], data["order"], parent,
+                        category_id,
+                    ),
                 )
             else:
                 params = (
                     project_id, data["name"], _i18n(data["name_i18n"]), slug, version, data["icon"], data["image"],
-                    data["order"],
+                    data["order"], parent,
                 )
+                columns = "project_id, name, name_i18n, slug, version, icon, image, sort_order, parent"
+                placeholders = ",".join([p] * len(params))
                 if db.is_postgres():
                     row = conn.execute(
-                        f"INSERT INTO categories (project_id, name, name_i18n, slug, version, icon, image, sort_order) "
-                        f"VALUES ({p},{p},{p},{p},{p},{p},{p},{p}) RETURNING id",
+                        f"INSERT INTO categories ({columns}) VALUES ({placeholders}) RETURNING id",
                         params,
                     ).fetchone()
                     category_id = row[0]
                 else:
                     cursor = conn.execute(
-                        f"INSERT INTO categories (project_id, name, name_i18n, slug, version, icon, image, sort_order) "
-                        f"VALUES ({p},{p},{p},{p},{p},{p},{p},{p})",
+                        f"INSERT INTO categories ({columns}) VALUES ({placeholders})",
                         params,
                     )
                     category_id = cursor.lastrowid

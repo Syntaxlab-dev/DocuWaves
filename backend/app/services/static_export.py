@@ -183,7 +183,9 @@ def _nav(project: dict, chapters: list[tuple[dict, list[dict]]], current: str, h
     parts = [f'<nav><a href="{_relative(directory, project["slug"] + "/index.html")}"><strong>'
              f'{html.escape(project["name"])}</strong></a>']
     for category, pages in chapters:
-        parts.append(f"<h2>{html.escape(category['name'])}</h2><ul>")
+        # A subcategory is a level further down the same outline.
+        level = min(2 + category.get("depth", 0), 6)
+        parts.append(f"<h{level}>{html.escape(category['name'])}</h{level}><ul>")
         for page in pages:
             path = f"{project['slug']}/{category['slug']}/{page['slug']}.html"
             mark = ' aria-current="page"' if path == current else ""
@@ -209,7 +211,7 @@ def build(target) -> dict:
             continue
         version = content_versions.default_version(project["slug"])
         chapters = []
-        for category in categories_store.list_categories(project["id"], language, version):
+        for category in categories_store.tree_order(categories_store.list_categories(project["id"], language, version)):
             pages = pages_store.list_pages(category["id"], published_only=True, language=language)
             if not pages:
                 continue

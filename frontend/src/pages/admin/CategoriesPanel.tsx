@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { api, ApiError, type Category } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useSite } from "@/lib/site";
+import { categoryTree, parentChoices, siblingsOf } from "@/lib/categoryTree";
 import { type FieldValues, toFieldValues, fromFieldValues, LocalizedInput } from "./shared";
 import { CoverField } from "./ProjectsPanel";
 
@@ -22,6 +23,7 @@ export function CategoryForm({
   projectId,
   projectSlug,
   category,
+  categories,
   onDone,
 }: {
   projectId: number;
@@ -29,6 +31,8 @@ export function CategoryForm({
    *  folder of its own, its images live in the project's. */
   projectSlug: string;
   category: Category | null;
+  /** The version's categories, for the "inside" choice. */
+  categories: Category[];
   onDone: (slug?: string) => void;
 }) {
   const { t } = useI18n();
@@ -40,12 +44,14 @@ export function CategoryForm({
   const [icon, setIcon] = useState(category?.icon ?? "");
   const [image, setImage] = useState(category?.image ?? "");
   const [imageUrl, setImageUrl] = useState<string | null>(category?.image_url ?? null);
+  const [parent, setParent] = useState(category?.parent ?? "");
   const [saving, setSaving] = useState(false);
+  const choices = parentChoices(categories, category?.slug ?? null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     const resolved = fromFieldValues(name, languages, site.default_language);
-    const data = { name: resolved.text, name_i18n: resolved.i18n, icon, image };
+    const data = { name: resolved.text, name_i18n: resolved.i18n, icon, image, parent };
     setSaving(true);
     try {
       if (category) {
@@ -66,6 +72,25 @@ export function CategoryForm({
     <form onSubmit={onSubmit} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
       <LocalizedInput label={t("admin.categoryName")} values={name} onChange={setName} languages={languages} required />
       <Input placeholder={t("admin.categoryIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
+      {/* Only when there is somewhere to nest it: in a project with one
+          category, the choice would have a single answer. */}
+      {(choices.length > 0 || parent) && (
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.categoryParent")}
+          <select
+            value={parent}
+            onChange={(e) => setParent(e.target.value)}
+            className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--ink)]"
+          >
+            <option value="">{t("admin.categoryTopLevel")}</option>
+            {choices.map(({ category: c, depth }) => (
+              <option key={c.id} value={c.slug}>
+                {`${"\u00a0\u00a0".repeat(depth)}${c.name}`}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       <CoverField
         projectSlug={projectSlug}
         // `_category.yml` sits one directory below assets/, exactly like a
@@ -148,6 +173,7 @@ export function CategoriesPanel({
           projectId={projectId}
           projectSlug={projectSlug}
           category={null}
+          categories={categories}
           onDone={(slug) => {
             setShowForm(false);
             if (slug) onChanged(slug);
@@ -156,8 +182,13 @@ export function CategoriesPanel({
       )}
 
       <div className="mt-2 flex flex-col gap-1">
-        {categories.map((c, i) => (
-          <div key={c.id}>
+        {categoryTree(categories).map(({ category: c, depth }) => {
+          // The arrows move a category among its siblings only -- the
+          // server does the same.
+          const siblings = siblingsOf(categories, c);
+          const i = siblings.findIndex((s) => s.id === c.id);
+          return (
+          <div key={c.id} style={depth ? { marginLeft: `${depth * 0.75}rem` } : undefined}>
             <div
               className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
                 selected?.id === c.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
@@ -188,7 +219,7 @@ export function CategoriesPanel({
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6"
-                    disabled={i === categories.length - 1}
+                    disabled={i === siblings.length - 1}
                     onClick={() => api.adminMoveCategory(c.id, 1).then(() => onChanged())}
                   >
                     <ArrowDown className="h-3 w-3" />
@@ -205,6 +236,7 @@ export function CategoriesPanel({
                 projectId={projectId}
                 projectSlug={projectSlug}
                 category={c}
+                categories={categories}
                 onDone={(slug) => {
                   setEditingId(null);
                   if (slug) onChanged(slug);
@@ -212,7 +244,8 @@ export function CategoriesPanel({
               />
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
