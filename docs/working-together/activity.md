@@ -28,8 +28,8 @@ under that address, because it was deleted or renamed since. A commit that
 touched many pages, an import for example, names the first few and counts
 the rest. Project and category files are counted rather than listed.
 
-The list starts with the latest 50 commits; **Show older** loads more, up to
-200. For one page's full history, with a diff for every change, open
+The list starts with the latest 50 commits; **Show older** loads more, up
+to 200. For one page's full history, with a diff for every change, open
 [Page history](/p/docuwaves/pages/page-history) in the editor.
 
 ## Activity and the public changelog
