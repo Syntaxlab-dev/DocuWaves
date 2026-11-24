@@ -97,6 +97,12 @@ See [E-mail notifications](/p/docuwaves/pages/e-mail-notifications).
 |---|---|---|
 | `UPDATE_CHECK` | `on` | Ask GitHub once a day whether a newer release exists, and tell admins. `off` sends nothing. See [Backups and updates](/p/docuwaves/pages/backups-and-updates#knowing-when-there-is-an-update) |
 
+## Monitoring
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `METRICS_TOKEN` | *(empty — off)* | Turns on `/metrics` for Prometheus, for a scraper that sends this token as a bearer. See [Monitoring with Prometheus](/p/docuwaves/pages/monitoring-with-prometheus) |
+
 ## Behind several proxies
 
 | Variable | Default | Purpose |

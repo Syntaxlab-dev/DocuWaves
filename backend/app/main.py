@@ -5,13 +5,13 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth_guard import AuthGuardMiddleware
 from app.routers import admin_content, api_tokens, auth, feeds, mcp, mfa, public_content, sitemap, sync, users
-from app.services import content_sync, content_versions, db, git_content_repo, scheduled_publish, seo, session_registry_store, session_secret
+from app.services import content_sync, content_versions, db, git_content_repo, metrics, scheduled_publish, seo, session_registry_store, session_secret
 from app import version
 from app.settings import settings
 
@@ -127,6 +127,8 @@ app.add_middleware(
     # on a LAN; see SESSION_COOKIE_SECURE in settings.py for when it is on.
     https_only=settings.session_cookie_secure,
 )
+# Outermost, so it times and counts every answer, refusals included.
+app.add_middleware(metrics.RequestCounter)
 
 
 @app.exception_handler(content_versions.FrozenVersionError)
@@ -167,6 +169,15 @@ def health():
     with db.get_connection() as conn:
         conn.execute("SELECT 1")
     return {"ok": True, "version": version.VERSION}
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics(request: Request):
+    """Prometheus metrics, for a scraper holding METRICS_TOKEN (services/metrics.py).
+    Without it -- or with metrics off -- the same 404 as any unknown path."""
+    if not metrics.allowed(request.headers.get("authorization", "")):
+        raise HTTPException(status_code=404, detail="Not Found")
+    return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4; charset=utf-8")
 
 # Resolved (not just absolute): serve_spa below compares it against a resolved
 # candidate path, so a symlinked bundle directory would otherwise never match.

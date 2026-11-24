@@ -165,6 +165,10 @@ class Settings:
     # SMTP_HOST=169.254.1.2, SMTP_TLS_SERVER_NAME=mail.example.com).
     smtp_tls_server_name: str = os.environ.get("SMTP_TLS_SERVER_NAME", "").strip()
 
+    # Prometheus metrics at /metrics (services/metrics.py): off unless a
+    # token is set, and then only for a scraper that sends it as a bearer.
+    metrics_token: str = os.environ.get("METRICS_TOKEN", "").strip()
+
     # A public demo (services/demo.py, deploy/demo/): the login below is shown
     # on the sign-in page, and what a visitor could misuse is switched off.
     demo_mode: bool = os.environ.get("DEMO_MODE", "").strip().lower() in ("1", "true", "yes", "on")
