@@ -23,7 +23,7 @@ and every response for it is the response it always was -- plus one key,
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from app.services import (
@@ -32,6 +32,7 @@ from app.services import (
     content_assets,
     doc_chat,
     content_versions,
+    glossary,
     page_feedback_store,
     page_redirects,
     pages_store,
@@ -47,6 +48,7 @@ from app.services import (
     visibility,
 )
 from app.services.client_address import client_address
+from app.settings import settings
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -249,6 +251,21 @@ def public_get_book(
         if pages:
             chapters.append({"name": c["name"], "slug": c["slug"], "icon": c.get("icon", ""), "pages": pages})
     return {"project": project, "versions": _versions_payload(project_slug, resolved), "categories": chapters}
+
+
+@router.get(
+    "/projects/{project_slug}/glossary",
+    summary="A project's glossary: its terms and the site's, sorted",
+    description="What the tooltips on its pages and the glossary page show (services/glossary.py), in the "
+    "reader's language, for one version.",
+)
+def public_glossary(
+    request: Request, project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
+):
+    language = _language(lang)
+    _visible_project(project_slug, language, request)
+    resolved = _version(project_slug, version)
+    return {"terms": glossary.terms(project_slug, resolved, language)}
 
 
 _EXPORTS = {
@@ -665,8 +682,28 @@ def public_feedback(body: FeedbackIn, request: Request):
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found.")
 
-    page_feedback_store.record(project["slug"], page["slug"], body.helpful, language, resolved or "")
+    vote_id = page_feedback_store.record(project["slug"], page["slug"], body.helpful, language, resolved or "")
     # No counts in the answer, on purpose: showing a reader the running score
     # turns a question about the page into a poll, and the next reader's
-    # answer stops being their own.
+    # answer stops being their own. The id and key are what lets this
+    # browser add its note to this vote, and only to this one.
+    if not settings.feedback_comments:
+        return {"recorded": True}
+    return {"recorded": True, "id": vote_id, "key": page_feedback_store.comment_key(vote_id)}
+
+
+class FeedbackCommentIn(BaseModel):
+    id: int
+    key: str = Field(max_length=64)
+    comment: str = Field(max_length=4000)
+
+
+@router.post("/feedback/comment", summary="Add the reader's optional note to the vote just cast")
+def public_feedback_comment(body: FeedbackCommentIn, request: Request):
+    if not settings.feedback_comments:
+        raise HTTPException(status_code=404, detail="Notes are switched off.")
+    if page_feedback_store.rate_limited(_client_key(request)):
+        raise HTTPException(status_code=429, detail="Too many votes just now. Try again in a minute.")
+    if not page_feedback_store.add_comment(body.id, body.key, body.comment):
+        raise HTTPException(status_code=409, detail="This note cannot be added (any more).")
     return {"recorded": True}

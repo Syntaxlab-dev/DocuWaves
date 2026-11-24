@@ -166,6 +166,11 @@ class Settings:
     # SMTP_HOST=169.254.1.2, SMTP_TLS_SERVER_NAME=mail.example.com).
     smtp_tls_server_name: str = os.environ.get("SMTP_TLS_SERVER_NAME", "").strip()
 
+    # "Was this helpful?" offers an optional note after the vote, read only
+    # by editors under Insights (services/page_feedback_store.py). off = the
+    # thumbs alone.
+    feedback_comments: bool = os.environ.get("FEEDBACK_COMMENTS", "on").strip().lower() not in ("off", "0", "false", "no")
+
     # Prometheus metrics at /metrics (services/metrics.py): off unless a
     # token is set, and then only for a scraper that sends it as a bearer.
     metrics_token: str = os.environ.get("METRICS_TOKEN", "").strip()

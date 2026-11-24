@@ -5,6 +5,7 @@ import { DocsShell } from "@/components/DocsShell";
 import { NotFound } from "@/components/NotFound";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { api } from "@/lib/api";
+import { useGlossary } from "@/lib/glossary";
 import { useProjectNav, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
@@ -21,6 +22,7 @@ export function PublicProject() {
   // sidebar costs no extra request here, and the tiles can't disagree with
   // the tree standing next to them.
   const { nav, status } = useProjectNav(projectSlug, lang, version);
+  const glossary = useGlossary(projectSlug, lang, version);
 
   // The project's landing page exists in every version, so the switcher can
   // always stay put here -- `tail` is empty and `available` unused.
@@ -59,6 +61,14 @@ export function PublicProject() {
       >
         {t("book.link")} →
       </Link>
+      {glossary.length > 0 && (
+        <Link
+          to={path(`/p/${nav.project.slug}/glossary${version ? `?version=${encodeURIComponent(version)}` : ""}`)}
+          className="ml-4 mt-2 inline-block text-sm text-[var(--accent)] hover:underline"
+        >
+          {t("glossary.title")} →
+        </Link>
+      )}
       {/* Plain links: the server answers with the file to save. */}
       <a
         href={api.publicProjectExportUrl(nav.project.slug, "epub", lang, version)}

@@ -293,7 +293,9 @@ _SQLITE_SCHEMA = [
         language TEXT NOT NULL DEFAULT '',
         version TEXT NOT NULL DEFAULT '',
         helpful INTEGER NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        -- The reader's optional note after the vote; '' for most.
+        comment TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -583,7 +585,9 @@ _POSTGRES_SCHEMA = [
         language TEXT NOT NULL DEFAULT '',
         version TEXT NOT NULL DEFAULT '',
         helpful INTEGER NOT NULL,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        -- The reader's optional note after the vote; '' for most.
+        comment TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -783,6 +787,9 @@ _ADDED_COLUMNS = {
     },
     "api_tokens": {
         "project_slug": "TEXT NOT NULL DEFAULT ''",
+    },
+    "page_feedback": {
+        "comment": "TEXT NOT NULL DEFAULT ''",
     },
     "pages": {
         "review_status": "TEXT NOT NULL DEFAULT ''",

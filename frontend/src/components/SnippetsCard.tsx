@@ -43,6 +43,8 @@ export function SnippetsCard({
   const [loaded, setLoaded] = useState(false);
   const [variables, setVariables] = useState("");
   const [variablesDirty, setVariablesDirty] = useState(false);
+  const [glossaryText, setGlossaryText] = useState("");
+  const [glossaryDirty, setGlossaryDirty] = useState(false);
   const [snippets, setSnippets] = useState<SnippetFile[]>([]);
   const [selection, setSelection] = useState<Selection>(null);
   const [name, setName] = useState("");
@@ -66,6 +68,13 @@ export function SnippetsCard({
         setLoaded(true);
       })
       .catch((err) => toast.error(err instanceof ApiError ? err.message : t("common.error")));
+    api
+      .adminGetGlossary(scope === "project" ? projectSlug : "", scope === "project" ? version : "")
+      .then((r) => {
+        setGlossaryText(r.text);
+        setGlossaryDirty(false);
+      })
+      .catch(() => setGlossaryText(""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scope, projectSlug, version]);
 
@@ -105,6 +114,12 @@ export function SnippetsCard({
   async function saveVariables() {
     if (await run(() => api.adminWriteVariables({ ...target, text: variables }), "snippets.variablesSaved")) {
       setVariablesDirty(false);
+    }
+  }
+
+  async function saveGlossary() {
+    if (await run(() => api.adminWriteGlossary({ ...target, text: glossaryText }), "snippets.glossarySaved")) {
+      setGlossaryDirty(false);
     }
   }
 
@@ -182,6 +197,29 @@ export function SnippetsCard({
           />
           {!locked && (
             <Button size="sm" onClick={saveVariables} disabled={busy || !variablesDirty}>
+              {t("admin.save")}
+            </Button>
+          )}
+        </section>
+
+        {/* ---- Glossary (backend services/glossary.py) ---- */}
+        <section className="space-y-2">
+          <h3 className="text-sm font-semibold">{t("snippets.glossary")}</h3>
+          <p className="text-xs text-[var(--muted)]">{t("snippets.glossaryHint")}</p>
+          <Textarea
+            value={glossaryText}
+            readOnly={locked || !loaded}
+            onChange={(e) => {
+              setGlossaryText(e.target.value);
+              setGlossaryDirty(true);
+            }}
+            placeholder={"SLA: Die zugesagte Verfügbarkeit pro Monat.\nDeployment:\n  de: Das Ausliefern einer neuen Version.\n  en: Shipping a new release."}
+            className="min-h-[140px] font-mono text-sm"
+            spellCheck={false}
+            aria-label={t("snippets.glossary")}
+          />
+          {!locked && (
+            <Button size="sm" onClick={saveGlossary} disabled={busy || !glossaryDirty}>
               {t("admin.save")}
             </Button>
           )}

@@ -52,6 +52,7 @@ from app.services import (
     content_sync,
     content_versions,
     git_content_repo,
+    glossary,
     import_git,
     page_templates,
     repo_exposure,
@@ -277,6 +278,36 @@ def admin_write_variables(body: VariablesIn, request: Request):
         paths = snippets.write_variables(slug, resolved, body.text)
         git_content_repo.commit_and_push(paths, "Update variables", _author(request))
     except snippets.InvalidSnippet as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
+@router.get("/glossary", summary="The glossary file of a project version, or of the site")
+def admin_read_glossary(project: str = "", version: str = ""):
+    slug, resolved = _snippet_scope(project, version, writing=False)
+    return {
+        "text": glossary.read_text(slug, resolved),
+        "frozen": bool(slug) and content_versions.is_frozen(slug, resolved),
+    }
+
+
+class GlossaryIn(BaseModel):
+    project: str = ""
+    version: str = ""
+    text: str
+
+
+@router.put("/glossary", summary="Replace the glossary file of a project version or of the site")
+def admin_write_glossary(body: GlossaryIn, request: Request):
+    _require_content_repo()
+    project_access.require_write(request, body.project or None)
+    slug, resolved = _snippet_scope(body.project, body.version, writing=True)
+    try:
+        paths = glossary.write_text(slug, resolved, body.text)
+        git_content_repo.commit_and_push(paths, "Update glossary", _author(request))
+    except glossary.InvalidGlossary as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
@@ -1965,6 +1996,11 @@ def admin_log_entries(limit: int = 100, before: int | None = None):
 @router.get("/feedback", summary="Pages readers voted on, worst ratio first")
 def admin_feedback(project: str = ""):
     return {"pages": page_feedback_store.summary(project)}
+
+
+@router.get("/feedback/comments", summary="Readers' notes after their vote, newest first")
+def admin_feedback_comments(project: str = "", page: str = ""):
+    return {"comments": page_feedback_store.comments(project, page)}
 
 
 @router.delete("/feedback/{project_slug}/{page_slug}", summary="Forget one page's votes")

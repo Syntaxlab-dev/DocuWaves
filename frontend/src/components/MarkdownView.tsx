@@ -6,10 +6,12 @@ import remarkMath from "remark-math";
 import type { Pluggable } from "unified";
 import type { Element, ElementContent } from "hast";
 import { CopyButton } from "@/components/CopyButton";
+import { GlossaryTerm } from "@/components/GlossaryTerm";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { Tabs } from "@/components/Tabs";
 import { remarkBlocks } from "@/lib/blocks";
 import { remarkCallouts, type CalloutKind } from "@/lib/callouts";
+import { rehypeGlossary, type GlossaryEntry } from "@/lib/glossary";
 import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
 import { remarkTabs } from "@/lib/tabs";
@@ -101,8 +103,11 @@ export function MarkdownView({
   versionDir,
   title,
   lang,
+  glossary,
 }: {
   content: string;
+  /** The project's glossary: the first use of each term gets a tooltip. */
+  glossary?: GlossaryEntry[];
   projectSlug?: string;
   categorySlug?: string;
   versionDir?: string;
@@ -139,7 +144,13 @@ export function MarkdownView({
 
   const katex = useLazyRehype("katex", body.includes("$"));
   const highlight = useLazyRehype("highlight", body.includes("```") || body.includes("~~~"));
-  const rehypePlugins = useMemo(() => [highlight, katex].filter((p): p is Pluggable => p !== null), [highlight, katex]);
+  // The glossary runs first, on the text as written -- before highlighting
+  // turns code into spans it must not look inside anyway.
+  const glossaryPlugin = useMemo(() => (glossary?.length ? rehypeGlossary(glossary) : null), [glossary]);
+  const rehypePlugins = useMemo(
+    () => [glossaryPlugin, highlight, katex].filter((p): p is Pluggable => p !== null),
+    [glossaryPlugin, highlight, katex],
+  );
 
   return (
     <div className="markdown-body" lang={lang}>
@@ -240,6 +251,16 @@ export function MarkdownView({
             // and hiding, so it adds no box of its own.
             if (node?.properties?.dataTabLabel !== undefined) return <>{children}</>;
             return <div {...props}>{children}</div>;
+          },
+          span({ node, children, ...props }) {
+            const index = node?.properties?.dataGlossary;
+            const entry = index !== undefined && glossary ? glossary[Number(index)] : undefined;
+            if (!entry) return <span {...props}>{children}</span>;
+            return (
+              <GlossaryTerm term={entry.term} definition={entry.definition}>
+                {children}
+              </GlossaryTerm>
+            );
           },
           blockquote({ node, children, ...props }) {
             const kind = node?.properties?.dataCallout as CalloutKind | undefined;

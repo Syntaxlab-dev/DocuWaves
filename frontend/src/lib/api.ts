@@ -845,6 +845,17 @@ export type FeedbackSummary = {
   not_helpful: number;
   total: number;
   last_vote: string;
+  comments: number;
+};
+
+export type FeedbackComment = {
+  project_slug: string;
+  page_slug: string;
+  language: string;
+  version: string;
+  helpful: boolean;
+  created_at: string;
+  comment: string;
 };
 
 /** A project (or one category) in reading order, for the print view. */
@@ -1389,15 +1400,31 @@ export const api = {
     request<{ project: Project; category: Category; pages: PageSummary[]; versions: VersionInfo | null }>(
       `/api/public/projects/${projectSlug}/categories/${categorySlug}${contentQuery(lang, version)}`,
     ),
-  /** Anonymous, and answered with nothing but {recorded:true} -- showing a
-   *  reader the running score would turn the question into a poll. */
+  /** Anonymous, and answered without any counts -- showing a reader the
+   *  running score would turn the question into a poll. `id` and `key`
+   *  (absent with FEEDBACK_COMMENTS=off) let this browser add a note. */
   publicFeedback: (body: {
     project: string;
     page: string;
     helpful: boolean;
     language?: string;
     version?: string;
-  }) => request<{ recorded: boolean }>("/api/public/feedback", { method: "POST", body: JSON.stringify(body) }),
+  }) =>
+    request<{ recorded: boolean; id?: number; key?: string }>("/api/public/feedback", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  publicFeedbackComment: (body: { id: number; key: string; comment: string }) =>
+    request<{ recorded: boolean }>("/api/public/feedback/comment", { method: "POST", body: JSON.stringify(body) }),
+
+  adminFeedbackComments: (project?: string, page?: string) => {
+    const params = new URLSearchParams();
+    if (project) params.set("project", project);
+    if (page) params.set("page", page);
+    const query = params.toString();
+    return request<{ comments: FeedbackComment[] }>(`/api/admin/feedback/comments${query ? `?${query}` : ""}`);
+  },
 
   adminFeedback: (project?: string) =>
     request<{ pages: FeedbackSummary[] }>(`/api/admin/feedback${project ? `?project=${encodeURIComponent(project)}` : ""}`),
@@ -1449,6 +1476,16 @@ export const api = {
     const query = params.toString();
     return request<Book>(`/api/public/projects/${encodeURIComponent(projectSlug)}/book${query ? `?${query}` : ""}`);
   },
+  publicGlossary: (projectSlug: string, lang?: string, version?: string) =>
+    request<{ terms: { term: string; definition: string }[] }>(
+      `/api/public/projects/${encodeURIComponent(projectSlug)}/glossary${contentQuery(lang, version)}`,
+    ),
+  adminGetGlossary: (project: string, version: string) =>
+    request<{ text: string; frozen: boolean }>(
+      `/api/admin/glossary?project=${encodeURIComponent(project)}&version=${encodeURIComponent(version)}`,
+    ),
+  adminWriteGlossary: (data: { project: string; version: string; text: string }) =>
+    request<{ ok: boolean }>("/api/admin/glossary", { method: "PUT", body: JSON.stringify(data) }),
   /** A download link, not a fetch: the browser saves the file itself. */
   publicProjectExportUrl: (projectSlug: string, kind: "epub" | "markdown", lang?: string, version?: string) => {
     const params = new URLSearchParams();
