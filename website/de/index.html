@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DocuWaves – selbst gehostete Dokumentation, die in Git liegt</title>
+<meta name="description" content="Eine selbst gehostete Dokumentationsseite, deren Inhalte Markdown-Dateien in einem Git-Repository sind. Jedes Speichern ist ein Commit. Visueller Editor, Rollen und Freigaben, Import aus Confluence und Notion und ein MCP-Endpunkt für KI-Assistenten. Open Source, MIT.">
+<link rel="canonical" href="https://docuwaves.app/de/">
+<link rel="alternate" hreflang="en" href="https://docuwaves.app/">
+<link rel="alternate" hreflang="de" href="https://docuwaves.app/de/">
+<link rel="alternate" hreflang="x-default" href="https://docuwaves.app/">
+
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a111e">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DocuWaves">
+<meta property="og:url" content="https://docuwaves.app/de/">
+<meta property="og:locale" content="de_DE">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:title" content="DocuWaves – selbst gehostete Dokumentation, die in Git liegt">
+<meta property="og:description" content="Inhalte sind Markdown-Dateien in einem Git-Repository, und jedes Speichern ist ein Commit. Ein KI-Assistent kann über einen MCP-Endpunkt schreiben, mit seinem Token als Autor. Open Source, MIT.">
+<meta property="og:image" content="https://docuwaves.app/img/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Der DocuWaves-Schriftzug über der Zeile: documentation that lives in Git, not in a database.">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DocuWaves – selbst gehostete Dokumentation, die in Git liegt">
+<meta name="twitter:description" content="Inhalte sind Markdown-Dateien in einem Git-Repository, und jedes Speichern ist ein Commit. Ein KI-Assistent kann über einen MCP-Endpunkt schreiben, mit seinem Token als Autor. Open Source, MIT.">
+<meta name="twitter:image" content="https://docuwaves.app/img/og.png">
+<meta name="twitter:image:alt" content="Der DocuWaves-Schriftzug über der Zeile: documentation that lives in Git, not in a database.">
+
+<style>
+/* ---------- palette (all text/background pairs measured for WCAG AA) ---------- */
+:root{
+  --bg:#ffffff;
+  --surface:#f2f6f9;
+  --surface-2:#e9eff5;
+  --ink:#0b2545;        /* 15.39:1 on --bg */
+  --text:#3d4f66;       /*  8.37:1 on --bg,  7.70:1 on --surface */
+  --muted:#55677e;      /*  5.79:1 on --bg,  5.33:1 on --surface */
+  --link:#0a6a70;       /*  6.35:1 on --bg,  5.84:1 on --surface */
+  --accent:#00d4d5;     /* fills and rules only in light mode — never text */
+  --rule:#dde5ee;
+  --rule-strong:#c6d3e0;
+  --code-bg:#0b2545;
+  --code-text:#e7eef7;  /* 13.17:1 on --code-bg */
+  --code-dim:#9fb3cc;   /*  6.15:1 on --code-bg */
+  --code-accent:#7fe9ea;/* 10.80:1 on --code-bg */
+  --btn-bg:#0b2545;
+  --btn-text:#ffffff;   /* 15.39:1 on --btn-bg */
+  --focus:#0a6a70;
+  --frame:#d7e0ea;
+  --shadow:0 1px 2px rgba(11,37,69,.06), 0 12px 32px -12px rgba(11,37,69,.18);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0a111e;
+    --surface:#131c2c;
+    --surface-2:#1b2537;
+    --ink:#f3f7fb;      /* 17.55:1 on --bg */
+    --text:#b3c2d4;     /* 10.42:1 on --bg,  9.42:1 on --surface */
+    --muted:#93a3b8;    /*  7.35:1 on --bg,  6.64:1 on --surface */
+    --link:#00d4d5;     /* 10.23:1 on --bg,  9.25:1 on --surface */
+    --accent:#00d4d5;
+    --rule:#23304a;
+    --rule-strong:#334160;
+    --code-bg:#060c16;
+    --code-text:#dfe8f2;/* 15.82:1 on --code-bg */
+    --code-dim:#8fa1b8; /*  6.62:1 on --code-bg */
+    --code-accent:#7fe9ea;
+    --btn-bg:#00d4d5;
+    --btn-text:#06202b; /*  9.11:1 on --btn-bg */
+    --focus:#00d4d5;
+    --frame:#26334c;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.6);
+  }
+}
+
+/* ---------- base ---------- */
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  font-size:17px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+img,svg{max-width:100%;height:auto;display:block}
+a{color:var(--link);text-underline-offset:.18em;text-decoration-thickness:.07em}
+a:hover{text-decoration-thickness:.12em}
+:focus-visible{outline:3px solid var(--focus);outline-offset:3px;border-radius:3px}
+h1,h2,h3{color:var(--ink);line-height:1.15;letter-spacing:-.021em;margin:0;text-wrap:balance}
+p{margin:0}
+code,kbd{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;font-size:.88em}
+
+.wrap{width:min(100% - 2.5rem, 68rem);margin-inline:auto}
+.prose{max-width:34em}
+
+.skip{
+  position:absolute;left:-9999px;top:0;z-index:20;
+  background:var(--btn-bg);color:var(--btn-text);
+  padding:.7rem 1.1rem;border-radius:0 0 8px 0;font-weight:600;text-decoration:none;
+}
+.skip:focus{left:0}
+
+/* ---------- header ---------- */
+.site-head{border-bottom:1px solid var(--rule)}
+.site-head .wrap{display:flex;align-items:center;gap:1.5rem;min-height:4.5rem;flex-wrap:wrap}
+.brand{display:inline-flex;align-items:center;margin-right:auto;border-radius:4px}
+.brand img{width:168px;height:auto}
+.site-nav{display:flex;align-items:center;gap:1.5rem;font-size:.95rem;font-weight:500}
+.site-nav a{color:var(--ink);text-decoration:none}
+.site-nav a:hover{color:var(--link);text-decoration:underline}
+
+/* ---------- hero ---------- */
+.hero{padding:clamp(3.5rem,9vw,7rem) 0 clamp(2.5rem,5vw,4rem)}
+.eyebrow{
+  font-size:.78rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--link);margin-bottom:1.4rem;display:flex;align-items:center;gap:.75rem;
+}
+.eyebrow::after{content:"";flex:0 1 5rem;height:2px;background:var(--accent);border-radius:2px}
+h1{font-size:clamp(2.25rem,5.4vw,3.6rem);max-width:19ch;font-weight:700}
+.lede{margin-top:1.6rem;font-size:clamp(1.08rem,2.1vw,1.28rem);max-width:40em;color:var(--text)}
+.lede strong{color:var(--ink);font-weight:600}
+
+.cta{display:flex;flex-wrap:wrap;gap:.85rem;margin-top:2.2rem}
+
+/* Hero zentriert. Nur der Hero -- die Abschnitte darunter bleiben linksbuendig,
+   weil dort lange Fliesstexte stehen und zentrierter Mengentext mit wandernder
+   linker Kante schlecht zu lesen ist. */
+.hero .wrap{text-align:center}
+.hero .eyebrow{justify-content:center}
+/* Gegenstueck zur bestehenden Linie, sonst haengt die Zierlinie einseitig. */
+.hero .eyebrow::before{
+  content:"";flex:0 1 5rem;height:2px;background:var(--accent);border-radius:2px;
+}
+.hero h1{margin-inline:auto}
+/* Etwas schmaler als linksbuendig (40em): bei zentriertem Satz muss das Auge
+   den Zeilenanfang jedes Mal neu suchen, kurze Zeilen halten das ertraeglich. */
+.hero .lede{max-width:36em;margin-inline:auto}
+.hero .cta{justify-content:center}
+/* Der Kasten wird mittig gesetzt, sein Inhalt bleibt linksbuendig --
+   zentrierte Befehlszeilen kann man nicht abtippen. */
+.hero .term{margin-inline:auto;text-align:left}
+.hero .term-note{max-width:44rem;margin-inline:auto}
+.hero .hero-shot figcaption{margin-inline:auto}
+/* Auf schmalen Schirmen kosten die beiden Zierlinien so viel Platz, dass die
+   Ueberzeile umbricht. Sie sind reine Dekoration -- also weg damit. */
+@media (max-width:30rem){
+  .hero .eyebrow::before,.hero .eyebrow::after{display:none}
+}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  padding:.72rem 1.35rem;border-radius:9px;font-size:1rem;font-weight:600;
+  text-decoration:none;border:1.5px solid transparent;
+}
+.btn-primary{background:var(--btn-bg);color:var(--btn-text);border-color:var(--btn-bg)}
+.btn-primary:hover{opacity:.88}
+.btn-secondary{color:var(--ink);border-color:var(--rule-strong);background:transparent}
+.btn-secondary:hover{border-color:var(--ink)}
+
+/* ---------- code blocks ---------- */
+.term{
+  margin-top:2.4rem;max-width:44rem;position:relative;
+  background:var(--code-bg);border-radius:12px;box-shadow:var(--shadow);
+  border:1px solid var(--code-bg);
+}
+.term-head{
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;
+  padding:.6rem .8rem .6rem 1.15rem;border-bottom:1px solid rgba(255,255,255,.1);
+  font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;font-weight:600;color:var(--code-dim);
+  min-height:2.9rem;
+}
+.term pre{
+  margin:0;padding:1.15rem;overflow-x:auto;
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:.9rem;line-height:1.75;color:var(--code-text);tab-size:2;
+}
+.term .c{color:var(--code-dim)}
+.term .k{color:var(--code-accent)}
+.copy{
+  font:inherit;font-size:.78rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--code-text);background:rgba(255,255,255,.09);
+  border:1px solid rgba(255,255,255,.18);border-radius:7px;
+  padding:.4rem .7rem;cursor:pointer;white-space:nowrap;
+}
+.copy:hover{background:rgba(255,255,255,.16)}
+.copy:focus-visible{outline:3px solid var(--code-accent);outline-offset:2px}
+.term-note{margin-top:.9rem;font-size:.95rem;color:var(--muted);max-width:44rem}
+.term-note code{background:var(--surface-2);color:var(--ink);padding:.12em .4em;border-radius:5px}
+
+/* ---------- figures ---------- */
+figure{margin:0}
+.shot{
+  border:1px solid var(--frame);border-radius:14px;overflow:hidden;
+  background:var(--surface);box-shadow:var(--shadow);
+}
+.shot img{width:100%}
+figcaption{margin-top:.9rem;font-size:.92rem;color:var(--muted);max-width:44em}
+
+.hero-shot{margin-top:clamp(2.5rem,6vw,4.5rem)}
+
+/* ---------- sections ---------- */
+section{padding:clamp(3.5rem,8vw,6rem) 0;border-top:1px solid var(--rule)}
+.sec-label{
+  font-size:.78rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:1rem;
+}
+h2{font-size:clamp(1.75rem,3.6vw,2.5rem);max-width:20ch;font-weight:700}
+.sec-lede{margin-top:1.2rem;font-size:1.09rem;max-width:38em}
+.sec-lede strong{color:var(--ink);font-weight:600}
+
+/* minmax(0,1fr) rather than an implicit auto track: an auto track sizes to
+   max-content, so one non-wrapping code line would widen the whole page. */
+.split{display:grid;gap:clamp(2.2rem,5vw,4rem);align-items:start;grid-template-columns:minmax(0,1fr)}
+.split > *{min-width:0}
+@media (min-width:64rem){
+  .split{grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);align-items:center}
+  /* DOM order is always heading-then-figure so it reads correctly stacked on a
+     phone; only on the wide layout does the figure move to the left column. */
+  .split.media-left{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)}
+  .split.media-left > figure{order:-1}
+}
+
+/* point list */
+.points{list-style:none;margin:2rem 0 0;padding:0;display:grid;gap:1.5rem;max-width:36em}
+/* full-width variant: two columns of points under a split, so a tall list
+   doesn't leave a column of dead space beside a short figure */
+.points-wide{max-width:none;margin-top:clamp(2.5rem,5vw,3.5rem);
+  /* min() so the track minimum can never exceed the container: a bare
+     minmax(24rem,1fr) overflows a viewport narrower than 24rem. */
+  grid-template-columns:repeat(auto-fit,minmax(min(24rem,100%),1fr));gap:1.9rem 3.5rem}
+.points li{padding-left:1.15rem;border-left:2px solid var(--accent)}
+.points b{display:block;color:var(--ink);font-weight:650;margin-bottom:.15rem}
+.points span{color:var(--text)}
+
+/* attribution mini-block */
+.attrib{
+  margin-top:2rem;background:var(--surface);border:1px solid var(--rule);
+  border-radius:12px;padding:1.15rem 1.25rem;
+}
+.attrib p{font-size:.95rem;color:var(--muted)}
+.attrib code{
+  display:block;margin-top:.6rem;color:var(--ink);font-size:.82rem;
+  overflow-x:auto;white-space:pre;padding-bottom:.15rem;
+}
+
+/* ---------- everyday grid ---------- */
+.grid{
+  list-style:none;margin:2.75rem 0 0;padding:0;
+  display:grid;gap:2rem 2.75rem;
+  grid-template-columns:repeat(auto-fit,minmax(min(15.5rem,100%),1fr));
+}
+.grid b{display:block;color:var(--ink);font-weight:650;margin-bottom:.2rem;font-size:1.02rem}
+.grid span{font-size:.97rem;color:var(--text)}
+
+/* ---------- open source panel ---------- */
+.panel{
+  background:var(--surface);border:1px solid var(--rule);border-radius:16px;
+  padding:clamp(1.75rem,4vw,3rem);
+}
+.panel h2{max-width:24ch}
+.panel .sec-lede{margin-bottom:0}
+.pills{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.8rem;list-style:none;padding:0}
+.pills li{
+  background:var(--bg);border:1px solid var(--rule-strong);border-radius:999px;
+  padding:.35rem .85rem;font-size:.9rem;font-weight:500;color:var(--text);
+}
+
+/* ---------- closing ---------- */
+.closing{text-align:center}
+.closing h2{margin-inline:auto}
+.closing .sec-lede{margin-inline:auto}
+.closing .cta{justify-content:center}
+.closing .term{margin-inline:auto;text-align:left}
+
+/* ---------- footer ---------- */
+.site-foot{border-top:1px solid var(--rule);padding:3rem 0 4rem;font-size:.95rem}
+.foot-grid{display:flex;flex-wrap:wrap;gap:2.5rem 4rem;justify-content:space-between}
+.foot-brand img{width:150px}
+.foot-brand p{margin-top:1rem;color:var(--muted);max-width:26em}
+.foot-links{display:flex;flex-wrap:wrap;gap:2.5rem}
+.foot-links h3{font-size:.78rem;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:.85rem}
+.foot-links ul{list-style:none;margin:0;padding:0;display:grid;gap:.55rem}
+.foot-links a{color:var(--text);text-decoration:none}
+.foot-links a:hover{color:var(--link);text-decoration:underline}
+.colophon{
+  margin-top:3rem;padding-top:1.5rem;border-top:1px solid var(--rule);
+  color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:.5rem 1.5rem;
+}
+
+@media (max-width:30rem){
+  body{font-size:16px}
+  .site-head .wrap{min-height:0;padding-block:1rem;gap:.9rem 1.25rem}
+  .brand img{width:150px}
+  .site-nav{gap:1.25rem}
+  .btn{width:100%}
+  .term pre{font-size:.8rem}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="/de/" aria-label="DocuWaves – Startseite">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="/img/wordmark-dark.svg">
+        <img src="/img/wordmark.svg" width="470" height="128" alt="DocuWaves">
+      </picture>
+    </a>
+    <nav class="site-nav" aria-label="Hauptnavigation">
+      <a href="https://docs.docuwaves.app">Dokumentation</a>
+      <a href="https://github.com/Syntaxlab-dev/DocuWaves">GitHub</a>
+      <a href="/" hreflang="en" lang="en">English</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ HERO ============ -->
+  <div class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Selbst gehostete Dokumentation</p>
+      <h1>Deine Dokumentation liegt in Git, nicht in einer Datenbank.</h1>
+      <p class="lede">
+        DocuWaves ist eine Dokumentationsseite, die du selbst betreibst. Jedes Projekt, jede Kategorie
+        und jede Seite ist eine Markdown-Datei in einem Git-Repository, das dir gehört – und
+        <strong>jedes Speichern im Browser-Editor ist ein Commit</strong>. Verlauf, Diffs, Autorenschaft
+        und Wiederherstellen sind keine Funktionen obendrauf; sie sind einfach das Repository.
+      </p>
+
+      <div class="cta">
+        <a class="btn btn-primary" href="https://docs.docuwaves.app">Zur Dokumentation</a>
+        <a class="btn btn-secondary" href="https://github.com/Syntaxlab-dev/DocuWaves">Quellcode auf GitHub</a>
+      </div>
+
+      <div class="term" id="install">
+        <div class="term-head" id="install-label">
+          <span>Auf einem Linux-Server installieren</span>
+        </div>
+<pre><code id="install-cmd"><span class="k">curl</span> -fsSL https://get.docuwaves.app | <span class="k">sudo</span> sh</code></pre>
+      </div>
+      <p class="term-note">
+        Fragt nach einer Domain, richtet DocuWaves hinter Caddy mit einem Let's-Encrypt-Zertifikat ein,
+        legt nächtliche Backups und den Befehl <code>docuwaves</code> an und zeigt einen einmaligen
+        Einrichtungscode für das erste Konto. Debian, Ubuntu, Rocky und Alma; amd64 und arm64.
+        <a href="https://docs.docuwaves.app/p/docuwaves/pages/installing-with-the-installer">Erst das
+        Skript lesen</a> oder <a href="#compose">selbst mit Docker Compose starten</a>.
+      </p>
+
+      <figure class="hero-shot">
+        <div class="shot">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="/img/reader-dark.webp">
+            <img src="/img/reader-light.webp" width="1760" height="1261"
+                 alt="Eine veröffentlichte DocuWaves-Seite. Links eine Seitenleiste mit den Kategorien des Projekts, die aktuelle Seite hervorgehoben; in der Mitte der Artikel mit Überschriften, Inline-Code und einem farbig hervorgehobenen YAML-Block; rechts eine Spalte „Auf dieser Seite“. Im Kopf stehen Seitenname, Suchfeld, Farbschema-Schalter und Sprachwahl.">
+          </picture>
+        </div>
+        <figcaption>Die Ansicht für Lesende. Hell und dunkel sind eingebaut, und der ganze Rahmen –
+          Name, Logo, Akzentfarbe und Fußzeile – kommt aus dem Inhalts-Repository. So sehen zwei
+          Installationen wie zwei verschiedene Produkte aus.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <!-- ============ GIT ============ -->
+  <section aria-labelledby="git-h">
+    <div class="wrap split">
+      <div>
+        <p class="sec-label">Inhalte in Git</p>
+        <h2 id="git-h">Jedes Speichern ist ein lesbarer Commit</h2>
+        <p class="sec-lede">
+          DocuWaves führt keine eigene Versionstabelle. Der Verlauf einer Seite <strong>ist</strong> der
+          Git-Verlauf ihrer Datei – die App und <code>git log</code> geben also dieselbe Antwort.
+        </p>
+        <ul class="points">
+          <li>
+            <b>Verlauf, Diffs und Wiederherstellen inklusive</b>
+            <span>Jede Seite hat einen Verlauf-Tab: Commits mit Autor, Datum und Nachricht, ein farbiger
+            Diff pro Änderung und ein Wiederherstellen, das den alten Text als neuen Commit obendrauf
+            schreibt – nichts wird umgeschrieben oder gelöscht.</span>
+          </li>
+          <li>
+            <b>Die Datenbank ist nur ein Index</b>
+            <span>Standardmäßig SQLite, auf Wunsch PostgreSQL. In beiden Fällen enthält sie keine
+            eigenen Inhalte, nur einen Such- und Navigationsindex über die Dateien. Löschst du sie, baut
+            DocuWaves sie beim nächsten Start aus dem Repository neu auf.</span>
+          </li>
+          <li>
+            <b>Die Dateien überleben die App</b>
+            <span>Markdown mit einem kurzen YAML-Kopf, in einer lesbaren Ordnerstruktur. Jemand kann das
+            Inhalts-Repository forken, eine <code>.md</code>-Datei ändern und einen Pull Request stellen;
+            DocuWaves übernimmt die gemergte Änderung von selbst.</span>
+          </li>
+        </ul>
+      </div>
+      <figure>
+        <div class="shot">
+          <img src="/img/history.webp" width="1264" height="810" loading="lazy" decoding="async"
+               alt="Der Verlauf-Tab einer Seite im DocuWaves-Editor. Er nennt die Datei content/harbor-gateway/configuration/routes-and-upstreams.md und listet fünf Commits, neueste zuerst – jeweils mit kurzem SHA, einer Nachricht wie „Update page: Routes and upstreams“, dem Autor „admin“ und einem Datum. Der älteste Eintrag ist als CREATED markiert.">
+        </div>
+        <figcaption>Der Verlauf einer Seite – die echten Commits, die ihre Datei geändert haben.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ============ AI / MCP ============ -->
+  <section aria-labelledby="mcp-h">
+    <div class="wrap">
+    <div class="split media-left">
+      <div>
+        <p class="sec-label">KI-Assistenten</p>
+        <h2 id="mcp-h">Gib einem Assistenten Schreibrechte – und behalte den Überblick</h2>
+        <p class="sec-lede">
+          DocuWaves spricht <strong>MCP</strong>. Richte einen Assistenten mit einem Bearer-Token auf
+          <code>/api/mcp</code>, und er kann deine Dokumentation durchsuchen, lesen und – wenn das Token
+          es erlaubt – schreiben. Jede Änderung kommt als gewöhnlicher Commit an, <strong>mit dem Token
+          als Autor</strong>.
+        </p>
+
+        <div class="attrib">
+          <p>Die üblichen Werkzeuge beantworten also Fragen dazu:</p>
+          <code>git log --author='API token'   <span style="color:var(--muted)"># alles, was Assistenten schrieben</span>
+git log --author='notes-bot'    <span style="color:var(--muted)"># nur dieses eine Token</span>
+git revert &lt;sha&gt;                <span style="color:var(--muted)"># eine Änderung zurücknehmen</span></code>
+        </div>
+      </div>
+      <figure>
+        <div class="shot">
+          <img src="/img/tokens.webp" width="1440" height="710" loading="lazy" decoding="async"
+               alt="Der Bereich API-Tokens in der DocuWaves-Verwaltung. Drei Tokens sind gelistet – „CI docs check“ und „Assistant -- read only“ als NUR LESEN, „Docs writer (staging)“ als LESEN UND SCHREIBEN – jeweils mit Ablaufdatum, letzter Nutzung und einem Widerrufen-Knopf. Darunter ein Formular für Name, Berechtigung (auf „Nur lesen“ gesetzt) und ein optionales Ablaufdatum.">
+        </div>
+        <figcaption>Tokens haben einen Namen, eine Berechtigung, ein Ablaufdatum und lassen sich
+          widerrufen – und der Bereich sagt klar, dass ein Token nichts löschen kann.</figcaption>
+      </figure>
+    </div>
+
+        <ul class="points points-wide">
+          <li>
+            <b>Ein Lösch-Werkzeug gibt es bewusst nicht</b>
+            <span>Ein Assistent kann Seiten anlegen und umschreiben, und beides lässt sich zurückholen –
+            eine falsche Änderung ist sichtbar und ein <code>git revert</code> entfernt. Löschen ist die
+            Operation, deren Schaden man hinterher nicht sieht, deshalb bleibt sie in der Verwaltung, wo
+            ein Mensch sie bestätigt.</span>
+          </li>
+          <li>
+            <b>Lesen und Schreiben sind getrennt</b>
+            <span>Lesen ist im Formular voreingestellt. Ruft ein Lese-Token ein Schreib-Werkzeug auf,
+            wird das abgelehnt, mit der Berechtigung, die es hat, und der, die es bräuchte. Tokens können
+            ablaufen, und ein Widerruf gilt ab der nächsten Anfrage.</span>
+          </li>
+          <li>
+            <b>Das Token öffnet genau eine Tür</b>
+            <span>Ein API-Token gilt für <code>/api/mcp</code> und sonst nichts – es erreicht weder die
+            übrige Verwaltungs-API noch das Branding und kann kein weiteres Token anlegen. Umgekehrt
+            akzeptiert der Endpunkt keine Admin-Sitzung aus dem Browser.</span>
+          </li>
+          <li>
+            <b>Es kostet keine KI-Gebühren</b>
+            <span>Der Endpunkt ist ein Werkzeug-Server. Er beantwortet die Anfragen eines Assistenten zu
+            deiner Dokumentation und ruft selbst nie ein Sprachmodell auf.</span>
+          </li>
+        </ul>
+    </div>
+  </section>
+
+  <!-- ============ TEAMS ============ -->
+  <section aria-labelledby="team-h">
+    <div class="wrap">
+      <p class="sec-label">Zusammenarbeit</p>
+      <h2 id="team-h">Mehrere Leute, ohne Rechte-Labyrinth</h2>
+      <p class="sec-lede prose">
+        Vier Rollen, eine optionale Freigabe und eine Möglichkeit, einen Entwurf jemandem ohne Konto zu
+        zeigen. Jedes davon ist eine kleine, klare Regel statt einer Matrix zum Konfigurieren.
+      </p>
+      <ul class="points points-wide">
+        <li>
+          <b>Konten mit vier Rollen</b>
+          <span><strong>Leser</strong> für private Projekte, <strong>Lesen</strong> für Prüfende, die
+          Entwürfe und Verlauf sehen, aber nichts ändern, <strong>Schreiben</strong> für die
+          Dokumentation, <strong>Verwalten</strong> für die Instanz selbst. Passwort oder Single Sign-on
+          per OIDC, dazu Zwei-Faktor-Anmeldung mit Sicherheitsschlüssel wie YubiKey, Passkey oder
+          Authenticator-App.</span>
+        </li>
+        <li>
+          <b>Freigabe vor dem Veröffentlichen, pro Projekt</b>
+          <span>Eine Einstellung im Projekt, und nichts darin geht online, bevor eine zweite Person
+          zustimmt. Ohne sie arbeitet ein Projekt genau wie vorher.</span>
+        </li>
+        <li>
+          <b>Vorschau-Links für Entwürfe</b>
+          <span>Schicke eine unveröffentlichte Seite an jemanden ohne Konto, über einen Link, der
+          abläuft und sich zurückziehen lässt.</span>
+        </li>
+        <li>
+          <b>Private Projekte</b>
+          <span>Ein Projekt, das nur angemeldete Lesende öffnen können, neben öffentlichen in derselben
+          Instanz.</span>
+        </li>
+        <li>
+          <b>Wer bearbeitet gerade mit</b>
+          <span>Der Editor zeigt, wer die Seite noch offen hat. Ein Speichern, das eine neuere Fassung
+          von jemand anderem überschreiben würde, wird angehalten und gezeigt, nicht still
+          zusammengeführt.</span>
+        </li>
+        <li>
+          <b>Webhooks an Discord, Slack oder jede URL</b>
+          <span>Kündige veröffentlichte Seiten und Seiten, die auf Freigabe warten, dort an, wo das
+          Team ohnehin liest.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ BRINGING DOCS IN ============ -->
+  <section aria-labelledby="in-h">
+    <div class="wrap">
+      <p class="sec-label">Bestehende Doku übernehmen</p>
+      <h2 id="in-h">Fang mit dem an, was du schon hast</h2>
+      <p class="sec-lede prose">
+        Der Umzug zu DocuWaves ist ein Import, kein Neuschreiben. Und Dokumentation, die schon neben dem
+        Code liegt, kann dort bleiben.
+      </p>
+      <ul class="points points-wide">
+        <li>
+          <b>Ein ZIP mit Markdown</b>
+          <span>Exporte aus MkDocs, GitBook, Docusaurus und Obsidian werden erkannt, oder einfach ein
+          Ordner mit <code>.md</code>-Dateien. Eine Vorschau zeigt, was passieren würde, bevor etwas
+          geschrieben wird; Links werden umgeschrieben und Bilder kopiert.</span>
+        </li>
+        <li>
+          <b>Confluence und Notion</b>
+          <span>Ein HTML-Bereichsexport aus Confluence oder ein „Markdown &amp; CSV“-Export aus Notion
+          wird zu einem Projekt mit Kategorien, Seiten und Bildern.</span>
+        </li>
+        <li>
+          <b>Docs-as-Code aus deiner CI</b>
+          <span>Behalte einen Ordner <code>docs/</code> im Code-Repository und lass einen CI-Schritt
+          ihn bei jedem Push schicken. Ein Release-Tag friert ihn als Version ein. Die Dokumentation von
+          DocuWaves selbst wird genau so veröffentlicht.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ NO ACCOUNT ============ -->
+  <section aria-labelledby="local-h">
+    <div class="wrap">
+      <p class="sec-label">Loslegen</p>
+      <h2 id="local-h">Kein Konto, und auch kein Git-Hoster</h2>
+      <p class="sec-lede prose">
+        Es gibt keinen Schritt, in dem du erst ein Repository anlegst, ein Token erzeugst oder dich
+        irgendwo registrierst. Beim ersten Start führt DocuWaves <code>git init</code> in seinem eigenen
+        Datenvolume aus, und jede Seite, die du danach schreibst, ist dort ein echter Commit.
+      </p>
+      <ul class="points">
+        <li>
+          <b>Lokal ist eine vollständige Einrichtung, keine Testversion</b>
+          <span>Vollständiger Seitenverlauf, Diffs, Wiederherstellen, Autorenschaft und Inhalte als
+          einfaches Markdown, das du auch außerhalb der App lesen kannst. Das Einzige, was fehlt, ist
+          eine Kopie an einem anderen Ort.</span>
+        </li>
+        <li>
+          <b>Ein Remote lässt sich jederzeit ergänzen</b>
+          <span>Trag die URL eines leeren Repositorys in die <code>.env</code> ein und starte neu. Der
+          vorhandene Verlauf wird <strong>vollständig</strong> hochgeladen – jeder Commit, nicht zu
+          einem Import zusammengefasst – und ab dann verhält sich die Instanz, als wäre sie vom ersten
+          Tag an mit Remote eingerichtet. Entfernst du die URL wieder, ist sie lokal, mit allem
+          Verlauf.</span>
+        </li>
+        <li>
+          <b>Also: das Volume sichern</b>
+          <span>Bei einer rein lokalen Instanz ist <code>./data</code> die einzige Kopie deiner
+          Dokumentation, und nichts spiegelt sie. Sichere diesen Ordner, klone ihn woandershin oder
+          ergänze ein Remote – wie bei allen anderen Daten, die dir fehlen würden.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ OPEN SOURCE ============ -->
+  <section aria-labelledby="oss-h">
+    <div class="wrap">
+      <div class="panel">
+        <p class="sec-label">Lizenz</p>
+        <h2 id="oss-h">MIT, und es gibt keine Bezahlversion</h2>
+        <p class="sec-lede prose">
+          Alles auf dieser Seite steckt in dem einen Open-Source-Repository. Keine Funktion liegt hinter
+          einem Abo, nichts ist einer „Enterprise“-Ausgabe vorbehalten, und es gibt nichts zu kaufen.
+          Klonen, betreiben, forken, ändern.
+        </p>
+        <ul class="pills">
+          <li>MIT-Lizenz</li>
+          <li>Ein Container</li>
+          <li>Keine Telemetrie</li>
+          <li>Kein CDN zur Laufzeit</li>
+          <li>Kein Konto bei einem KI-Anbieter</li>
+          <li>amd64 und arm64</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ EVERYTHING ELSE ============ -->
+  <section aria-labelledby="rest-h">
+    <div class="wrap">
+      <p class="sec-label">Der Alltag</p>
+      <h2 id="rest-h">Der Rest, kurz gefasst</h2>
+      <ul class="grid">
+        <li><b>Visuell oder in Markdown schreiben</b><span>Schreib visuell mit einer Werkzeugleiste oder
+          in Markdown mit Live-Vorschau. Die Datei ist in beiden Fällen Markdown, und beim Wechseln geht
+          nichts verloren.</span></li>
+        <li><b>Hinweisboxen, Tabs und Snippets</b><span>Farbige Hinweise, Tab-Gruppen, wiederverwendbare
+          Snippets und <code>{{variables}}</code>, alles als einfacher Text, der auch auf GitHub gut
+          lesbar bleibt.</span></li>
+        <li><b>Diagramme als Text</b><span>Ein <code>mermaid</code>-Block wird als echtes Diagramm
+          gezeichnet – in der Vorschau, auf der veröffentlichten Seite und in GitHubs eigener
+          Dateiansicht.</span></li>
+        <li><b>Bilder per Einfügen oder Ziehen</b><span>Füg einen Screenshot in den Editor ein oder zieh
+          Dateien darauf: hochgeladen nach <code>assets/</code> im Projekt, committet und an der
+          Cursorposition eingefügt.</span></li>
+        <li><b>Ungespeichertes bleibt erhalten</b><span>Text im Editor wird im Browser aufbewahrt und
+          beim Zurückkommen angeboten – nie still übernommen und nie hochgeladen.</span></li>
+        <li><b>Volltextsuche</b><span>Über alle veröffentlichten Seiten aller Projekte, in der Sprache
+          und Version, die gerade gelesen wird, und tolerant bei Tippfehlern. Wonach gesucht und nichts
+          gefunden wurde, wird dir aufgelistet.</span></li>
+        <li><b>PDF und Druck</b><span>Ein ganzes Projekt oder ein Kapitel als druckbares Handbuch mit
+          Titelseite und Inhaltsverzeichnis, und jede einzelne Seite druckt sauber.</span></li>
+        <li><b>Änderungsprotokoll und RSS</b><span>Eine Seite „Was ist neu?“ und Feeds, gebaut aus dem
+          Verlauf des Repositorys, damit Lesende Änderungen verfolgen können.</span></li>
+        <li><b>Die Doku fragen, optional</b><span>Ein Fragefeld, das nur aus deinen veröffentlichten
+          Seiten antwortet, mit Quellen. Standardmäßig aus; funktioniert auch mit einem lokalen Modell
+          wie Ollama.</span></li>
+        <li><b>Mehrere Projekte, eine Instanz</b><span>Eine Installation dient der Doku für jedes
+          Werkzeug, das du pflegst, jeweils mit eigenen Kategorien und Seiten, als Kacheln
+          dargestellt.</span></li>
+        <li><b>Mehrere Sprachen, optional</b><span>Eine Seite kann es in mehreren Sprachen unter einem
+          Slug geben, mit der Sprache in der URL und einem ehrlichen Hinweis auf noch nicht übersetzten
+          Seiten.</span></li>
+        <li><b>Eingefrorene Versionen, optional</b><span>Friere die Doku zu einem Release ein, und sie
+          bleibt so: schreibgeschützt und lesbar, während du an der aktuellen weiterarbeitest.</span></li>
+        <li><b>Entwürfe</b><span>Eine Seite bleibt für Lesende unsichtbar, bis du sie veröffentlichst,
+          und ein Projekt ohne veröffentlichte Seiten bleibt ganz von der öffentlichen Seite
+          fern.</span></li>
+        <li><b>Branding pro Instanz</b><span>Name, Logo, Favicon, Akzentfarbe und Fußzeile kommen aus
+          einer <code>_site.yml</code> im Inhalts-Repository – versioniert und prüfbar wie eine
+          Seite.</span></li>
+        <li><b>Passwort oder OIDC-SSO</b><span>Anmeldung mit Passwort oder über jeden gängigen
+          OIDC-Anbieter – Authentik, Keycloak, Authelia, Zitadel.</span></li>
+        <li><b>Backups und Diagnose</b><span>Ein vollständiger Export mit einem Klick, nächtliche
+          Backups mit dem Installer und eine Diagnoseseite, die sagt, was eingerichtet ist und was
+          nicht.</span></li>
+        <li><b>Echtes HTML für Crawler</b><span>Jede öffentliche URL kommt mit eigenem Titel,
+          Beschreibung, Open-Graph-Tags, Canonical und strukturierten Daten, dazu
+          <code>/sitemap.xml</code> und <code>/robots.txt</code>.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ CLOSING ============ -->
+  <section class="closing" aria-labelledby="try-h">
+    <div class="wrap">
+      <h2 id="try-h">In etwa einer Minute ausprobiert</h2>
+      <p class="sec-lede">Docker mit dem Compose-Plugin ist die einzige Voraussetzung. Nichts muss
+        vorher angelegt, registriert oder eingerichtet werden.</p>
+
+      <div class="term" id="compose">
+        <div class="term-head"><span>Mit Docker Compose installieren</span></div>
+<pre><code><span class="k">git</span> clone https://github.com/Syntaxlab-dev/DocuWaves.git
+<span class="k">cd</span> DocuWaves
+<span class="k">cp</span> .env.example .env
+<span class="k">docker</span> compose up -d --build
+<span class="c"># dann http://&lt;dein-server&gt;:8091 öffnen</span></code></pre>
+      </div>
+      <p class="term-note">Jede Einstellung in der <code>.env</code> hat einen funktionierenden
+        Standardwert. Lieber nichts bauen? Nimm das fertige Image
+        <code>ghcr.io/syntaxlab-dev/docuwaves:stable</code>.</p>
+
+      <div class="cta">
+        <a class="btn btn-primary" href="https://docs.docuwaves.app">Zur Dokumentation</a>
+        <a class="btn btn-secondary" href="mailto:hello@docuwaves.app">hello@docuwaves.app</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="/img/wordmark-dark.svg">
+          <img src="/img/wordmark.svg" width="470" height="128" alt="DocuWaves">
+        </picture>
+        <p>Selbst gehostete Dokumentation, deren Inhalte Markdown-Dateien in einem Git-Repository
+           sind, das dir gehört. Veröffentlicht unter der MIT-Lizenz.</p>
+      </div>
+      <div class="foot-links">
+        <div>
+          <h3>Projekt</h3>
+          <ul>
+            <li><a href="https://docs.docuwaves.app">Dokumentation</a></li>
+            <li><a href="https://github.com/Syntaxlab-dev/DocuWaves">Quellcode auf GitHub</a></li>
+            <li><a href="https://github.com/Syntaxlab-dev/DocuWaves/releases">Releases</a></li>
+            <li><a href="https://github.com/Syntaxlab-dev/DocuWaves/blob/main/LICENSE">MIT-Lizenz</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Zuerst lesen</h3>
+          <ul>
+            <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/scope-and-limitations" hreflang="en">Umfang und Grenzen</a></li>
+            <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/installing-with-the-installer" hreflang="en">Installation mit dem Installer</a></li>
+            <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/installing-with-docker" hreflang="en">Installation mit Docker</a></li>
+            <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/the-mcp-endpoint" hreflang="en">Der MCP-Endpunkt</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3>Kontakt</h3>
+          <ul>
+            <li><a href="mailto:hello@docuwaves.app">hello@docuwaves.app</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="colophon">
+      <span>Was DocuWaves ist und was nicht – auch, was es gar nicht erst versucht – steht unter
+        <a href="https://docs.docuwaves.app/p/docuwaves/pages/scope-and-limitations" hreflang="en">Scope and limitations</a>
+        (englisch). Die Dokumentation ist derzeit auf Englisch.</span>
+    </p>
+  </div>
+</footer>
+
+<script>
+// Same script as /index.html, with German labels. Progressive enhancement only: the install command is fully readable and
+// selectable without this. The button is created here so no dead control
+// appears when JavaScript is off.
+(function () {
+  var pre = document.getElementById('install-cmd');
+  var head = document.getElementById('install-label');
+  if (!pre || !head || !navigator.clipboard) return;
+
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'copy';
+  btn.textContent = 'Kopieren';
+  btn.setAttribute('aria-label', 'Installationsbefehl kopieren');
+
+  var live = document.createElement('span');
+  live.setAttribute('aria-live', 'polite');
+  live.style.cssText = 'position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap';
+
+  var timer;
+  btn.addEventListener('click', function () {
+    navigator.clipboard.writeText(pre.innerText.trim()).then(function () {
+      btn.textContent = 'Kopiert';
+      live.textContent = 'Installationsbefehl in die Zwischenablage kopiert';
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        btn.textContent = 'Kopieren';
+        live.textContent = '';
+      }, 2000);
+    }, function () {
+      btn.textContent = 'Strg+C drücken';
+      live.textContent = 'Kopieren fehlgeschlagen – Text markieren und Strg+C drücken';
+    });
+  });
+
+  head.appendChild(btn);
+  head.appendChild(live);
+})();
+</script>
+</body>
+</html>

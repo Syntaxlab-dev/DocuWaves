@@ -12,6 +12,7 @@ that is a DocuWaves instance, and its source is [`docs/`](../docs/).
 | Path | What it is |
 |---|---|
 | `index.html` | The page. Styles are inline, the only script is the copy button |
+| `de/index.html` | The same page in German, at `/de/`. Same styles and images; the two link to each other (`hreflang`) |
 | `favicon.svg`, `apple-touch-icon.png` | Browser and home-screen icons |
 | `img/wordmark.svg`, `img/wordmark-dark.svg` | The logo, light and dark |
 | `img/og.png` | 1200×630 link-preview image (Open Graph / Twitter card) |
@@ -41,6 +42,14 @@ Two things to check after a change to the server's panel: `robots.txt` must
 still be this one (the panel writes a `Disallow: /` version when a site is
 created), and `sitemap.xml`'s `<lastmod>` should be the date of the last
 content change.
+
+## Two languages
+
+`index.html` (English, at `/`) and `de/index.html` (German, at `/de/`) are
+the same page. A change to one belongs in the other in the same commit: the
+CSS block is identical and can be copied over whole, the text is translated.
+Both carry `<link rel="alternate" hreflang>` for each other, and
+`sitemap.xml` lists both.
 
 ## Updating the screenshots
 
