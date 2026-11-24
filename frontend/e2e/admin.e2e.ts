@@ -147,7 +147,7 @@ test("every admin panel opens without an error", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);
   const nav = page.getByRole("banner").getByRole("navigation");
-  for (const name of ["Branding", "Accounts", "Approvals", "Activity", "Insights", "API tokens", "Diagnostics", "Import", "Account"]) {
+  for (const name of ["Branding", "Accounts", "Approvals", "Activity", "Insights", "API tokens", "Diagnostics", "Log", "Import", "Account"]) {
     await nav.getByRole("button", { name, exact: true }).click();
     // Every panel opens with a card title; seeing one means it rendered.
     await expect(page.locator("main, body").getByRole("heading", { level: 3 }).first()).toBeVisible();

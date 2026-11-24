@@ -406,6 +406,17 @@ export interface PageSchedule {
   scheduled_by: string;
 }
 
+/** One entry of the admin log (backend services/admin_log.py). */
+export interface AdminLogEntry {
+  id: number;
+  at: string;
+  actor: string;
+  address: string;
+  action: string;
+  target: string;
+  detail: string;
+}
+
 /** E-mail notifications an account can choose (backend services/mail_notifications.py). */
 export type NotificationKind = "review_requested" | "review_decided" | "changed";
 
@@ -1112,6 +1123,8 @@ export const api = {
     }),
   adminCancelPageSchedule: (pageId: number) =>
     request<{ cancelled: boolean }>(`/api/admin/pages/${pageId}/schedule`, { method: "DELETE" }),
+  adminLog: (limit = 100, before?: number) =>
+    request<{ entries: AdminLogEntry[] }>(`/api/admin/log?limit=${limit}${before ? `&before=${before}` : ""}`),
   adminActivity: (limit = 50) => request<{ entries: ActivityEntry[] }>(`/api/admin/activity?limit=${limit}`),
   adminReviewDue: () => request<{ pages: ReviewDuePage[]; count: number }>("/api/admin/review-due"),
   adminSearchGaps: () =>

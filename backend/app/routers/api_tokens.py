@@ -16,10 +16,10 @@ Changing either means issuing a new token and revoking the old one, which is
 the same thing but visible.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.services import api_tokens_store, projects_store
+from app.services import admin_log, api_tokens_store, projects_store
 
 router = APIRouter(prefix="/api/admin/tokens", tags=["admin"])
 
@@ -57,7 +57,7 @@ def list_tokens():
     "its hash is kept, so a lost token is replaced rather than looked up. A `write` token can create and change "
     "documentation pages through the MCP endpoint; hand one out accordingly.",
 )
-def create_token(body: TokenIn):
+def create_token(body: TokenIn, request: Request):
     name = api_tokens_store.normalize_name(body.name)
     scope = (body.scope or "").strip().lower()
     expires_at = (body.expires_at or "").strip()
@@ -68,6 +68,10 @@ def create_token(body: TokenIn):
     if reason is not None:
         raise HTTPException(status_code=400, detail=reason)
     record, token = api_tokens_store.create(name, scope, expires_at, project)
+    admin_log.record(
+        request, "token.create", name,
+        f"scope: {scope}" + (f", project: {project}" if project else "") + (f", expires: {expires_at}" if expires_at else ""),
+    )
     # The one and only time the plaintext leaves this process. Not logged,
     # here or anywhere else.
     return {**record, "token": token}
@@ -79,7 +83,10 @@ def create_token(body: TokenIn):
     description="Deletes the token's row. It stops working on the very next request -- an assistant still "
     "holding the value gets exactly the same answer as one holding a value that never existed.",
 )
-def revoke_token(token_id: int):
+def revoke_token(token_id: int, request: Request):
+    # The name, read before it is gone: "token 7" says nothing a month later.
+    name = next((t["name"] for t in api_tokens_store.list_tokens() if t["id"] == token_id), "")
     if not api_tokens_store.revoke(token_id):
         raise HTTPException(status_code=404, detail="Token not found.")
+    admin_log.record(request, "token.revoke", name or f"#{token_id}")
     return {"ok": True}

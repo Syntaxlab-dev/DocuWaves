@@ -45,6 +45,7 @@ from app.services import (
     page_review,
     project_access,
     scheduled_publish,
+    admin_log,
     categories_store,
     content_assets,
     content_files,
@@ -1613,12 +1614,18 @@ def admin_get_site():
 )
 def admin_update_site(body: SiteBrandingIn, request: Request):
     _require_content_repo()
+    before = site_branding.read_branding()
     paths = site_branding.write_branding(body.model_dump())
     try:
         git_content_repo.commit_and_push(paths, "Update site branding", _author(request))
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
-    return site_branding.read_branding()
+    after = site_branding.read_branding()
+    # Which settings changed, by name -- not their values: an analytics id
+    # or a footer link is not something a log needs to repeat.
+    changed = sorted(key for key in set(before) | set(after) if before.get(key) != after.get(key))
+    admin_log.record(request, "branding.update", "", ", ".join(changed) or "no change")
+    return after
 
 
 @router.post(
@@ -1632,7 +1639,9 @@ def admin_update_site(body: SiteBrandingIn, request: Request):
 async def admin_upload_site_asset(filename: str, request: Request):
     _require_content_repo()
     data = await _read_validated_image(request, filename)
-    return await run_in_threadpool(_store_site_asset, filename, data, _author(request))
+    stored = await run_in_threadpool(_store_site_asset, filename, data, _author(request))
+    await run_in_threadpool(admin_log.record, request, "branding.image", stored["filename"], f"{len(data)} bytes")
+    return stored
 
 
 def _store_site_asset(filename: str, data: bytes, author: str) -> dict:
@@ -1706,12 +1715,24 @@ def admin_export(request: Request):
     except OSError as exc:
         path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"The export could not be written: {exc}") from exc
+    admin_log.record(request, "export.download", backup.archive_name())
     return FileResponse(
         path,
         media_type="application/zip",
         filename=backup.archive_name(),
         background=BackgroundTask(path.unlink, missing_ok=True),
     )
+
+
+@router.get(
+    "/log",
+    summary="What administrators did to the instance",
+    description="Accounts, API tokens, branding and exports: when, who, from which address, what and to what, "
+    "newest first (services/admin_log.py). Page changes are not here -- they are commits, see /activity. "
+    "Pass `before` (an entry id) for the next page.",
+)
+def admin_log_entries(limit: int = 100, before: int | None = None):
+    return {"entries": admin_log.entries(limit, before)}
 
 
 @router.get("/feedback", summary="Pages readers voted on, worst ratio first")

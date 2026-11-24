@@ -8,6 +8,7 @@ import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import { UpdateNotice } from "@/components/UpdateNotice";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
 import { ActivityCard } from "@/components/ActivityCard";
+import { AdminLogCard } from "@/components/AdminLogCard";
 import { TwoFactorCard } from "@/components/TwoFactorCard";
 import { NotificationsCard } from "@/components/NotificationsCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
@@ -39,7 +40,7 @@ import { CategoriesPanel } from "./admin/CategoriesPanel";
 import { type EditorTarget, PagesPanel } from "./admin/PagesPanel";
 import { PageEditor } from "./admin/PageEditor";
 
-type AdminPanel = "account" | "activity" | "branding" | "insights" | "tokens" | "diagnostics" | "users" | "reviews" | "import";
+type AdminPanel = "account" | "activity" | "log" | "branding" | "insights" | "tokens" | "diagnostics" | "users" | "reviews" | "import";
 
 export function AdminApp() {
   const { t, lang, setLang } = useI18n();
@@ -75,6 +76,8 @@ export function AdminApp() {
   const setShowBranding = panelSetter("branding");
   const showActivity = panel === "activity";
   const setShowActivity = panelSetter("activity");
+  const showLog = panel === "log";
+  const setShowLog = panelSetter("log");
   const showInsights = panel === "insights";
   const setShowInsights = panelSetter("insights");
   const showTokens = panel === "tokens";
@@ -317,6 +320,7 @@ export function AdminApp() {
       ? [
           { key: "tokens", label: t("admin.tokens"), onClick: () => setShowTokens((v) => !v) },
           { key: "diagnostics", label: t("diag.title"), onClick: () => setShowDiagnostics((v) => !v) },
+          { key: "log", label: t("adminLog.title"), onClick: () => setShowLog((v) => !v) },
         ]
       : []),
     // Importing writes a whole project, so only for accounts that may write.
@@ -443,6 +447,7 @@ export function AdminApp() {
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
         {showTokens && <ApiTokensCard projects={projects} onClose={() => setShowTokens(false)} />}
         {showActivity && <ActivityCard onClose={() => setShowActivity(false)} />}
+        {showLog && <AdminLogCard onClose={() => setShowLog(false)} />}
         {showInsights && (
           <AdminInsightsCard onClose={() => setShowInsights(false)} onCreatePage={startPageFromGap} />
         )}

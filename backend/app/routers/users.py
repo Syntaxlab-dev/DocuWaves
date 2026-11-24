@@ -36,7 +36,7 @@ THE THREE THINGS THAT MUST NOT HAPPEN, and where each is stopped:
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.services import mfa_store, project_access, projects_store, session_registry_store, users_store
+from app.services import admin_log, mfa_store, project_access, projects_store, session_registry_store, users_store
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin"])
 
@@ -125,7 +125,7 @@ def list_users(request: Request):
 
 
 @router.post("", summary="Create an account", status_code=201)
-def create_user(body: UserIn):
+def create_user(body: UserIn, request: Request):
     role = _require_valid_role(body.role)
     _require_valid_password(body.password)
     username = users_store.normalize_username(body.username)
@@ -134,6 +134,7 @@ def create_user(body: UserIn):
     user = users_store.create_user(username, body.password, role)
     if user is None:
         raise HTTPException(status_code=409, detail="That name is already taken.")
+    admin_log.record(request, "account.create", username, f"role: {role}")
     return user
 
 
@@ -161,6 +162,7 @@ def set_role(username: str, body: RoleIn, request: Request):
     # quietly started answering 403 is worse than the login screen.
     if users_store.rank(role) < users_store.rank(user["role"]):
         session_registry_store.revoke_for_user(username)
+    admin_log.record(request, "account.role", username, f"{user['role']} -> {role}")
     return users_store.get_user(username)
 
 
@@ -172,7 +174,7 @@ def set_role(username: str, body: RoleIn, request: Request):
     "viewer and editor accounts -- an admin may do everything everywhere, and a reader cannot open the admin "
     "area at all. Takes effect on the account's next request; nobody is signed out.",
 )
-def set_project_roles(username: str, body: ProjectRolesIn):
+def set_project_roles(username: str, body: ProjectRolesIn, request: Request):
     user = _require_existing(username)
     if body.projects and user["role"] not in (users_store.VIEWER, users_store.EDITOR):
         raise HTTPException(
@@ -190,7 +192,11 @@ def set_project_roles(username: str, body: ProjectRolesIn):
     # An exception equal to the role says nothing; not stored, so the list
     # an admin reads back is only the real differences.
     differences = {slug: role for slug, role in body.projects.items() if role != user["role"]}
-    return {"username": username, "projects": project_access.set_grants(username, differences)}
+    saved = project_access.set_grants(username, differences)
+    admin_log.record(
+        request, "account.projects", username, ", ".join(f"{slug}: {role}" for slug, role in saved.items()) or "none"
+    )
+    return {"username": username, "projects": saved}
 
 
 @router.put(
@@ -207,6 +213,7 @@ def set_password(username: str, body: PasswordIn, request: Request):
     _require_valid_password(body.password)
     users_store.set_password(username, body.password)
     revoked = session_registry_store.revoke_for_user(username)
+    admin_log.record(request, "account.password_reset", username)
     return {"ok": True, "sessions_ended": revoked}
 
 
@@ -225,6 +232,7 @@ def delete_user(username: str, request: Request):
             status_code=409,
             detail="This is the only administrator left. Make somebody else an administrator first.",
         )
+    admin_log.record(request, "account.delete", username)
     return {"ok": True, "sessions_ended": session_registry_store.revoke_for_user(username)}
 
 
@@ -240,4 +248,5 @@ def reset_mfa(username: str, request: Request):
     _require_existing(username)
     _require_other_account(request, username, "reset the two-factor sign-in of")
     mfa_store.delete_all(username)
+    admin_log.record(request, "account.mfa_reset", username)
     return {"ok": True, "sessions_ended": session_registry_store.revoke_for_user(username)}
