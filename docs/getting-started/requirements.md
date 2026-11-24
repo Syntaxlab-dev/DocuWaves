@@ -8,7 +8,7 @@ There is not much to it. DocuWaves is one container and one directory of data. A
 
 ## On the machine that runs it
 
-- **Docker** with the Compose plugin (`docker compose`, not the older `docker-compose` script). Any Linux host will do; the image is built on `python:3.15-slim`.
+- **Docker** with the Compose plugin (`docker compose`, not the older `docker-compose` script), or **[rootless Podman](/p/docuwaves/pages/rootless-podman)**. Any Linux host will do; the image is built on `python:3.15-slim`.
 - **A writable directory** for the `./data` volume. Everything DocuWaves stores lives there: the content repository itself, the SQLite index, the session signing secret, and the deploy key if you use one.
 - **Disk** roughly equal to your documentation plus a little. Documentation is text; images dominate, and each is capped at 10 MB.
 

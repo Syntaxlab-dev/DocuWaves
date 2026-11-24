@@ -1,0 +1,84 @@
+name: Rootless Podman
+
+# DocuWaves is supported on rootless Podman (docs/running-it/rootless-podman.md).
+# This builds the image with Podman as the unprivileged runner user, runs
+# it with a bind-mounted data directory, and checks the two things that go
+# wrong under rootless Podman when they go wrong at all: the app has to come
+# up healthy, and what it writes to /data has to land in the host directory
+# and survive the container being replaced.
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - backend/requirements.txt
+      - docs/running-it/rootless-podman.md
+      - .github/workflows/podman.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - backend/requirements.txt
+      - .github/workflows/podman.yml
+  schedule:
+    - cron: "0 4 * * 0"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  rootless:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Podman is rootless here
+        run: |
+          podman --version
+          test "$(id -u)" != 0
+          podman info --format '{{.Host.Security.Rootless}}' | grep -qx true
+
+      - name: Build the image
+        run: podman build -t docuwaves:podman .
+
+      - name: Run it with a data directory from the host
+        run: |
+          mkdir -p "$RUNNER_TEMP/data"
+          podman run -d --name docuwaves -p 127.0.0.1:8091:8000 \
+            -v "$RUNNER_TEMP/data:/data:Z" docuwaves:podman
+
+      - name: It comes up
+        run: |
+          for _ in $(seq 60); do
+            curl -fsS http://127.0.0.1:8091/health && exit 0
+            sleep 2
+          done
+          podman logs docuwaves
+          exit 1
+
+      - name: It writes to the host directory
+        run: |
+          ls -la "$RUNNER_TEMP/data"
+          test -s "$RUNNER_TEMP/data/docuwaves.db"
+          test -d "$RUNNER_TEMP/data/content-repo/.git"
+
+      - name: The data survives a new container
+        run: |
+          curl -fsS -X POST http://127.0.0.1:8091/api/auth/setup \
+            -H 'Content-Type: application/json' -H 'Origin: http://127.0.0.1:8091' \
+            -d '{"username":"admin","password":"podman-check-123"}'
+          podman rm -f docuwaves
+          podman run -d --name docuwaves -p 127.0.0.1:8091:8000 \
+            -v "$RUNNER_TEMP/data:/data:Z" docuwaves:podman
+          for _ in $(seq 60); do
+            curl -fsS http://127.0.0.1:8091/health >/dev/null && break
+            sleep 2
+          done
+          # Set up before the restart: the new container must not ask again.
+          curl -sS http://127.0.0.1:8091/api/auth/status | tee /dev/stderr | grep -q '"setup_required":false'
+
+      - name: Logs
+        if: always()
+        run: podman logs docuwaves || true
