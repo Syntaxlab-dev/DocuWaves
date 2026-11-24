@@ -159,6 +159,11 @@ class Settings:
     # starttls (default, port 587), ssl (port 465) or none (a relay on the
     # same machine or network, port 25).
     smtp_security: str = os.environ.get("SMTP_SECURITY", "starttls").strip().lower()
+    # The name the server's TLS certificate is checked against, when it is
+    # not SMTP_HOST: a container that reaches the mail server on the same
+    # machine by an internal address (rootless Podman with pasta:
+    # SMTP_HOST=169.254.1.2, SMTP_TLS_SERVER_NAME=mail.example.com).
+    smtp_tls_server_name: str = os.environ.get("SMTP_TLS_SERVER_NAME", "").strip()
 
     session_cookie_secure: bool = _cookie_secure(
         os.environ.get("SESSION_COOKIE_SECURE", ""), os.environ.get("PUBLIC_BASE_URL", "")

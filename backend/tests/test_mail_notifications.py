@@ -125,7 +125,7 @@ class TestDelivery:
                 return False
 
             def starttls(self, context=None):
-                calls.append(("starttls",))
+                calls.append(("starttls",) if getattr(self, "_host", None) is None else ("starttls", self._host))
 
             def login(self, user, password):
                 calls.append(("login", user))
@@ -140,6 +140,7 @@ class TestDelivery:
         monkeypatch.setattr(settings, "smtp_username", "docs@example.com")
         monkeypatch.setattr(settings, "smtp_password", "pw")
         monkeypatch.setattr(settings, "smtp_from", "")
+        monkeypatch.setattr(settings, "smtp_tls_server_name", "")
         return calls
 
     def test_starttls_on_587_by_default(self, server, monkeypatch):
@@ -152,6 +153,29 @@ class TestDelivery:
         mailer.deliver(mailer.build("a@example.com", "s", "t"))
         assert server[0] == ("connect", "smtp.example.com", 465)
         assert ("starttls",) not in server
+
+    def test_starttls_checks_the_configured_tls_name(self, server, monkeypatch):
+        # A container reaching the mail server on the same machine by an
+        # internal address: the certificate is still checked for its name.
+        monkeypatch.setattr(settings, "smtp_security", "starttls")
+        monkeypatch.setattr(settings, "smtp_host", "169.254.1.2")
+        monkeypatch.setattr(settings, "smtp_tls_server_name", "mail.example.com")
+        mailer.deliver(mailer.build("a@example.com", "s", "t"))
+        assert server[:2] == [("connect", "169.254.1.2", 587), ("starttls", "mail.example.com")]
+
+    def test_ssl_checks_the_configured_tls_name(self, monkeypatch):
+        wrapped = []
+
+        class Context:
+            def wrap_socket(self, sock, server_hostname=None):
+                wrapped.append(server_hostname)
+                return sock
+
+        monkeypatch.setattr(mailer.smtplib.SMTP, "_get_socket", lambda self, host, port, timeout: ("plain", host))
+        server = mailer._SSL(context=Context())
+        server.tls_name = "mail.example.com"
+        assert server._get_socket("169.254.1.2", 465, 5) == ("plain", "169.254.1.2")
+        assert wrapped == ["mail.example.com"]
 
     def test_the_username_is_the_sender_when_none_is_set(self, server):
         assert mailer.sender() == "docs@example.com"

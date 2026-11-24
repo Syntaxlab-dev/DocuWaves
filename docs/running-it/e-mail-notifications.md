@@ -43,6 +43,25 @@ address. These are environment variables rather than an admin setting
 because the password is a credential, and the admin settings are written to
 a repository built to be cloned.
 
+### A mail server on the same machine
+
+When DocuWaves runs in a container and the mail server on the host, the
+container may not reach it by its public name. Rootless Podman with its
+default network (pasta) gives the container the host's own public address,
+so a connection to that address stays inside the container and is refused.
+Use the host's address as seen from the container (`169.254.1.2`, or
+`host.containers.internal`), and tell DocuWaves which name the certificate
+is for:
+
+```env
+SMTP_HOST=169.254.1.2
+SMTP_TLS_SERVER_NAME=mail.example.com
+```
+
+The certificate is still checked, against `SMTP_TLS_SERVER_NAME` instead of
+the address. Alternatively, map the name in the container:
+`--add-host mail.example.com:169.254.1.2`.
+
 After a restart, open **Account**, enter your address and press **Send a
 test e-mail**. It waits for the mail server's answer, so a wrong setting
 shows up there, by the kind of error, rather than as notifications that

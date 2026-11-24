@@ -78,6 +78,7 @@ See [Webhooks](/p/docuwaves/pages/webhooks).
 | `SMTP_HOST` | *(empty — off)* | The SMTP server notifications are sent through |
 | `SMTP_PORT` | *587, 465 or 25* | Defaults to the usual port for `SMTP_SECURITY` |
 | `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
+| `SMTP_TLS_SERVER_NAME` | *SMTP_HOST* | The name the certificate is checked against, when `SMTP_HOST` is an internal address |
 | `SMTP_USERNAME` | *(empty)* | Sign in to the SMTP server; no sign-in when empty |
 | `SMTP_PASSWORD` | *(empty)* | The password for `SMTP_USERNAME` |
 | `SMTP_FROM` | `SMTP_USERNAME` | The sender, e.g. `DocuWaves <docs@example.com>` |

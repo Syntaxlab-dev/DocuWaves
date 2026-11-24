@@ -59,17 +59,37 @@ def build(to: str, subject: str, text: str) -> EmailMessage:
     return message
 
 
+class _SSL(smtplib.SMTP_SSL):
+    """SMTP_SSL that checks the certificate against `tls_name` rather than
+    the address it connects to (SMTP_TLS_SERVER_NAME)."""
+
+    tls_name = ""
+
+    def _get_socket(self, host, port, timeout):
+        plain = smtplib.SMTP._get_socket(self, host, port, timeout)
+        return self.context.wrap_socket(plain, server_hostname=self.tls_name or host)
+
+
 def deliver(message: EmailMessage) -> None:
     """Sends one message now, in this thread. Raises on failure."""
     security = _security()
     port = settings.smtp_port or _DEFAULT_PORTS[security]
     context = ssl.create_default_context()
-    if security == "ssl":
-        server: smtplib.SMTP = smtplib.SMTP_SSL(settings.smtp_host, port, timeout=_TIMEOUT_SECONDS, context=context)
+    tls_name = settings.smtp_tls_server_name
+    if security == "ssl" and tls_name:
+        server: smtplib.SMTP = _SSL(timeout=_TIMEOUT_SECONDS, context=context)
+        server.tls_name = tls_name
+        server.connect(settings.smtp_host, port)
+    elif security == "ssl":
+        server = smtplib.SMTP_SSL(settings.smtp_host, port, timeout=_TIMEOUT_SECONDS, context=context)
     else:
         server = smtplib.SMTP(settings.smtp_host, port, timeout=_TIMEOUT_SECONDS)
     with server:
         if security == "starttls":
+            if tls_name:
+                # starttls() checks the certificate against _host, the name
+                # connected to; the configured name replaces it for that.
+                server._host = tls_name
             server.starttls(context=context)
         if settings.smtp_username:
             server.login(settings.smtp_username, settings.smtp_password)

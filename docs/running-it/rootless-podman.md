@@ -77,6 +77,13 @@ It pulls the newer image for the tag, restarts the service, and rolls back if th
 
 `podman compose` (or `podman-compose`) reads the shipped `docker-compose.yml` unchanged. On an SELinux system, add `:Z` to its volume line: `./data:/data:Z`.
 
+## A mail server on the same host
+
+Inside a rootless container, the host's public address is the container's
+own, so `SMTP_HOST` pointing at this same server is refused. Use
+`SMTP_HOST=169.254.1.2` with `SMTP_TLS_SERVER_NAME=<the mail server's name>`
+(see [e-mail notifications](/p/docuwaves/pages/e-mail-notifications)).
+
 ## What does not apply
 
 [The installer](/p/docuwaves/pages/installing-with-the-installer) and the `docuwaves` command set up Docker, Caddy and a backup timer as root. On a rootless Podman host, use the pieces above instead, and your own reverse proxy.
