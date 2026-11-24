@@ -16,6 +16,22 @@ full results page.
 
 Search matches **word beginnings**: `instal` already finds "Installation".
 
+## Narrowing the results
+
+The full results page has filters above the results:
+
+- **Project** — one project, or all of them. A search started inside a
+  project starts narrowed to it.
+- **Version** — for a project with [versions](/p/docuwaves/pages/freezing-a-version),
+  which release's pages to search. Without a choice, each project's default
+  version is searched, never the same page once per release.
+- **Language** — on a site in several languages, which language's pages.
+  Pages that exist only in the default language are found in every
+  language, marked as such.
+
+**Clear filters** searches everything again. The filters are part of the
+address, so a narrowed search can be bookmarked or sent as a link.
+
 ## Typos
 
 A word that appears nowhere in the published docs is corrected to the
