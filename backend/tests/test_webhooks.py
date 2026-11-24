@@ -59,6 +59,39 @@ class TestFormats:
         body = webhooks.build_body("https://hooks.slack.com/services/x", "updated", d)
         assert body == {"text": "*Aktualisiert:* <https://docs.example.com/p/demo/pages/installation|A &lt;b&gt; &amp; C> (Demo)"}
 
+    @pytest.mark.parametrize("url", [
+        "https://contoso.webhook.office.com/webhookb2/x/IncomingWebhook/y/z",
+        "https://prod-12.westeurope.logic.azure.com:443/workflows/abc/triggers/manual/paths/invoke?sig=x",
+        "https://default123.0a.environment.api.powerplatform.com:443/powerautomate/automations/direct/x",
+        "https://example.org/teams-relay#teams",
+    ])
+    def test_teams_gets_an_adaptive_card(self, url):
+        body = webhooks.build_body(url, "published", data())
+        attachment = body["attachments"][0]
+        assert body["type"] == "message"
+        assert attachment["contentType"] == "application/vnd.microsoft.card.adaptive"
+        card = attachment["content"]
+        texts = [b["text"] for b in card["body"]]
+        assert texts[0] == "Neu veröffentlicht" and texts[1] == "Installation" and texts[-1] == "Demo"
+        assert card["actions"][0] == {
+            "type": "Action.OpenUrl", "title": "Seite öffnen",
+            "url": "https://docs.example.com/p/demo/pages/installation",
+        }
+
+    def test_teams_without_a_link_has_no_button(self, monkeypatch):
+        monkeypatch.setattr(settings, "public_base_url", "")
+        body = webhooks.build_body("https://x.webhook.office.com/a", "published", data())
+        assert "actions" not in body["attachments"][0]["content"]
+
+    def test_matrix_gets_a_notice_with_escaped_html(self):
+        d = data()
+        d["page"]["title"] = "A <b> & C"
+        body = webhooks.build_body("https://m.example.org/_matrix/client/v3/rooms/!r:x/send/m.room.message", "updated", d)
+        assert body["msgtype"] == "m.notice" and body["format"] == "org.matrix.custom.html"
+        assert body["body"].startswith("Aktualisiert: A <b> & C (Demo) https://docs.example.com/")
+        assert '<a href="https://docs.example.com/p/demo/pages/installation">A &lt;b&gt; &amp; C</a>' in body["formatted_body"]
+        assert body["text"] == body["body"] and body["html"] == body["formatted_body"]
+
     def test_anything_else_gets_the_json_event(self):
         body = webhooks.build_body("https://example.org/hook", "published", data())
         assert body["event"] == "published" and body["page"]["slug"] == "installation"
@@ -75,11 +108,11 @@ class TestDelivery:
 
         codes = []
 
-        def post(url, data, headers, timeout):
-            sent.append({"url": url, "body": data, "headers": headers})
+        def request(method, url, data, headers, timeout):
+            sent.append({"method": method, "url": url, "body": data, "headers": headers})
             return Response(codes.pop(0) if codes else 200)
 
-        monkeypatch.setattr(webhooks.requests, "post", post)
+        monkeypatch.setattr(webhooks.requests, "request", request)
         monkeypatch.setattr(webhooks.time, "sleep", lambda s: None)
         return sent, codes
 
@@ -109,12 +142,32 @@ class TestDelivery:
         def refuse(*a, **k):
             raise requests.ConnectionError("down")
 
-        monkeypatch.setattr(webhooks.requests, "post", refuse)
+        monkeypatch.setattr(webhooks.requests, "request", refuse)
         monkeypatch.setattr(webhooks.time, "sleep", lambda s: None)
         webhooks._deliver("https://example.org/hook", "published", data())  # no exception
 
     def test_the_log_names_the_host_not_the_secret_path(self):
         assert webhooks._redacted("https://discord.com/api/webhooks/123/SECRET") == "discord.com"
+
+    def test_matrix_is_a_put_with_the_token_in_the_header(self, posts):
+        sent, codes = posts
+        codes += [502, 200]
+        url = "https://matrix.example.org/_matrix/client/v3/rooms/!abc:example.org/send/m.room.message?access_token=TOK"
+        webhooks._deliver(url, "published", data())
+        first, second = sent
+        assert first["method"] == "PUT"
+        assert first["url"].startswith("https://matrix.example.org/_matrix/client/v3/rooms/!abc:example.org/send/m.room.message/")
+        assert "access_token" not in first["url"] and "TOK" not in first["url"]
+        assert first["headers"]["Authorization"] == "Bearer TOK"
+        assert first["url"] == second["url"]  # one transaction id: the retry cannot post twice
+        assert json.loads(first["body"])["msgtype"] == "m.notice"
+
+    def test_a_format_fragment_is_not_sent(self, posts):
+        sent, _ = posts
+        webhooks._deliver("https://hookshot.example.org/webhook/abc#matrix", "published", data())
+        assert sent[0]["method"] == "POST" and sent[0]["url"] == "https://hookshot.example.org/webhook/abc"
+        assert "X-DocuWaves-Event" not in sent[0]["headers"]
+        assert json.loads(sent[0]["body"])["text"].startswith("Neu veröffentlicht: Installation")
 
 
 class TestWhenItFires:

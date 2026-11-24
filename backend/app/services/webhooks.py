@@ -1,5 +1,5 @@
-"""Tell another service when documentation changes: a Discord or Slack
-channel, or any URL that accepts JSON.
+"""Tell another service when documentation changes: a Discord, Slack,
+Microsoft Teams or Matrix channel, or any URL that accepts JSON.
 
 WHERE IT IS CONFIGURED: environment variables (WEBHOOK_URLS, WEBHOOK_EVENTS,
 WEBHOOK_SECRET), for the same reason the chat key is -- a webhook URL is a
@@ -38,9 +38,10 @@ import hmac
 import json
 import logging
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from urllib.parse import quote
+from urllib.parse import parse_qsl, quote, urlencode, urlsplit, urlunsplit
 
 import requests
 
@@ -66,6 +67,7 @@ _LABELS = {
         "review_requested": "Wartet auf Freigabe",
         "approved": "Freigegeben",
         "changes_requested": "Änderungen angefordert",
+        "open": "Seite öffnen",
     },
     "en": {
         "published": "Published",
@@ -74,6 +76,7 @@ _LABELS = {
         "review_requested": "Waiting for approval",
         "approved": "Approved",
         "changes_requested": "Changes requested",
+        "open": "Open the page",
     },
 }
 _DISCORD_COLOURS = {
@@ -83,6 +86,16 @@ _DISCORD_COLOURS = {
     "review_requested": 0x0EA5E9,
     "approved": 0x16A34A,
     "changes_requested": 0xDC2626,
+}
+
+# Adaptive Card colour names for the label line in Teams.
+_TEAMS_COLOURS = {
+    "published": "Good",
+    "updated": "Accent",
+    "unpublished": "Default",
+    "review_requested": "Accent",
+    "approved": "Good",
+    "changes_requested": "Attention",
 }
 
 
@@ -177,13 +190,39 @@ def page_url(page: dict, project: dict) -> str:
 # ---- Formats ----
 
 
-def _kind(url: str) -> str:
-    host = url.split("://", 1)[-1].split("/", 1)[0].lower()
+_FORMATS = ("discord", "slack", "teams", "matrix", "json")
+
+
+def _target(url: str) -> tuple[str, str]:
+    """(format, the address to send to). The format follows the host, or a
+    fragment naming it (`https://hookshot.example.org/webhook/abc#matrix`)
+    for a service whose address does not give it away. The fragment is
+    taken off: it was never meant for the receiving server."""
+    address, _, fragment = url.partition("#")
+    if fragment.lower() in _FORMATS:
+        return fragment.lower(), address
+    parts = urlsplit(address)
+    host = (parts.hostname or "").lower()
     if host.endswith("discord.com") or host.endswith("discordapp.com"):
-        return "discord"
+        return "discord", address
     if host == "hooks.slack.com":
-        return "slack"
-    return "json"
+        return "slack", address
+    # Teams: the old "Incoming Webhook" connectors (*.webhook.office.com) and
+    # the Workflows that replace them (Power Automate, on logic.azure.com or
+    # *.api.powerplatform.com). Both take the same Adaptive Card message.
+    if (
+        host.endswith(".webhook.office.com")
+        or host.endswith(".logic.azure.com")
+        or host.endswith(".api.powerplatform.com")
+    ):
+        return "teams", address
+    if "/_matrix/client/" in parts.path:
+        return "matrix", address
+    return "json", address
+
+
+def _kind(url: str) -> str:
+    return _target(url)[0]
 
 
 def _label_key(event: str, data: dict) -> str:
@@ -220,7 +259,65 @@ def build_body(url: str, event: str, data: dict) -> dict:
     if _kind(url) == "slack":
         title = f"<{link}|{_slack_escape(page['title'])}>" if link else _slack_escape(page["title"])
         return {"text": f"*{label}:* {title} ({_slack_escape(project['name'])})"}
+    if _kind(url) == "teams":
+        return _teams_body(key, label, page, project, link)
+    if _kind(url) == "matrix":
+        return _matrix_body(label, page, project, link)
     return data
+
+
+def _teams_body(key: str, label: str, page: dict, project: dict, link: str) -> dict:
+    """A message holding one Adaptive Card, the format both Teams' Workflows
+    and its older connectors accept."""
+    body = [
+        {"type": "TextBlock", "text": label, "weight": "Bolder", "color": _TEAMS_COLOURS[key], "spacing": "None"},
+        {"type": "TextBlock", "text": page["title"], "size": "Large", "weight": "Bolder", "wrap": True},
+    ]
+    if page["summary"]:
+        body.append({"type": "TextBlock", "text": page["summary"], "wrap": True})
+    body.append({"type": "TextBlock", "text": project["name"], "isSubtle": True, "size": "Small", "wrap": True})
+    card = {
+        "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+        "type": "AdaptiveCard",
+        "version": "1.4",
+        "body": body,
+    }
+    if link:
+        card["actions"] = [{"type": "Action.OpenUrl", "title": _label("open"), "url": link}]
+    return {
+        "type": "message",
+        "attachments": [
+            {"contentType": "application/vnd.microsoft.card.adaptive", "contentUrl": None, "content": card}
+        ],
+    }
+
+
+def _matrix_body(label: str, page: dict, project: dict, link: str) -> dict:
+    """An m.notice -- the message type meant for bots, which clients do not
+    treat as a person talking -- with an HTML version for clients that show
+    it. The same body suits a Hookshot generic webhook, which reads `text`
+    and `html`."""
+    title, name = page["title"], project["name"]
+    plain = f"{label}: {title} ({name})" + (f" {link}" if link else "")
+    linked = f'<a href="{_html(link)}">{_html(title)}</a>' if link else _html(title)
+    html = f"<b>{_html(label)}:</b> {linked} ({_html(name)})"
+    if page["summary"]:
+        plain += "\n" + page["summary"]
+        html += f"<br>{_html(page['summary'])}"
+    return {
+        "msgtype": "m.notice",
+        "body": plain,
+        "format": "org.matrix.custom.html",
+        "formatted_body": html,
+        "text": plain,
+        "html": html,
+    }
+
+
+def _html(text: str) -> str:
+    return (
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    )
 
 
 def _slack_escape(text: str) -> str:
@@ -230,16 +327,41 @@ def _slack_escape(text: str) -> str:
 # ---- Delivery ----
 
 
+def _matrix_request(address: str, headers: dict) -> tuple[str, str]:
+    """(method, address) for Matrix's client-server API: a PUT to
+    .../send/m.room.message/<transaction id>. The transaction id is made
+    once per delivery, so the retry below cannot post the message twice.
+    An access token in the query (`?access_token=`, the form a room's
+    address is easiest to paste in) moves into the Authorization header,
+    where the spec wants it."""
+    parts = urlsplit(address)
+    query = parse_qsl(parts.query, keep_blank_values=True)
+    token = next((v for k, v in query if k == "access_token"), "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+        query = [(k, v) for k, v in query if k != "access_token"]
+    path = parts.path.rstrip("/")
+    if path.endswith("/send/m.room.message"):
+        path += "/" + uuid.uuid4().hex
+    elif path.endswith("/send"):
+        path += "/m.room.message/" + uuid.uuid4().hex
+    return "PUT", urlunsplit((parts.scheme, parts.netloc, path, urlencode(query), ""))
+
+
 def _deliver(url: str, event: str, data: dict) -> None:
+    kind, address = _target(url)
     body = json.dumps(build_body(url, event, data), ensure_ascii=False).encode("utf-8")
     headers = {"Content-Type": "application/json", "User-Agent": "DocuWaves-Webhook"}
-    if _kind(url) == "json":
+    method = "POST"
+    if kind == "json":
         headers["X-DocuWaves-Event"] = event
         if settings.webhook_secret:
             headers["X-DocuWaves-Signature"] = "sha256=" + sign(body)
+    if kind == "matrix" and "/_matrix/client/" in address:
+        method, address = _matrix_request(address, headers)
     for attempt in (1, 2):
         try:
-            response = requests.post(url, data=body, headers=headers, timeout=_TIMEOUT_SECONDS)
+            response = requests.request(method, address, data=body, headers=headers, timeout=_TIMEOUT_SECONDS)
             if response.status_code < 500:
                 if response.status_code >= 400:
                     log.warning("Webhook %s answered %s for %s", _redacted(url), response.status_code, event)
@@ -260,6 +382,7 @@ def sign(body: bytes) -> str:
 
 
 def _redacted(url: str) -> str:
-    """The host only: the path of a Discord or Slack webhook IS its secret,
-    and logs get pasted into issue threads."""
+    """The host only: the path of a Discord, Slack or Teams webhook IS its
+    secret (and a Matrix address may carry a token), and logs get pasted
+    into issue threads."""
     return url.split("://", 1)[-1].split("/", 1)[0]

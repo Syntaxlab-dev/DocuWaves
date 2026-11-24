@@ -134,8 +134,9 @@ class Settings:
     # not set PUBLIC_BASE_URL, so the cookie is never sent over plain HTTP --
     # not even on the one request before the proxy redirects to https.
     # Webhooks (services/webhooks.py): where to announce documentation
-    # changes -- Discord and Slack webhook URLs are recognised and get their
-    # own message format, anything else receives JSON. Env vars, not the
+    # changes -- Discord, Slack, Microsoft Teams and Matrix addresses are
+    # recognised and get their own message format, anything else receives
+    # JSON. Env vars, not the
     # admin UI, because a webhook URL is itself a credential. Blank = off.
     webhook_urls: tuple[str, ...] = tuple(
         url for url in _list(os.environ.get("WEBHOOK_URLS", "")) if url.startswith(("https://", "http://"))

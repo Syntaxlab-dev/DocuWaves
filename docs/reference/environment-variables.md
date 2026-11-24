@@ -65,7 +65,7 @@ instance that sets none of them makes no request to any model, ever. See
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `WEBHOOK_URLS` | *(empty — off)* | Discord, Slack or JSON endpoints to notify, comma-separated |
+| `WEBHOOK_URLS` | *(empty — off)* | Discord, Slack, Microsoft Teams, Matrix or JSON endpoints to notify, comma-separated |
 | `WEBHOOK_EVENTS` | `published` | Which of `published`, `updated`, `unpublished`, `review_requested`, `review_decided` to send |
 | `WEBHOOK_SECRET` | *(empty)* | Signs JSON deliveries with HMAC-SHA256 |
 
