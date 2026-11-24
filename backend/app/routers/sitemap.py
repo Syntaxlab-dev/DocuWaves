@@ -135,7 +135,7 @@ def _project_entries(base: str, project: dict, dates: dict[str, str], languages:
     for category_slug, date in category_dates.items():
         for language in languages:
             yield seo.section_url(base, language, slug, version, version, category_slug), date
-    for (category_slug, page_slug), per_language in page_dates.items():
+    for (_category_slug, page_slug), per_language in page_dates.items():
         for language, date in per_language.items():
             yield seo.page_url(base, language, slug, version, version, page_slug), date
 

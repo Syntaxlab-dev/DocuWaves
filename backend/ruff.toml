@@ -1,0 +1,14 @@
+# `ruff check` runs in CI (.github/workflows/tests.yml). The rule set is
+# deliberately small: real mistakes (undefined and unused names, unused
+# variables, bugbear's likely bugs, syntax errors), not style. Formatting
+# is not enforced.
+target-version = "py313"
+line-length = 120
+
+[lint]
+select = ["E4", "E7", "E9", "F", "B"]
+
+[lint.per-file-ignores]
+# Fixtures shared between test modules are imported by name and then
+# "redefined" as the argument pytest injects; that is how pytest works.
+"tests/*" = ["F811"]

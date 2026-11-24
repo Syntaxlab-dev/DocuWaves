@@ -117,7 +117,7 @@ export function tidyMarkdown(markdown: string): string {
       out.push(`${callout[1]}[!${callout[2].toUpperCase()}]`);
       // The callout's text right below its marker, not after an empty quote
       // line: `> [!TIP]` / `> Text`, as GitHub writes it.
-      if (/^(?:>[ \t]?)+$/.test(lines[i + 1] ?? "") && /^>/.test(lines[i + 2] ?? "")) i += 1;
+      if (/^(?:>[ \t]?)+$/.test(lines[i + 1] ?? "") && (lines[i + 2] ?? "").startsWith(">")) i += 1;
       continue;
     }
     out.push(line);

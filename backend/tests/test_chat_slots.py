@@ -39,7 +39,7 @@ def test_a_slot_is_given_back_even_when_the_answer_fails(two_slots):
 
 
 def test_turning_a_question_away_gives_back_nothing_it_did_not_take(two_slots):
-    with doc_chat.answer_slot() as first, doc_chat.answer_slot() as second:
+    with doc_chat.answer_slot() as _first, doc_chat.answer_slot() as _second:
         for _ in range(5):
             with doc_chat.answer_slot() as refused:
                 assert refused is False

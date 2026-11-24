@@ -55,6 +55,7 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
 
   useEffect(() => {
     void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
   function fail(err: unknown) {

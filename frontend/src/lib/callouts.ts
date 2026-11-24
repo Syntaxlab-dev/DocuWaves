@@ -69,6 +69,6 @@ function tagCallout(quote: MdNode): void {
     ...quote.data,
     // camelCase: hast property names are, and this is what the renderer
     // reads back from the element (it becomes data-callout in the DOM).
-    hProperties: { ...(quote.data?.hProperties ?? {}), dataCallout: kind },
+    hProperties: { ...quote.data?.hProperties, dataCallout: kind },
   };
 }

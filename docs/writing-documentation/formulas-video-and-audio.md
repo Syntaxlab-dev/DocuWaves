@@ -23,9 +23,10 @@ $$
 A single `$` in ordinary prose — a price, a shell variable — is left alone;
 it takes a matching pair on the same line to be read as maths.
 
-Nothing extra is loaded for this. KaTeX is already in the bundle, so a page
-with a formula on it costs no additional request, and an instance with no
-internet access renders one exactly the same.
+KaTeX ships with DocuWaves and is served by your own instance, so an
+instance with no internet access renders formulas exactly the same. It is
+fetched the first time a reader opens a page that has a formula, and pages
+without one never load it.
 
 ## Video and audio
 

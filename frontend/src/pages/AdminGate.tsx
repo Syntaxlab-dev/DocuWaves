@@ -1,8 +1,12 @@
+import { lazy, Suspense } from "react";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { Login } from "@/pages/Login";
-import { AdminApp } from "@/pages/AdminApp";
 import { ReaderNotice } from "@/pages/ReaderNotice";
+
+// The admin area is most of the app's code, and a reader never opens it: it
+// is its own chunk, fetched the first time somebody signs in.
+const AdminApp = lazy(() => import("@/pages/AdminApp").then((m) => ({ default: m.AdminApp })));
 
 export function AdminGate() {
   const { status, loading } = useAuth();
@@ -13,5 +17,9 @@ export function AdminGate() {
   // A reader account reads private projects on the docs site; the admin API
   // refuses it outright, so it gets an explanation instead of a broken UI.
   if (status.role === "reader") return <ReaderNotice username={status.username ?? ""} />;
-  return <AdminApp />;
+  return (
+    <Suspense fallback={<div className="p-8 text-[var(--muted)]">{t("common.loading")}</div>}>
+      <AdminApp />
+    </Suspense>
+  );
 }

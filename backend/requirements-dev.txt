@@ -4,3 +4,5 @@
 pytest==9.1.1
 # FastAPI/Starlette's TestClient -- the end-to-end tests drive the real app.
 httpx2==2.16.2
+# The linter CI runs (`ruff check .`, configured in ruff.toml).
+ruff==0.17.6

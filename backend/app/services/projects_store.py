@@ -78,7 +78,6 @@ def list_projects(language: str = "", published_only: bool = False, include_priv
     #
     # include_private=False is what every anonymous reader's list passes
     # (see services/visibility.py); the admin list keeps the default.
-    p = "%s" if db.is_postgres() else "?"
     conditions: list[str] = []
     params: tuple = ()
     if published_only:

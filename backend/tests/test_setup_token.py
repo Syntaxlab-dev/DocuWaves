@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from app.routers import auth
-from app.services import login_throttle, oidc_client
+from app.services import login_throttle
 from app.settings import settings
 
 from tests.test_signin_hardening import callback_request, idp, location  # noqa: F401 (fixture)

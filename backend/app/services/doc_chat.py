@@ -49,7 +49,7 @@ import threading
 
 import requests
 
-from app.services import pages_store, projects_store, prose, search_suggest, site_languages, snippets
+from app.services import pages_store, projects_store, prose, search_suggest, snippets
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")

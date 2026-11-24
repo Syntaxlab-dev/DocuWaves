@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Outlet, useParams } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth";
@@ -12,7 +13,6 @@ import { PublicCategory } from "@/pages/PublicCategory";
 import { PublicPage } from "@/pages/PublicPage";
 import { SearchResults } from "@/pages/SearchResults";
 import { ChangesPage } from "@/pages/ChangesPage";
-import { PrintBook } from "@/pages/PrintBook";
 import { PublicLogin } from "@/pages/PublicLogin";
 import { PreviewPage } from "@/pages/PreviewPage";
 import { AdminGate } from "@/pages/AdminGate";
@@ -39,6 +39,10 @@ import { NotFound } from "@/components/NotFound";
  * `c` and `pages` are refused as version ids on the backend for that reason
  * (see content_versions._RESERVED_IDS).
  */
+// The print view is opened from a project's page, rarely, and brings the QR
+// code encoder with it: its own chunk.
+const PrintBookPage = lazy(() => import("@/pages/PrintBook").then((m) => ({ default: m.PrintBook })));
+
 const readingRoutes = [
   { path: "", element: <PublicHome /> },
   { path: "search", element: <SearchResults /> },
@@ -47,7 +51,12 @@ const readingRoutes = [
   // Above p/:projectSlug/:version in effect: a literal segment outranks a
   // parameter, and "changes" is a reserved version id (content_versions.py).
   { path: "p/:projectSlug/changes", element: <ChangesPage /> },
-  { path: "p/:projectSlug/print", element: <PrintBook /> },
+  { path: "p/:projectSlug/print", element: (
+      <Suspense fallback={null}>
+        <PrintBookPage />
+      </Suspense>
+    ),
+  },
   { path: "p/:projectSlug", element: <PublicProject /> },
   { path: "p/:projectSlug/c/:categorySlug", element: <PublicCategory /> },
   { path: "p/:projectSlug/pages/:pageSlug", element: <PublicPage /> },

@@ -1,14 +1,9 @@
-import { useMemo, useRef, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
 import { AlertOctagon, AlertTriangle, Info, Lightbulb, MessageSquareWarning, type LucideIcon } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
-// KaTeX's own stylesheet. Its web fonts are declared here but only fetched by
-// the browser when a formula actually renders, so a page without maths on it
-// costs nothing but the ~23 KB of CSS.
-import "katex/dist/katex.min.css";
+import type { Pluggable } from "unified";
 import type { Element, ElementContent } from "hast";
 import { CopyButton } from "@/components/CopyButton";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
@@ -41,6 +36,63 @@ import { remarkTabs } from "@/lib/tabs";
  * at all, so the admin editor's preview pane gets them too without knowing
  * about them.
  */
+/**
+ * KaTeX and highlight.js are the two largest things a page can need, and most
+ * pages need at most one of them, so neither is in the main bundle: each is
+ * fetched the first time a page has maths or a fenced code block, then kept.
+ * Until it arrives the page is already readable (a formula shows as its
+ * source, a code block as plain text) and it re-renders once it has.
+ *
+ * KaTeX's stylesheet comes with it. Its web fonts are only fetched by the
+ * browser when a formula actually renders.
+ */
+const lazyRehype = {
+  // throwOnError false: a malformed formula is shown in red, in place,
+  // rather than taking down the whole page render. An author's typo must
+  // never cost the reader the rest of the document.
+  katex: {
+    plugin: null as Pluggable | null,
+    loading: null as Promise<Pluggable> | null,
+    load: () =>
+      Promise.all([import("rehype-katex"), import("katex/dist/katex.min.css")]).then(
+        ([module]): Pluggable => [module.default, { throwOnError: false }],
+      ),
+  },
+  // plainText: "mermaid" is not a highlight.js language, it's a diagram.
+  // Told plainly, the highlighter leaves the block completely alone -- no
+  // `hljs` class, no spans -- which keeps its source in one piece for
+  // MermaidDiagram and makes the fallback shown when a diagram doesn't parse
+  // look like the plain block it is. Without it rehype-highlight instead
+  // emits a "not registered" warning per block, per render pass.
+  highlight: {
+    plugin: null as Pluggable | null,
+    loading: null as Promise<Pluggable> | null,
+    load: () => import("rehype-highlight").then((module): Pluggable => [module.default, { plainText: ["mermaid"] }]),
+  },
+};
+
+function useLazyRehype(name: keyof typeof lazyRehype, needed: boolean): Pluggable | null {
+  const entry = lazyRehype[name];
+  const [plugin, setPlugin] = useState<Pluggable | null>(entry.plugin);
+  useEffect(() => {
+    if (!needed || plugin) return;
+    let alive = true;
+    entry.loading ??= entry.load().then((loaded) => (entry.plugin = loaded));
+    entry.loading.then(
+      (loaded) => alive && setPlugin(loaded),
+      () => {
+        // Offline, or a deploy replaced the chunk: the page stays readable
+        // without it, and the next page tries again.
+        entry.loading = null;
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [entry, needed, plugin]);
+  return needed ? plugin : null;
+}
+
 export function MarkdownView({
   content,
   projectSlug,
@@ -84,6 +136,10 @@ export function MarkdownView({
     return byLine;
   }, [body]);
 
+  const katex = useLazyRehype("katex", body.includes("$"));
+  const highlight = useLazyRehype("highlight", body.includes("```") || body.includes("~~~"));
+  const rehypePlugins = useMemo(() => [highlight, katex].filter((p): p is Pluggable => p !== null), [highlight, katex]);
+
   return (
     <div className="markdown-body" lang={lang}>
       <ReactMarkdown
@@ -94,17 +150,8 @@ export function MarkdownView({
         // remarkCallouts: GitHub's `> [!WARNING]` boxes, see lib/callouts.ts.
         // remarkTabs: `<!-- tabs -->` groups, see lib/tabs.ts.
         remarkPlugins={[remarkGfm, remarkMath, remarkTabs, remarkCallouts]}
-        // plainText: "mermaid" is not a highlight.js language, it's a
-        // diagram. Told plainly, the highlighter leaves the block completely
-        // alone -- no `hljs` class, no spans -- which keeps its source in one
-        // piece for MermaidDiagram and makes the fallback shown when a
-        // diagram doesn't parse look like the plain block it is. Without it
-        // rehype-highlight instead emits a "not registered" warning per
-        // block, per render pass.
-        // throwOnError false: a malformed formula is shown in red, in place,
-        // rather than taking down the whole page render. An author's typo
-        // must never cost the reader the rest of the document.
-        rehypePlugins={[[rehypeHighlight, { plainText: ["mermaid"] }], [rehypeKatex, { throwOnError: false }]]}
+        // Highlighting and KaTeX: see lazyRehype above.
+        rehypePlugins={rehypePlugins}
         urlTransform={urlTransform}
         components={{
           // `node` is react-markdown's own hast node -- destructured out

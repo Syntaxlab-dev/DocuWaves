@@ -28,6 +28,13 @@ jobs:
         working-directory: backend
         run: pip install -r requirements-dev.txt
 
+      # Real mistakes only (unused and undefined names, likely bugs); the
+      # rule set is in backend/ruff.toml. Before the tests, because it takes
+      # a second and its failures are the easier ones to read.
+      - name: Lint
+        working-directory: backend
+        run: ruff check .
+
       # GitPython refuses to import without a git executable, and the
       # services under test import it transitively. The runner has one; this
       # is here so the reason is written down if a leaner image ever does not.
@@ -51,6 +58,13 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      # oxlint rather than ESLint: typescript-eslint does not support the
+      # TypeScript 7 compiler this project builds with, and oxlint needs no
+      # TypeScript at all. Rules: frontend/.oxlintrc.json.
+      - name: Lint
+        working-directory: frontend
+        run: npm run lint
 
       # The build runs the TypeScript compiler over the whole app, which is
       # what catches the mistakes a reviewer of a UI change most often makes
