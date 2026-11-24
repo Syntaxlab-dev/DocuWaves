@@ -32,6 +32,7 @@ commit, one reindex, and holding the editor's save lock -- an approval must
 not slip in between a save's revision check and its write.
 """
 import difflib
+import secrets
 from datetime import datetime, timezone
 
 from app.services import (
@@ -54,6 +55,13 @@ _TEXT_MAX = 2000
 _NAME_MAX = 80
 
 
+# A passage is a sentence or a paragraph, not a section: long enough to say
+# which words are meant, short enough to find again after an edit.
+_QUOTE_MAX = 500
+# Beyond this a page needs a conversation, not more margin notes.
+_COMMENTS_MAX = 100
+
+
 class ReviewError(Exception):
     """Why this review action is not possible right now. `code` is what the
     API answers with:
@@ -64,7 +72,13 @@ class ReviewError(Exception):
     already_submitted  it is waiting for a decision already
     not_submitted      approve/request changes/withdraw on something nobody
                        submitted
-    own_change         the four-eyes rule: you wrote this text"""
+    own_change         the four-eyes rule: you wrote this text
+    no_draft           a comment on a live page with no proposed changes:
+                       there is no text under review to comment on
+    empty              a comment with no text, or no passage
+    too_many           the page already has _COMMENTS_MAX comments
+    no_comment         no comment with that id
+    not_yours          deleting somebody else's comment"""
 
     def __init__(self, code: str):
         super().__init__(code)
@@ -102,8 +116,21 @@ def _load(page_id: int) -> tuple[dict, dict, dict, dict | None, dict]:
     return page, project, category, pending, review
 
 
-def _state(project: dict, pending: dict | None, review: dict) -> dict:
+def _comments_state(review: dict, text: str | None) -> list[dict]:
+    """The comments as the editor shows them. `outdated`: the passage is no
+    longer in the text under review -- somebody rewrote it, which usually
+    means the comment was dealt with, and in any case it can no longer be
+    pointed at. Shown apart, never dropped: only resolving or deleting
+    removes a comment from the list."""
+    return [
+        {**c, "outdated": text is not None and bool(c["quote"]) and c["quote"] not in text}
+        for c in content_files.comments_from(review.get(content_files.COMMENTS_KEY))
+    ]
+
+
+def _state(project: dict, pending: dict | None, review: dict, text: str | None = None) -> dict:
     return {
+        "comments": _comments_state(review, text),
         "required": bool(project.get("review_required")),
         "status": review.get("review_status", ""),
         "pending": pending is not None,
@@ -130,7 +157,7 @@ def editor_view(page: dict) -> dict:
         live = content_files.read_page(project["slug"], category["slug"], page["slug"], page["language"], page["version"])
         review = (live or {}).get("review", {})
     view["live_title"] = page["title"]
-    view["review"] = _state(project, pending, review)
+    view["review"] = _state(project, pending, review, view["markdown_content"])
     return view
 
 
@@ -269,6 +296,81 @@ def approve(page_id: int, reviewer: str) -> dict:
     return editor_view(updated or page)
 
 
+def _under_review(page: dict, pending: dict | None) -> str:
+    """The text a comment is about: the proposal, or the draft. A live page
+    with neither has nothing under review -- a comment on it would sit in
+    the published file's frontmatter until some later approval cleared it."""
+    if pending is not None:
+        return pending["markdown_content"]
+    if not page["published"]:
+        return page["markdown_content"]
+    raise ReviewError("no_draft")
+
+
+def add_comment(page_id: int, author: str, quote: str, text: str) -> dict:
+    """A note on one passage of the text under review. Open to everyone who
+    may review (read-only accounts included, see auth_guard.py): pointing
+    at a sentence changes no word of it.
+
+    Stored with the review state in the text's own frontmatter, so it is in
+    the repository like the rest of the review, and the approval that
+    publishes the text clears it (the history keeps it)."""
+    quote = (quote or "").strip()[:_QUOTE_MAX]
+    text = _clip(text)
+    if not quote or not text:
+        raise ReviewError("empty")
+    with pages_store._update_lock:
+        page, project, category, pending, review = _load(page_id)
+        content_versions.ensure_editable(project["slug"], page["version"])
+        _under_review(page, pending)
+        comments = content_files.comments_from(review.get(content_files.COMMENTS_KEY))
+        if len(comments) >= _COMMENTS_MAX:
+            raise ReviewError("too_many")
+        comments.append(
+            {"id": secrets.token_hex(4), "quote": quote, "text": text, "by": author[:_NAME_MAX], "at": _now(), "resolved_by": ""}
+        )
+        review = {**review, content_files.COMMENTS_KEY: comments}
+        _write_state(page, project, category, pending, review, f"Comment: {_label(page, pending)}", author)
+    return editor_view(pages_store.get_page(page_id) or page)
+
+
+def _change_comment(page_id: int, user: str, comment_id: str, change) -> dict:
+    with pages_store._update_lock:
+        page, project, category, pending, review = _load(page_id)
+        content_versions.ensure_editable(project["slug"], page["version"])
+        comments = content_files.comments_from(review.get(content_files.COMMENTS_KEY))
+        target = next((c for c in comments if c["id"] == comment_id), None)
+        if target is None:
+            raise ReviewError("no_comment")
+        comments, message = change(comments, target)
+        review = {**review, content_files.COMMENTS_KEY: comments}
+        _write_state(page, project, category, pending, review, f"{message}: {_label(page, pending)}", user)
+    return editor_view(pages_store.get_page(page_id) or page)
+
+
+def resolve_comment(page_id: int, user: str, comment_id: str, resolved: bool = True) -> dict:
+    """Marks a comment done (or open again). Anybody who may review may:
+    the author answering "fixed" and the reviewer agreeing are both normal."""
+
+    def change(comments, target):
+        target["resolved_by"] = user[:_NAME_MAX] if resolved else ""
+        return comments, "Resolve comment" if resolved else "Reopen comment"
+
+    return _change_comment(page_id, user, comment_id, change)
+
+
+def delete_comment(page_id: int, user: str, comment_id: str) -> dict:
+    """Only by whoever wrote it -- taking back your own note is fine,
+    deleting somebody else's objection is not (resolve it instead)."""
+
+    def change(comments, target):
+        if target["by"] != user:
+            raise ReviewError("not_yours")
+        return [c for c in comments if c is not target], "Delete comment"
+
+    return _change_comment(page_id, user, comment_id, change)
+
+
 def diff(page_id: int) -> dict:
     """What an approval would change: the live text against the proposal,
     or -- for a draft, which has no live text -- the whole draft as new."""
@@ -285,7 +387,7 @@ def diff(page_id: int) -> dict:
         "live": live,
         "proposed": proposed,
         "diff": "\n".join(difflib.unified_diff(before, after, "live", "proposed", lineterm="")),
-        "review": _state(project, pending, review),
+        "review": _state(project, pending, review, proposed["markdown_content"]),
     }
 
 

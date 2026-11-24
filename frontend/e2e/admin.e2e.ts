@@ -342,6 +342,47 @@ test("a screenshot is pixelated in the image editor", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("a reviewer comments on a passage", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("heading", { name: "Projects" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Policies");
+  await page.getByLabel("Approval required").check();
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByText("Policies", { exact: true }).click();
+  await page.getByRole("heading", { name: "Categories" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Rules");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Rules" }).click();
+  await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Holidays");
+  await page.getByRole("button", { name: "Markdown" }).click();
+  const area = page.locator("textarea").first();
+  await area.fill("Everyone gets thirty days off. Ask your lead first.\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "History" })).toBeEnabled();
+
+  // Select a passage in the Markdown editor, then comment on it.
+  await area.evaluate((el: HTMLTextAreaElement) => {
+    el.focus();
+    const at = el.value.indexOf("thirty days");
+    el.setSelectionRange(at, at + "thirty days".length);
+  });
+  await page.getByRole("button", { name: "Comment on selection" }).click();
+  await page.getByLabel("What should change here?").fill("It is twenty-eight.");
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  const item = page.getByRole("listitem").filter({ hasText: "It is twenty-eight." });
+  await expect(item).toBeVisible();
+  await expect(item.getByText("thirty days", { exact: true })).toBeVisible();
+  await expect(page.getByText("Comments (1 open)")).toBeVisible();
+
+  await item.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByText("Comments (0 open)")).toBeVisible();
+  await page.getByRole("button", { name: "Show 1 done" }).click();
+  await expect(page.getByText("done by admin")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test("a category nests inside another", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);

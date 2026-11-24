@@ -41,6 +41,29 @@ commit), and the approver's name and the date are written as the page's
 [review note](/p/docuwaves/pages/review-notes). Requesting changes sends the
 page back to its author with the comment; they edit and submit again.
 
+## Comments on passages
+
+A comment can point at the exact words it is about. Select a passage in the
+editor (Markdown or visual) and press **Comment on selection**, then write
+what should change. The review panel lists each comment under the passage it
+quotes:
+
+- Clicking the quote selects that passage in the Markdown editor, or finds it
+  on the page in the visual editor.
+- **Done** marks a comment as dealt with, and **Reopen** opens it again. Anyone
+  who may review can do either: the author answering "fixed" and the reviewer
+  agreeing are both normal.
+- Only the person who wrote a comment can delete it.
+- When the passage has been rewritten since, the comment says so and its quote
+  is struck through. It stays in the list until somebody marks it done.
+
+Comments work while there is something under review: a draft, or proposed
+changes to a live page. They do not take a submission back, because a comment
+changes no word of the text. **Read** accounts can comment too.
+
+An approval clears them along with the rest of the review state. The commits
+that added them stay in the history.
+
 ## Four eyes
 
 **Whoever last changed the text cannot approve it** — not the person who
@@ -48,7 +71,7 @@ submitted it, the person who *wrote* it. The Approve button is disabled for
 them, and says why. Editing a submitted text takes the submission back, so
 nothing changes under a reviewer's eyes.
 
-**Read** accounts can approve and request changes, and nothing else.
+**Read** accounts can approve, request changes and comment, and nothing else.
 Reviewing is reading, and the right reviewer is often somebody who should
 not be editing.
 
@@ -73,6 +96,6 @@ published yet.
 ## Where it lives
 
 In the content repository, like everything else: the review state is a few
-lines of front matter on the text under review, and a proposal is a file in
-`<category>/_pending/`. The queue survives a reindex, a restore from backup
+lines of front matter on the text under review (`review_comments:` holds the
+comments on passages), and a proposal is a file in `<category>/_pending/`. The queue survives a reindex, a restore from backup
 and a fresh clone.

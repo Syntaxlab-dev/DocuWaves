@@ -714,14 +714,47 @@ REVIEW_KEYS = (
 )
 
 
+# Comments on passages of the text under review (page_review.add_comment):
+# a list rather than one more string, so it is read and written apart from
+# REVIEW_KEYS. Each entry: id, quote (the passage), text, by, at, and
+# resolved_by once somebody marked it done.
+COMMENTS_KEY = "review_comments"
+_COMMENT_FIELDS = ("id", "quote", "text", "by", "at", "resolved_by")
+
+
+def comments_from(value) -> list[dict]:
+    """The comments as a clean list: a hand-edited entry missing its id or
+    its text is left out, every field is a string -- the frontmatter is
+    repository content, and this must never be what fails to load a page."""
+    if not isinstance(value, list):
+        return []
+    comments = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            continue
+        comment = {field: str(entry.get(field) or "") for field in _COMMENT_FIELDS}
+        if comment["id"] and comment["text"]:
+            comments.append(comment)
+    return comments
+
+
 def review_from(metadata: dict) -> dict:
-    return {k: str(metadata.get(k) or "") for k in REVIEW_KEYS if metadata.get(k)}
+    review = {k: str(metadata.get(k) or "") for k in REVIEW_KEYS if metadata.get(k)}
+    comments = comments_from(metadata.get(COMMENTS_KEY))
+    if comments:
+        review[COMMENTS_KEY] = comments
+    return review
 
 
 def _review_metadata(review: dict) -> dict:
     """Only the keys that say something, in a fixed order: a page with no
     review state gets no review lines at all."""
-    return {k: str(review[k]) for k in REVIEW_KEYS if review.get(k)}
+    metadata = {k: str(review[k]) for k in REVIEW_KEYS if review.get(k)}
+    comments = comments_from(review.get(COMMENTS_KEY))
+    if comments:
+        # Empty fields left out, so an open comment is four short lines.
+        metadata[COMMENTS_KEY] = [{k: v for k, v in c.items() if v} for c in comments]
+    return metadata
 
 
 def pending_path(project_slug: str, category_slug: str, slug: str, language: str, version: str = "") -> Path:
