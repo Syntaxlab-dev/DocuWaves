@@ -22,7 +22,7 @@ jobs:
   shellcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck installer/install.sh installer/docuwaves installer/tests/*.sh
 
@@ -30,7 +30,7 @@ jobs:
   image:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build the image
         run: docker build -t docuwaves:ci . && docker save docuwaves:ci -o docuwaves.tar
       - uses: actions/upload-artifact@v4
@@ -47,7 +47,7 @@ jobs:
       matrix:
         mode: [proxy, no-proxy]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/download-artifact@v4
         with:
@@ -137,7 +137,7 @@ jobs:
           - rockylinux/rockylinux:9
           - almalinux:9
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v4
         with:
           name: image
