@@ -2,18 +2,29 @@
 # copied to the web server's document root over SSH whenever website/
 # changes on main (or by hand from the Actions tab).
 #
-# Needs four repository secrets. Without them the job says so and stops,
+# Repository secrets. Without the first three the job says so and stops,
 # rather than failing every push:
 #
 #   WEBSITE_SSH_HOST         the server, e.g. docuwaves.app
-#   WEBSITE_SSH_USER         the account that owns the document root
-#   WEBSITE_SSH_KEY          a private key for that account (a deploy key used
-#                            for nothing else; its public half goes into that
-#                            account's ~/.ssh/authorized_keys)
-#   WEBSITE_PATH             the document root, e.g. /var/www/.../public_html
+#   WEBSITE_SSH_USER         the SSH account the key belongs to
+#   WEBSITE_SSH_KEY          a private key used for nothing else
+#   WEBSITE_PATH             the document root. Leave it unset when the key is
+#                            locked to rrsync on the server (the recommended
+#                            set-up below): rrsync already roots every path
+#                            at the document root.
+#   WEBSITE_OWNER            optional, user:group the files should belong to
+#                            on the server (rsync --chown), e.g. when the
+#                            key logs in as root
+#   WEBSITE_SSH_KNOWN_HOSTS  optional, the output of `ssh-keyscan <host>`,
+#                            to pin the server's key
 #
-# and optionally WEBSITE_SSH_KNOWN_HOSTS (the output of `ssh-keyscan <host>`)
-# to pin the server's key. Without it the key is fetched on first contact.
+# Recommended server side: the key in ~/.ssh/authorized_keys of the SSH
+# account, forced to rsync into the document root and nothing else:
+#
+#   command="/usr/bin/rrsync /var/www/<site>/public_html",restrict ssh-ed25519 AAAA... github-actions website
+#
+# The key can then write that one folder and cannot open a shell or run
+# anything else, whichever account it is in.
 name: Website
 
 on:
@@ -62,10 +73,11 @@ jobs:
           USER: ${{ secrets.WEBSITE_SSH_USER }}
           KEY: ${{ secrets.WEBSITE_SSH_KEY }}
           DEST: ${{ secrets.WEBSITE_PATH }}
+          OWNER: ${{ secrets.WEBSITE_OWNER }}
           KNOWN_HOSTS: ${{ secrets.WEBSITE_SSH_KNOWN_HOSTS }}
         run: |
-          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ] || [ -z "$DEST" ]; then
-            echo "::notice::WEBSITE_SSH_HOST, WEBSITE_SSH_USER, WEBSITE_SSH_KEY or WEBSITE_PATH is not set -- nothing deployed."
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ]; then
+            echo "::notice::WEBSITE_SSH_HOST, WEBSITE_SSH_USER or WEBSITE_SSH_KEY is not set -- nothing deployed."
             exit 0
           fi
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
@@ -78,12 +90,14 @@ jobs:
           # --delete keeps the server identical to website/, except for what
           # the server owns itself: the README here, and anything the panel
           # or Let's Encrypt keeps in the document root.
-          rsync -rlptvz --delete \
+          chown=()
+          if [ -n "$OWNER" ]; then chown=(--chown="$OWNER"); fi
+          rsync -rlptvz --delete "${chown[@]}" \
             --exclude README.md \
             --exclude '.well-known/' \
             --exclude '.htaccess' \
             -e "ssh -i ~/.ssh/website -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
-            website/ "$USER@$HOST:$DEST/"
+            website/ "$USER@$HOST:${DEST:+$DEST/}"
 
       - name: Check the live site
         env:

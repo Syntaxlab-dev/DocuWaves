@@ -37,10 +37,14 @@ that every page parses and every local link exists, copies the folder to the
 web root over SSH with `rsync --delete`, and then checks that the live pages
 answer. It can also be started by hand from the Actions tab.
 
-It needs the repository secrets `WEBSITE_SSH_HOST`, `WEBSITE_SSH_USER`,
-`WEBSITE_SSH_KEY` and `WEBSITE_PATH` (and optionally
-`WEBSITE_SSH_KNOWN_HOSTS`); the workflow file says what goes in each. Until
-they are set, the job skips the copy and says so.
+It needs the repository secrets `WEBSITE_SSH_HOST`, `WEBSITE_SSH_USER` and
+`WEBSITE_SSH_KEY`, and optionally `WEBSITE_PATH`, `WEBSITE_OWNER` and
+`WEBSITE_SSH_KNOWN_HOSTS`; the workflow file says what goes in each. Until
+the first three are set, the job skips the copy and says so.
+
+On the server, the deploy key is locked to `rrsync` for the document root
+(`command="/usr/bin/rrsync <docroot>",restrict` in `authorized_keys`), so it
+can write that one folder and do nothing else.
 
 By hand, the same copy is:
 
