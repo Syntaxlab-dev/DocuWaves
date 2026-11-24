@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FilePlus2, Sparkles, X } from "lucide-react";
-import { api, ApiError, type FeedbackSummary, type ReviewDuePage, type SearchGap } from "@/lib/api";
+import { FilePlus2, MessageSquare, Sparkles, ThumbsDown, ThumbsUp, X } from "lucide-react";
+import { api, ApiError, type FeedbackComment, type FeedbackSummary, type ReviewDuePage, type SearchGap } from "@/lib/api";
 import { formatIsoDate } from "@/lib/dates";
 import { useI18n } from "@/lib/i18n";
 import { usePermissions } from "@/lib/auth";
@@ -41,6 +41,8 @@ export function AdminInsightsCard({
   // are, in fact, most of what a reviewer account is for.
   const { canWrite } = usePermissions();
   const [feedback, setFeedback] = useState<FeedbackSummary[] | null>(null);
+  // The readers' notes of the one page opened in the list, keyed by it.
+  const [notes, setNotes] = useState<{ key: string; comments: FeedbackComment[] } | null>(null);
   const [broken, setBroken] = useState<Broken[] | null>(null);
   const [gaps, setGaps] = useState<{ enabled: boolean; gaps: SearchGap[]; can_draft?: boolean } | null>(null);
   const [drafting, setDrafting] = useState<number | null>(null);
@@ -87,6 +89,20 @@ export function AdminInsightsCard({
   useEffect(() => {
     void load();
   }, []);
+
+  async function toggleNotes(projectSlug: string, pageSlug: string) {
+    const key = `${projectSlug}/${pageSlug}`;
+    if (notes?.key === key) {
+      setNotes(null);
+      return;
+    }
+    try {
+      const { comments } = await api.adminFeedbackComments(projectSlug, pageSlug);
+      setNotes({ key, comments });
+    } catch {
+      toast.error(t("common.error"));
+    }
+  }
 
   async function clearVotes(projectSlug: string, pageSlug: string) {
     try {
@@ -193,19 +209,46 @@ export function AdminInsightsCard({
               {feedback.map((row) => (
                 <li
                   key={`${row.project_slug}/${row.version}/${row.page_slug}/${row.language}`}
-                  className="flex items-center gap-3 rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+                  className="rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
                 >
-                  <span className="min-w-0 flex-1 truncate">
-                    {row.project_slug} / {row.page_slug}
-                    {row.version && <span className="text-[var(--muted)]"> · {row.version}</span>}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-[var(--muted)]">
-                    {row.helpful} / {row.total}
-                  </span>
-                  {canWrite && (
-                    <Button variant="ghost" size="sm" onClick={() => clearVotes(row.project_slug, row.page_slug)}>
-                      {t("insights.clear")}
-                    </Button>
+                  <div className="flex items-center gap-3">
+                    <span className="min-w-0 flex-1 truncate">
+                      {row.project_slug} / {row.page_slug}
+                      {row.version && <span className="text-[var(--muted)]"> · {row.version}</span>}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[var(--muted)]">
+                      {row.helpful} / {row.total}
+                    </span>
+                    {row.comments > 0 && (
+                      <Button variant="ghost" size="sm" onClick={() => void toggleNotes(row.project_slug, row.page_slug)}>
+                        <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />
+                        {notes?.key === `${row.project_slug}/${row.page_slug}`
+                          ? t("insights.notesHide")
+                          : t("insights.notes").replace("{n}", String(row.comments))}
+                      </Button>
+                    )}
+                    {canWrite && (
+                      <Button variant="ghost" size="sm" onClick={() => clearVotes(row.project_slug, row.page_slug)}>
+                        {t("insights.clear")}
+                      </Button>
+                    )}
+                  </div>
+                  {notes?.key === `${row.project_slug}/${row.page_slug}` && (
+                    <ul className="mt-2 flex flex-col gap-1.5 border-t border-[var(--border)] pt-2">
+                      {notes.comments.map((note, index) => (
+                        <li key={`${note.created_at}/${index}`} className="flex gap-2">
+                          {note.helpful ? (
+                            <ThumbsUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--muted)]" aria-hidden="true" />
+                          ) : (
+                            <ThumbsDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--muted)]" aria-hidden="true" />
+                          )}
+                          <span className="min-w-0 flex-1 whitespace-pre-line break-words">{note.comment}</span>
+                          <time className="shrink-0 text-xs text-[var(--muted)]" dateTime={note.created_at}>
+                            {formatIsoDate(note.created_at.slice(0, 10), lang)}
+                          </time>
+                        </li>
+                      ))}
+                    </ul>
                   )}
                 </li>
               ))}

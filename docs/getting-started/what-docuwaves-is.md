@@ -53,7 +53,7 @@ Someone who maintains software and wants its documentation on their own infrastr
 - **Not a fine-grained permission system.** There are [accounts and four roles](/p/docuwaves/pages/accounts-and-roles), and an account's write access can be narrowed or widened [per project](/p/docuwaves/pages/accounts-and-roles). There are no per-page permissions and no groups.
 - **Approval is optional, and simple.** By default a page goes live when somebody switches **Published** on. A project can [require a second person's approval](/p/docuwaves/pages/approval-before-publishing) instead — four eyes, nothing more: no signatures. The Git history and the [admin log](/p/docuwaves/pages/the-admin-log) are the audit trail.
 - **Not a static site generator.** Pages are served from a running application, which is what makes search, the editor and the assistant endpoint possible.
-- **Not a wiki.** There are no comments, no discussion pages and no per-reader accounts.
+- **Not a wiki.** There are no public comments, no discussion pages and no per-reader accounts.
 
 How it compares with BookStack, Wiki.js, Docusaurus and Outline: [Compared with other tools](/p/docuwaves/pages/compared-with-other-tools).
 

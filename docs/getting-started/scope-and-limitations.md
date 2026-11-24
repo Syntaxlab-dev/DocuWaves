@@ -41,7 +41,7 @@ DocuWaves adds three things of its own. They live in the database, which is othe
 | `api_tokens` | One row per API token: the name you gave it, a SHA-256 hash of its value, its scope, its expiry, when it was created and when it was last used. Never the token itself |
 | `mfa_keys`, `mfa_totp`, `mfa_recovery_codes` | For accounts that use [two-factor sign-in](/p/docuwaves/pages/two-factor-sign-in): each security key's name, credential id and public key (never anything secret: the private half never leaves the key), when it was added and last used; the authenticator app's secret; SHA-256 hashes of the recovery codes and whether each was used. Deleted with the account |
 | `preview_links` | One row per [preview link](/p/docuwaves/pages/draft-preview-links): a SHA-256 hash of its value, which page it points at, its expiry, when it was made and by whom. Never the link itself. Expired rows are deleted rather than kept |
-| `page_feedback` | One row per ["was this page helpful?"](/p/docuwaves/pages/reader-feedback-and-link-checking) answer: which page, which answer, and when. No address, no identifier, no user-agent — nothing that ties two answers together |
+| `page_feedback` | One row per ["was this page helpful?"](/p/docuwaves/pages/reader-feedback-and-link-checking) answer: which page, which answer, when, and the reader's optional note. No address, no identifier, no user-agent — nothing that ties two answers together |
 
 Beyond that:
 

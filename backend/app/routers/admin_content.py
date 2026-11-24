@@ -1967,6 +1967,11 @@ def admin_feedback(project: str = ""):
     return {"pages": page_feedback_store.summary(project)}
 
 
+@router.get("/feedback/comments", summary="Readers' notes after their vote, newest first")
+def admin_feedback_comments(project: str = "", page: str = ""):
+    return {"comments": page_feedback_store.comments(project, page)}
+
+
 @router.delete("/feedback/{project_slug}/{page_slug}", summary="Forget one page's votes")
 def admin_clear_feedback(project_slug: str, page_slug: str):
     """Used after a page has been rewritten: the old votes are about text

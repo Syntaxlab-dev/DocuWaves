@@ -44,8 +44,9 @@ written. If your site is public, your privacy policy can say:
 
 ## "Was this page helpful?"
 
-Under every published page, two buttons. A reader clicks one; nothing else
-happens on their screen beyond a thank-you.
+Under every published page, two buttons. After a click the reader may add
+a short **note** — "What helped you?" or "What was missing or unclear?" — or
+skip it; the vote has counted either way.
 
 The report lists the pages that have been voted on, **worst ratio first** —
 which is the order that answers the question an author actually has, namely
@@ -53,7 +54,14 @@ which page to open next. Pages with no votes are absent rather than listed
 as zeroes; a documentation site has many pages and few votes, and rows of
 zeroes would bury the handful that say something.
 
-**Forgetting a page's votes** is one click. It is there because a page that
+A page with notes shows **n notes** next to its numbers; click it to read
+them, newest first, each with its thumb and date. Notes are never shown on
+the site: only accounts that can open **Insights** read them, so there is no
+public thread to moderate. A note can only be added to the vote just cast
+from the same browser, once, within an hour, and is cut at 1,000 characters.
+`FEEDBACK_COMMENTS=off` leaves the thumbs alone.
+
+**Forgetting a page's votes** is one click, and forgets its notes too. It is there because a page that
 has been rewritten in response to its own feedback is being judged on text
 nobody voted on. Without it the only honest thing to do would be to remember
 to discount the numbers.
@@ -68,11 +76,19 @@ That has a consequence worth knowing: votes are the one thing a fresh clone
 of your content repository would not bring back. They are included in the
 [export](/p/docuwaves/pages/backups-and-updates).
 
-A vote is: which page, which answer, and when. No address, no identifier, no
+A vote is: which page, which answer, when, and the note if the reader wrote
+one. No address, no identifier, no
 user-agent, nothing that ties two votes together. There is no way to ask
 "who voted", because nothing is stored that could answer it. Votes are rate
 limited per address so one browser cannot swing a page, and that counter is
 in memory and never written down.
+
+A note is free text, so a reader can type anything into it, their e-mail
+address included; the form asks them not to. If your site is public, your
+privacy policy can say:
+
+> After rating a page you can leave an optional note. It is stored without
+> IP address or account and read only by the documentation team.
 
 ## Links that no longer go anywhere
 
