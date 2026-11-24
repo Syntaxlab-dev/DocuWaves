@@ -11,7 +11,6 @@
 #   Caddyfile     the HTTPS proxy, when there is one
 #   data/         the content repository, the database, the session secret
 #   backups/      what `docuwaves backup` writes
-#   offsite.env   where backups are also copied to, if anywhere (see offsite)
 set -euo pipefail
 
 if [[ -r /etc/default/docuwaves ]]; then
@@ -51,10 +50,7 @@ ${BOLD}docuwaves${RESET} -- manage the DocuWaves instance in $DIR
   update                    back up, pull the newest image of the channel,
                             restart -- and roll back if it does not come up
   backup                    write an archive to $DIR/backups (keeps $KEEP)
-  restore <archive> [--yes] put a backup back (the current data is kept aside);
-                            an encrypted off-site copy (.gpg) is decrypted first
-  offsite [setup|test|list|fetch <name>]
-                            copy every backup, encrypted, to S3 or SFTP as well
+  restore <archive> [--yes] put a backup back (the current data is kept aside)
   reset-password <user>     set an account's password
   users                     list the accounts
   domain <name>|--none      serve on a domain with HTTPS, or on plain port 80
@@ -224,11 +220,6 @@ cmd_status() {
   else
     say "  backup    ${YELLOW}none yet${RESET} -- docuwaves backup"
   fi
-  if offsite_configured; then
-    say "  offsite   $(offsite_target_shown)"
-  else
-    say "  offsite   ${DIM}none -- docuwaves offsite setup${RESET}"
-  fi
   if [[ -n $(env_get SETUP_TOKEN) ]] && [[ $state == healthy ]]; then
     if compose exec -T docuwaves python -m app.cli users 2>/dev/null | grep -q .; then
       say "  ${DIM}SETUP_TOKEN in .env is no longer needed and can be removed.${RESET}"
@@ -302,302 +293,6 @@ cmd_backup() {
     rm -f -- "$old"
   done
   ok "Backup written: $archive ($(du -h "$archive" | cut -f1))"
-
-  # The off-site copy. A failure there leaves the local backup in place and
-  # makes the command (and the daily timer) fail, so it shows up in
-  # `systemctl status docuwaves-backup` instead of passing silently.
-  if offsite_configured; then
-    offsite_upload "$archive" || die "The backup is on this server, but the off-site copy failed (see above)."
-  fi
-}
-
-# ---- off-site copies ----
-#
-# $DIR/offsite.env, mode 600, read by these functions only:
-#
-#   OFFSITE_TARGET=s3://bucket/some/prefix      or  sftp://user@host:22/path
-#   OFFSITE_PASSPHRASE=...        encrypts every copy (gpg, AES-256); keep it
-#                                 somewhere else too, a copy is useless without it
-#   OFFSITE_KEEP_DAYS=30          remote copies older than this are deleted
-#   OFFSITE_S3_ENDPOINT=...       S3: empty for AWS, else e.g. https://s3.eu-central-003.backblazeb2.com
-#   OFFSITE_S3_REGION=...         S3: optional
-#   OFFSITE_S3_ACCESS_KEY=...     S3
-#   OFFSITE_S3_SECRET_KEY=...     S3
-#   OFFSITE_SFTP_KEY=$DIR/offsite-key            SFTP: private key file
-#   OFFSITE_SFTP_KNOWN_HOSTS=$DIR/offsite-known-hosts
-#                                 SFTP: the server's host key, written by setup
-#
-# The upload is rclone, run from its own image (pinned below): one tool for
-# both kinds of target, nothing installed on the host, and the same version
-# everywhere. The archive is encrypted BEFORE it leaves the server -- it
-# holds .env, so the session secret and any repository token -- and the
-# storage provider only ever sees ciphertext.
-
-OFFSITE_FILE="$DIR/offsite.env"
-RCLONE_IMAGE="rclone/rclone:1.68.2"
-
-offsite_get() {
-  local line
-  [[ -f $OFFSITE_FILE ]] || return 0
-  line=$(grep -E "^$1=" "$OFFSITE_FILE" | tail -n 1 || true)
-  line=${line#*=}
-  line=${line%\"}
-  line=${line#\"}
-  printf '%s' "$line"
-}
-
-offsite_configured() {
-  [[ -n $(offsite_get OFFSITE_TARGET) ]]
-}
-
-# The target without the SFTP user name, for messages.
-offsite_target_shown() {
-  offsite_get OFFSITE_TARGET | sed 's#^\(sftp://\)[^@/]*@#\1#'
-}
-
-# rclone's configuration for a remote named "offsite", printed one item per
-# line: `env KEY=VALUE` (goes into an --env-file, so no secret ever appears
-# on a command line where `ps` would show it), `arg X` (a docker argument),
-# and finally `remote offsite:<path>`.
-offsite_rclone_config() {
-  local target path
-  target=$(offsite_get OFFSITE_TARGET)
-  case $target in
-    s3://*)
-      path=${target#s3://}
-      local endpoint
-      endpoint=$(offsite_get OFFSITE_S3_ENDPOINT)
-      printf 'env %s\n' RCLONE_CONFIG_OFFSITE_TYPE=s3 \
-        "RCLONE_CONFIG_OFFSITE_PROVIDER=$([[ -n $endpoint ]] && echo Other || echo AWS)" \
-        "RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID=$(offsite_get OFFSITE_S3_ACCESS_KEY)" \
-        "RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY=$(offsite_get OFFSITE_S3_SECRET_KEY)" \
-        "RCLONE_CONFIG_OFFSITE_ENDPOINT=$endpoint" \
-        "RCLONE_CONFIG_OFFSITE_REGION=$(offsite_get OFFSITE_S3_REGION)" \
-        RCLONE_CONFIG_OFFSITE_NO_CHECK_BUCKET=true
-      ;;
-    sftp://*)
-      local rest userhost host port user key known
-      rest=${target#sftp://}
-      userhost=${rest%%/*}
-      # sftp://host/srv/dw is the absolute /srv/dw; sftp://host/~/dw is dw
-      # in the account's home directory.
-      path=${rest#"$userhost"}
-      [[ $path == /~ || $path == /~/* ]] && path=${path#/~} && path=${path#/}
-      user=${userhost%@*}
-      [[ $user == "$userhost" ]] && user=root
-      host=${userhost#*@}
-      port=22
-      if [[ $host == *:* ]]; then
-        port=${host##*:}
-        host=${host%:*}
-      fi
-      key=$(offsite_get OFFSITE_SFTP_KEY)
-      key=${key:-$DIR/offsite-key}
-      known=$(offsite_get OFFSITE_SFTP_KNOWN_HOSTS)
-      known=${known:-$DIR/offsite-known-hosts}
-      [[ -r $key ]] || die "OFFSITE_SFTP_KEY: $key is not readable."
-      printf 'env %s\n' RCLONE_CONFIG_OFFSITE_TYPE=sftp "RCLONE_CONFIG_OFFSITE_HOST=$host" \
-        "RCLONE_CONFIG_OFFSITE_USER=$user" "RCLONE_CONFIG_OFFSITE_PORT=$port" \
-        RCLONE_CONFIG_OFFSITE_KEY_FILE=/run/offsite/key
-      printf 'arg %s\n' -v "$key:/run/offsite/key:ro"
-      if [[ -r $known ]]; then
-        printf 'env %s\n' RCLONE_CONFIG_OFFSITE_KNOWN_HOSTS_FILE=/run/offsite/known_hosts
-        printf 'arg %s\n' -v "$known:/run/offsite/known_hosts:ro"
-      else
-        warn "No known-hosts file ($known): the server's identity is not checked. Run: docuwaves offsite setup"
-      fi
-      ;;
-    *) die "OFFSITE_TARGET must start with s3:// or sftp:// (it is \"$target\")." ;;
-  esac
-  path=${path%/}
-  printf 'remote offsite:%s\n' "$path"
-}
-
-# rclone <subcommand> [args...], with /backups mounted read-only. {REMOTE}
-# in an argument stands for the configured remote path.
-offsite_rclone() {
-  local config line remote="" envfile status=0 arg
-  local docker_args=() rclone_args=()
-  # Not a process substitution: a die in there has to stop this script too.
-  config=$(offsite_rclone_config) || exit 1
-  envfile=$(umask 077 && mktemp "$DIR/backups/.offsite-env.XXXXXX")
-  while IFS= read -r line; do
-    case $line in
-      "env "*) printf '%s\n' "${line#env }" >>"$envfile" ;;
-      "arg "*) docker_args+=("${line#arg }") ;;
-      "remote "*) remote=${line#remote } ;;
-    esac
-  done <<<"$config"
-  for arg in "$@"; do rclone_args+=("${arg//\{REMOTE\}/$remote}"); done
-  docker run --rm --network host --env-file "$envfile" -v "$DIR/backups:/backups:${OFFSITE_MOUNT:-ro}" "${docker_args[@]}" \
-    "$RCLONE_IMAGE" --retries 3 "${rclone_args[@]}" || status=$?
-  rm -f "$envfile"
-  return "$status"
-}
-
-offsite_encrypt() {
-  local source=$1 target=$2 pass
-  command -v gpg >/dev/null 2>&1 || die "gpg is needed to encrypt the off-site copy: apt-get install gnupg (or dnf install gnupg2)."
-  pass=$(offsite_get OFFSITE_PASSPHRASE)
-  [[ -n $pass ]] || die "OFFSITE_PASSPHRASE is empty in $OFFSITE_FILE: copies leave this server encrypted, never in the clear."
-  gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 \
-    --symmetric --cipher-algo AES256 --output "$target" "$source" 3<<<"$pass"
-}
-
-offsite_upload() {
-  local archive=$1 name encrypted keep
-  name=$(basename "$archive").gpg
-  encrypted="$DIR/backups/.offsite-$name"
-  # shellcheck disable=SC2064 # the name is fixed now, on purpose
-  trap "rm -f '$encrypted'; rm -rf \"\$BACKUP_WORK\" '$DIR/data/.backup-snapshot.db'" EXIT
-  offsite_encrypt "$archive" "$encrypted" || return 1
-  say "Copying $name off-site ..."
-  offsite_rclone copyto "/backups/.offsite-$name" "{REMOTE}/$name" || return 1
-  rm -f "$encrypted"
-  keep=$(offsite_get OFFSITE_KEEP_DAYS)
-  keep=${keep:-30}
-  if [[ $keep =~ ^[0-9]+$ ]] && ((keep > 0)); then
-    offsite_rclone delete "{REMOTE}" --min-age "${keep}d" --include "docuwaves-*.tar.gz.gpg" ||
-      warn "Old off-site copies could not be pruned; the new one is there."
-  fi
-  ok "Off-site copy: $(offsite_target_shown)/$name"
-}
-
-offsite_ask() {
-  local prompt=$1 default=${2:-} answer
-  if [[ -n $default ]]; then
-    read -r -p "$prompt [$default]: " answer </dev/tty
-  else
-    read -r -p "$prompt: " answer </dev/tty
-  fi
-  printf '%s' "${answer:-$default}"
-}
-
-cmd_offsite() {
-  need_root offsite
-  need_install
-  case ${1:-status} in
-    setup) offsite_setup ;;
-    test)
-      offsite_configured || die "No off-site target yet: docuwaves offsite setup"
-      umask 077
-      local probe="$DIR/backups/.offsite-test"
-      date -u >"$probe"
-      offsite_rclone copyto /backups/.offsite-test "{REMOTE}/docuwaves-offsite-test.txt" || die "Upload failed (see above)."
-      offsite_rclone deletefile "{REMOTE}/docuwaves-offsite-test.txt" || warn "The test file could not be removed again."
-      rm -f "$probe"
-      ok "Off-site target works: a test file was written and removed."
-      ;;
-    list)
-      offsite_configured || die "No off-site target yet: docuwaves offsite setup"
-      offsite_rclone lsl "{REMOTE}" --include "docuwaves-*.tar.gz.gpg"
-      ;;
-    fetch)
-      offsite_configured || die "No off-site target yet: docuwaves offsite setup"
-      local name=${2:-}
-      [[ $name =~ ^docuwaves-[0-9]{8}-[0-9]{6}\.tar\.gz\.gpg$ ]] ||
-        die "Usage: docuwaves offsite fetch docuwaves-<date>-<time>.tar.gz.gpg   (names: docuwaves offsite list)"
-      OFFSITE_MOUNT=rw offsite_rclone copyto "{REMOTE}/$name" "/backups/$name" || die "Download failed (see above)."
-      ok "Downloaded: $DIR/backups/$name -- restore it with: docuwaves restore $DIR/backups/$name"
-      ;;
-    status)
-      if offsite_configured; then
-        local days
-        days=$(offsite_get OFFSITE_KEEP_DAYS)
-        say "Off-site copies go to $(offsite_target_shown), encrypted, kept ${days:-30} days."
-        say "Settings: $OFFSITE_FILE"
-      else
-        say "Backups stay on this server only. To copy them to S3 or SFTP as well: docuwaves offsite setup"
-      fi
-      ;;
-    *) die "Usage: docuwaves offsite [setup|test|list|fetch <name>|status]" ;;
-  esac
-}
-
-offsite_setup() {
-  say "${BOLD}Off-site copies of every backup${RESET}"
-  say "Each backup is encrypted on this server and then copied to S3-compatible storage or an SFTP server."
-  local kind target passphrase keep
-  kind=$(offsite_ask "Where to: s3 or sftp" s3)
-  umask 077
-  local tmp
-  tmp=$(mktemp "$DIR/.offsite.XXXXXX")
-  case $kind in
-    s3)
-      target=$(offsite_ask "Bucket and folder, e.g. s3://my-bucket/docuwaves")
-      [[ $target == s3://* ]] || target="s3://$target"
-      {
-        printf 'OFFSITE_TARGET=%s\n' "$target"
-        printf 'OFFSITE_S3_ENDPOINT=%s\n' "$(offsite_ask "Endpoint URL (empty for AWS; e.g. https://s3.eu-central-003.backblazeb2.com)" "")"
-        printf 'OFFSITE_S3_REGION=%s\n' "$(offsite_ask "Region (optional)" "")"
-        printf 'OFFSITE_S3_ACCESS_KEY=%s\n' "$(offsite_ask "Access key id")"
-        local secret
-        read -r -s -p "Secret access key: " secret </dev/tty
-        echo
-        printf 'OFFSITE_S3_SECRET_KEY=%s\n' "$secret"
-      } >"$tmp"
-      ;;
-    sftp)
-      target=$(offsite_ask "Server and folder, e.g. sftp://backup@storage.example.com:22/docuwaves")
-      [[ $target == sftp://* ]] || target="sftp://$target"
-      local key="$DIR/offsite-key" known="$DIR/offsite-known-hosts" hostport host port
-      if [[ ! -f $key ]]; then
-        command -v ssh-keygen >/dev/null 2>&1 || die "ssh-keygen is needed (apt-get install openssh-client)."
-        ssh-keygen -q -t ed25519 -N "" -C "docuwaves-offsite@$(hostname)" -f "$key"
-        say "A key for this was created. Add this line to ~/.ssh/authorized_keys of the backup account on the server:"
-        say "  $(cat "$key.pub")"
-      fi
-      hostport=${target#sftp://}
-      hostport=${hostport%%/*}
-      hostport=${hostport#*@}
-      host=${hostport%:*}
-      port=22
-      [[ $hostport == *:* ]] && port=${hostport##*:}
-      if command -v ssh-keyscan >/dev/null 2>&1 && ssh-keyscan -p "$port" -T 10 "$host" >"$known" 2>/dev/null && [[ -s $known ]]; then
-        say "The server's host key, now trusted for these copies (compare it with the server's own):"
-        ssh-keygen -lf "$known" | sed 's/^/  /'
-      else
-        rm -f "$known"
-        warn "Could not read the server's host key; its identity will not be checked until this is run again."
-      fi
-      {
-        printf 'OFFSITE_TARGET=%s\n' "$target"
-        printf 'OFFSITE_SFTP_KEY=%s\n' "$key"
-        printf 'OFFSITE_SFTP_KNOWN_HOSTS=%s\n' "$known"
-      } >"$tmp"
-      ;;
-    *)
-      rm -f "$tmp"
-      die "Please answer s3 or sftp."
-      ;;
-  esac
-  say ""
-  say "The copies are encrypted with a passphrase. Without it they cannot be restored:"
-  say "keep it in your password manager, not only on this server."
-  local again
-  read -r -s -p "Passphrase (empty = generate one): " passphrase </dev/tty
-  echo
-  if [[ -z $passphrase ]]; then
-    passphrase=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 32)
-    say "Generated passphrase: ${BOLD}$passphrase${RESET}"
-  else
-    read -r -s -p "Again: " again </dev/tty
-    echo
-    [[ $again == "$passphrase" ]] || {
-      rm -f "$tmp"
-      die "The two passphrases differ; nothing was saved."
-    }
-  fi
-  keep=$(offsite_ask "Keep off-site copies for how many days" 30)
-  {
-    printf 'OFFSITE_PASSPHRASE=%s\n' "$passphrase"
-    printf 'OFFSITE_KEEP_DAYS=%s\n' "$keep"
-  } >>"$tmp"
-  chmod 600 "$tmp"
-  mv "$tmp" "$OFFSITE_FILE"
-  ok "Saved to $OFFSITE_FILE"
-  cmd_offsite test
-  say "From now on every backup -- the daily one and each before an update -- is also copied off-site."
 }
 
 cmd_restore() {
@@ -605,22 +300,6 @@ cmd_restore() {
   need_install
   local archive=${1:-}
   [[ -n $archive && -f $archive ]] || die "Usage: docuwaves restore <archive>   (the archives are in $DIR/backups)"
-  if [[ $archive == *.gpg ]]; then
-    # An off-site copy: decrypt it next to the local backups first, with the
-    # passphrase from offsite.env or, on a fresh server, typed in.
-    command -v gpg >/dev/null 2>&1 || die "gpg is needed to decrypt $archive: apt-get install gnupg (or dnf install gnupg2)."
-    local plain pass
-    plain="$DIR/backups/$(basename "${archive%.gpg}")"
-    pass=$(offsite_get OFFSITE_PASSPHRASE)
-    if [[ -z $pass ]]; then
-      read -r -s -p "Passphrase of the off-site copies: " pass </dev/tty
-      echo
-    fi
-    umask 077
-    gpg --batch --yes --quiet --pinentry-mode loopback --passphrase-fd 3 --decrypt --output "$plain" "$archive" 3<<<"$pass" ||
-      die "Could not decrypt $archive (wrong passphrase?)."
-    archive=$plain
-  fi
   tar -tzf "$archive" ./BACKUP-INFO >/dev/null 2>&1 || die "$archive is not a DocuWaves backup."
   say "This replaces the data of the running instance with:"
   tar -xzOf "$archive" ./BACKUP-INFO | sed 's/^/  /'
@@ -827,7 +506,6 @@ main() {
     logs) cmd_logs "$@" ;;
     update) cmd_update ;;
     backup) cmd_backup ;;
-    offsite) cmd_offsite "$@" ;;
     restore) cmd_restore "$@" ;;
     reset-password) cmd_reset_password "$@" ;;
     users) cmd_users ;;
