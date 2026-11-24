@@ -904,7 +904,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!res.ok) {
-    let detail = res.statusText;
+    // HTTP/2 has no status text: without a JSON body (a proxy's error
+    // page, a gateway timeout) the status code is all there is to show.
+    let detail = res.statusText || `HTTP ${res.status}`;
     try {
       const body = await res.json();
       detail = body.detail || detail;
@@ -925,7 +927,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 async function upload<T>(path: string, file: File): Promise<T> {
   const res = await fetch(path, { method: "POST", body: file });
   if (!res.ok) {
-    let detail = res.statusText;
+    // HTTP/2 has no status text: without a JSON body (a proxy's error
+    // page, a gateway timeout) the status code is all there is to show.
+    let detail = res.statusText || `HTTP ${res.status}`;
     try {
       const body = await res.json();
       detail = body.detail || detail;
