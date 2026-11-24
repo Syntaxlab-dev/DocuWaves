@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { Plus, PencilLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReviewMark } from "@/components/ReviewWorkflow";
-import { api, type Page } from "@/lib/api";
+import { toast } from "sonner";
+import { api, ApiError, type BulkAction, type Category, type Page } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { languageName } from "@/lib/lang";
@@ -53,10 +54,13 @@ export function groupPages(pages: Page[], defaultLanguage: string): PageGroup[] 
 export function PagesPanel({
   pages,
   readOnly,
+  categories = [],
   onEdit,
   onChanged,
 }: {
   pages: Page[];
+  /** The project's categories in this version: where "move" can go. */
+  categories?: Category[];
   /** A frozen version is being viewed: its pages open read-only, and there
    *  is nothing here to create or delete. */
   readOnly: boolean;
@@ -88,6 +92,49 @@ export function PagesPanel({
     };
   }, [categoryId]);
 
+  // Bulk actions: which pages (by the slug that groups their languages)
+  // are ticked. Cleared whenever the list itself changes.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+  const listKey = groups.map((g) => g.slug).join("|");
+  useEffect(() => setSelected(new Set()), [listKey, categoryId]);
+  const allSelected = groups.length > 0 && selected.size === groups.length;
+  function toggle(slug: string, on: boolean) {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (on) next.add(slug);
+      else next.delete(slug);
+      return next;
+    });
+  }
+
+  async function runBulk(action: BulkAction, categoryTarget?: number) {
+    // The default-language row stands for the page: publishing acts on it
+    // (a half-done translation stays a draft), deleting and moving take
+    // every language along anyway.
+    const ids = groups
+      .filter((g) => selected.has(g.slug))
+      .map((g) => (g.variants.get(site.default_language) ?? [...g.variants.values()][0]).id);
+    if (ids.length === 0) return;
+    if (action === "delete" && !confirm(t("bulk.deleteConfirm").replace("{n}", String(ids.length)))) return;
+    setBusy(true);
+    try {
+      const result = await api.adminBulkPages(action, ids, categoryTarget);
+      const message = t("bulk.done").replace("{n}", String(result.done.length));
+      if (result.skipped.length > 0) {
+        toast.warning(`${message} ${t("bulk.skipped").replace("{n}", String(result.skipped.length))}`);
+      } else {
+        toast.success(message);
+      }
+      setSelected(new Set());
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onDelete(id: number) {
     if (!confirm(t("admin.deleteConfirm"))) return;
     await api.adminDeletePage(id);
@@ -105,13 +152,70 @@ export function PagesPanel({
           </Button>
         )}
       </div>
+      {!readOnly && selected.size > 0 && (
+        <div
+          role="toolbar"
+          aria-label={t("bulk.toolbar")}
+          className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-[var(--accent)] bg-[var(--surface-2)] px-3 py-1.5 text-sm"
+        >
+          <span className="font-medium">{t("bulk.selected").replace("{n}", String(selected.size))}</span>
+          <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void runBulk("publish")}>
+            {t("bulk.publish")}
+          </Button>
+          <Button size="sm" variant="outline" className="h-7" disabled={busy} onClick={() => void runBulk("unpublish")}>
+            {t("bulk.unpublish")}
+          </Button>
+          {categories.length > 1 && (
+            <select
+              aria-label={t("bulk.moveTo")}
+              disabled={busy}
+              value=""
+              onChange={(e) => e.target.value && void runBulk("move", Number(e.target.value))}
+              className="h-7 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+            >
+              <option value="">{t("bulk.moveTo")}</option>
+              {categories
+                .filter((c) => c.id !== categoryId)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+            </select>
+          )}
+          <Button size="sm" variant="outline" className="h-7 text-red-600" disabled={busy} onClick={() => void runBulk("delete")}>
+            {t("bulk.delete")}
+          </Button>
+          <Button size="sm" variant="ghost" className="ml-auto h-7" onClick={() => setSelected(new Set())}>
+            {t("bulk.clear")}
+          </Button>
+        </div>
+      )}
       <div className="mt-2 flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
+        {!readOnly && groups.length > 1 && (
+          <label className="flex items-center gap-2 px-3 py-1.5 text-xs text-[var(--muted)]">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={(e) => setSelected(e.target.checked ? new Set(groups.map((g) => g.slug)) : new Set())}
+            />
+            {t("bulk.selectAll")}
+          </label>
+        )}
         {groups.map((group) => {
           // Opening the row itself lands on the default language, which is
           // the version that always exists.
           const primary = group.variants.get(site.default_language) ?? [...group.variants.values()][0];
           return (
             <div key={group.slug} className="flex items-center gap-2 px-3 py-2 text-sm">
+              {!readOnly && (
+                <input
+                  type="checkbox"
+                  aria-label={t("bulk.select").replace("{title}", group.title)}
+                  checked={selected.has(group.slug)}
+                  onChange={(e) => toggle(group.slug, e.target.checked)}
+                />
+              )}
               <button
                 type="button"
                 onClick={() => onEdit({ kind: "page", slug: group.slug, language: primary.language })}

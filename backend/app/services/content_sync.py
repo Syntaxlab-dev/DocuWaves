@@ -44,6 +44,7 @@ its versions) in one single pass.
 import json
 import logging
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from app.services import content_files, content_versions, db, site_languages
@@ -98,7 +99,31 @@ def _record_conflict(project: str, category: str, kept_in: str, slug: str, langu
 _sync_lock = threading.RLock()
 
 
+_deferred = threading.local()
+
+
+@contextmanager
+def deferred():
+    """Within the block, full_sync() only notes that a reindex is due; one
+    runs on the way out. For a bulk action, which would otherwise rebuild
+    the whole index once per page."""
+    if getattr(_deferred, "active", False):
+        yield
+        return
+    _deferred.active, _deferred.due = True, False
+    try:
+        yield
+    finally:
+        due = _deferred.due
+        _deferred.active, _deferred.due = False, False
+        if due:
+            full_sync()
+
+
 def full_sync() -> None:
+    if getattr(_deferred, "active", False):
+        _deferred.due = True
+        return
     with _sync_lock:
         _full_sync()
 

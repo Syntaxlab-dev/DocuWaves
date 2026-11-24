@@ -143,6 +143,22 @@ test("a draft can be scheduled and unscheduled", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("pages are published together from the list", async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("button", { name: "Handbook" }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  await page.getByRole("checkbox", { name: "Select “Setting up the widget”" }).check();
+  const toolbar = page.getByRole("toolbar", { name: "Bulk actions" });
+  await expect(toolbar.getByText("1 selected")).toBeVisible();
+  await toolbar.getByRole("button", { name: "Publish", exact: true }).click();
+  await expect(toolbar).toHaveCount(0);
+  await expect
+    .poll(async () => (await request.get("/api/public/projects/handbook/pages/setting-up-the-widget")).status())
+    .toBe(200);
+  expect(errors).toEqual([]);
+});
+
 test("every admin panel opens without an error", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);

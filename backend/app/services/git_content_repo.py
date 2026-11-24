@@ -54,6 +54,7 @@ import re
 import shutil
 import stat
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 import git
@@ -518,6 +519,30 @@ def _actor(author_name: str) -> git.Actor:
     return git.Actor(name, f"{local}@local")
 
 
+# One commit for several changes (bulk actions, see routers/admin_content.py):
+# while a batch is open on this thread, commit_and_push() collects paths
+# instead of committing, and the batch commits them all at the end.
+_batch = threading.local()
+
+
+@contextmanager
+def batch(message: str, author_name: str):
+    """Everything committed inside the block becomes ONE commit. Committed
+    on the way out even when the block raised: the files those earlier
+    changes wrote are already on disk, and leaving them uncommitted would
+    leave the working copy disagreeing with the history."""
+    if getattr(_batch, "paths", None) is not None:
+        yield  # already inside a batch: the outer one commits
+        return
+    _batch.paths = []
+    try:
+        yield
+    finally:
+        paths, _batch.paths = _batch.paths, None
+        if paths:
+            commit_and_push(list(dict.fromkeys(paths)), message, author_name)
+
+
 def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
     """Stages exactly `paths` (relative to the repo root). A path that still
     exists on disk is staged normally via `index.add`; a path that's gone
@@ -531,6 +556,10 @@ def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
     turned out to be unrelated (see _reconcile_remote), the write is
     COMPLETE at the commit: it is in the repository, in the history, in the
     diff, and restorable. Nothing about it is pending."""
+    collecting = getattr(_batch, "paths", None)
+    if collecting is not None:
+        collecting.extend(paths)
+        return
     repo = ensure_clone()
     with _lock:
         repo.index.add([p for p in paths if (Path(repo.working_tree_dir) / p).exists()])

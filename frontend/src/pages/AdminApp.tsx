@@ -587,6 +587,7 @@ export function AdminApp() {
                       <PagesPanel
                         pages={pages}
                         readOnly={contentReadOnly}
+                        categories={categories}
                         onEdit={setEditing}
                         onChanged={() => loadPages(selectedCategory.id)}
                       />

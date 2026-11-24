@@ -400,6 +400,9 @@ export interface AuthStatus {
   project_roles?: Record<string, ProjectRole>;
 }
 
+/** What a bulk action on pages does (backend routers/admin_content.py). */
+export type BulkAction = "publish" | "unpublish" | "move" | "delete";
+
 /** A draft's scheduled publication (backend services/scheduled_publish.py). */
 export interface PageSchedule {
   publish_at: string;
@@ -1114,6 +1117,11 @@ export const api = {
       `/api/admin/import?${new URLSearchParams({ ...target, filename: file.name }).toString()}`,
       file,
     ),
+  adminBulkPages: (action: BulkAction, pageIds: number[], categoryId?: number) =>
+    request<{ done: number[]; skipped: { id: number; reason: string }[] }>("/api/admin/pages/bulk", {
+      method: "POST",
+      body: JSON.stringify({ action, page_ids: pageIds, category_id: categoryId ?? null }),
+    }),
   adminPageSchedule: (pageId: number) =>
     request<{ schedule: PageSchedule | null }>(`/api/admin/pages/${pageId}/schedule`),
   adminSetPageSchedule: (pageId: number, publishAt: string) =>

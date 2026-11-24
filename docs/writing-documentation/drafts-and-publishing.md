@@ -75,6 +75,26 @@ The schedule is kept in the instance's database, not in the page file, so
 it is not part of the content repository's history and not in a pull
 request. The commit that publishes the page is.
 
+## Several pages at once
+
+Tick pages in a category's list (or **Select all**) and a bar appears above
+it: **Publish**, **Unpublish**, **Move to …** another category of the same
+project, and **Delete**. Whatever the bar does is **one commit** for all of
+the pages, `Publish 12 pages`, so it is also undone in one step in the
+history.
+
+Each page is still checked as if it were done on its own. A page that
+already is what you asked for, one in a project that
+[requires approval](/p/docuwaves/pages/approval-before-publishing), or one
+from another project when moving, is skipped and counted, and the rest go
+ahead. A selection that includes a project your account may only read is
+refused as a whole, before anything changes.
+
+On a multilingual instance, publishing and unpublishing act on the default
+language's version of each page: a translation that is not finished stays a
+draft. Moving and deleting take every language with them, as they do for a
+single page.
+
 ## Practical order of work
 
 1. Create the page. It is a draft.

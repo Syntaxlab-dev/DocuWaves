@@ -850,6 +850,94 @@ def admin_publish_page(page_id: int, published: bool, request: Request):
     return {"ok": True}
 
 
+# ---- Bulk actions ----
+
+_BULK_ACTIONS = ("publish", "unpublish", "move", "delete")
+_BULK_MAX = 200
+
+
+class BulkIn(BaseModel):
+    action: str
+    page_ids: list[int] = Field(min_length=1, max_length=_BULK_MAX)
+    # For "move": the category every page goes to.
+    category_id: int | None = None
+
+
+@router.post(
+    "/pages/bulk",
+    summary="Publish, unpublish, move or delete several pages at once",
+    description="One commit for all of them, and one reindex. Each page is checked as it would be on its own "
+    "(permissions per project, frozen versions, approval); a page that cannot be done is reported under "
+    "`skipped` with the reason and the others go ahead. `move` needs `category_id` in the same project and "
+    "version as the pages.",
+)
+def admin_bulk_pages(body: BulkIn, request: Request):
+    _require_content_repo()
+    if body.action not in _BULK_ACTIONS:
+        raise HTTPException(status_code=400, detail=f"action must be one of: {', '.join(_BULK_ACTIONS)}.")
+    target = None
+    if body.action == "move":
+        target = categories_store.get_category(body.category_id) if body.category_id else None
+        if target is None:
+            raise HTTPException(status_code=404, detail="Category not found.")
+        project_access.require_write(request, project_id=target["project_id"])
+    pages = []
+    for page_id in dict.fromkeys(body.page_ids):
+        page = pages_store.get_page(page_id)
+        if page is None:
+            raise HTTPException(status_code=404, detail=f"Page {page_id} not found.")
+        # All or nothing for permissions: a selection that reaches into a
+        # project this account may not write is refused before anything runs.
+        project_access.require_write(request, project_id=page["project_id"])
+        pages.append(page)
+
+    author = _author(request)
+    done: list[int] = []
+    skipped: list[dict] = []
+    verb = {"publish": "Publish", "unpublish": "Unpublish", "move": "Move", "delete": "Delete"}[body.action]
+    message = f"{verb} {len(pages)} page{'s' if len(pages) != 1 else ''}"
+    if target is not None:
+        message += f" to {target['name']}"
+    try:
+        with git_content_repo.batch(message, author), content_sync.deferred():
+            for page in pages:
+                try:
+                    if body.action in ("publish", "unpublish"):
+                        if bool(page["published"]) == (body.action == "publish"):
+                            skipped.append({"id": page["id"], "reason": "unchanged"})
+                            continue
+                        pages_store.set_published(page["id"], body.action == "publish", author)
+                    elif body.action == "delete":
+                        pages_store.delete_page(page["id"], author)
+                    else:
+                        if page["category_id"] == target["id"]:
+                            skipped.append({"id": page["id"], "reason": "unchanged"})
+                            continue
+                        if page["project_id"] != target["project_id"] or page["version"] != target["version"]:
+                            skipped.append({"id": page["id"], "reason": "other_project"})
+                            continue
+                        # A move changes no text. Saved with the text the editor would show
+                        # -- a waiting proposal's, when there is one -- so that moving a page
+                        # never replaces somebody's proposed changes with the live text.
+                        project = projects_store.get_project(page["project_id"])
+                        category = categories_store.get_category(page["category_id"])
+                        pending = pages_store.pending_version(project, category, page) if project and category else None
+                        text = pending or page
+                        pages_store.update_page(
+                            page["id"], text["title"], page["slug"], text["markdown_content"], target["id"], author
+                        )
+                except pages_store.ReviewRequiredError:
+                    skipped.append({"id": page["id"], "reason": "review_required"})
+                    continue
+                except content_versions.FrozenVersionError:
+                    skipped.append({"id": page["id"], "reason": "frozen"})
+                    continue
+                done.append(page["id"])
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"done": done, "skipped": skipped}
+
+
 # ---- Scheduled publishing (services/scheduled_publish.py) ----
 
 
