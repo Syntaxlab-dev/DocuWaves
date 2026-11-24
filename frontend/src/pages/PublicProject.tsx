@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+import { CloudDownload } from "lucide-react";
+import { offlineAvailable, saveForOffline, savedAt } from "@/lib/offline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CoverImage } from "@/components/CoverImage";
 import { DocsShell } from "@/components/DocsShell";
@@ -23,6 +26,19 @@ export function PublicProject() {
   // the tree standing next to them.
   const { nav, status } = useProjectNav(projectSlug, lang, version);
   const glossary = useGlossary(projectSlug, lang, version);
+  const [offline, setOffline] = useState<{ done: number; total: number } | null>(null);
+  const [saved, setSaved] = useState(() => savedAt(projectSlug ?? "", lang, version ?? ""));
+
+  async function keepOffline() {
+    if (!projectSlug) return;
+    setOffline({ done: 0, total: 0 });
+    try {
+      await saveForOffline(projectSlug, lang, version ?? "", (done, total) => setOffline({ done, total }));
+      setSaved(savedAt(projectSlug, lang, version ?? ""));
+    } finally {
+      setOffline(null);
+    }
+  }
 
   // The project's landing page exists in every version, so the switcher can
   // always stay put here -- `tail` is empty and `available` unused.
@@ -86,6 +102,28 @@ export function PublicProject() {
       >
         {t("book.markdown")} ↓
       </a>
+
+      {/* Only with a service worker in control (public/sw.js): without one
+          there is nowhere to keep the pages. */}
+      {offlineAvailable() && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-[var(--muted)]">
+          <button
+            type="button"
+            onClick={() => void keepOffline()}
+            disabled={offline !== null}
+            title={t("offline.saveHint")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 py-1 hover:border-[var(--accent)] hover:text-[var(--accent)] disabled:opacity-60"
+          >
+            <CloudDownload className="h-3.5 w-3.5" aria-hidden="true" />
+            {offline
+              ? t("offline.saving").replace("{done}", String(offline.done)).replace("{total}", String(offline.total || "…"))
+              : t(saved ? "offline.update" : "offline.save")}
+          </button>
+          {saved && !offline && (
+            <span>{t("offline.savedOn").replace("{date}", new Date(saved).toLocaleDateString(lang || undefined))}</span>
+          )}
+        </div>
+      )}
 
       <h2 className="mt-8 text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
         {t("project.categories")}

@@ -14,6 +14,7 @@ import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { useOnline } from "@/lib/offline";
 
 export function PublicLayout() {
   const { t, lang: uiLang, setLang: setUiLang } = useI18n();
@@ -130,6 +131,7 @@ export function PublicLayout() {
           home and search views (a sidebar and a contents column live beside
           the text there), so each view owns its width. */}
       <main id="main" className="flex-1">
+        <OfflineNotice />
         <Outlet />
       </main>
       {/* Nothing configured, no footer at all -- an empty bar would be a
@@ -264,5 +266,18 @@ function AccountControl() {
         <span className="hidden md:inline">{t("auth.signIn")}</span>
       </Link>
     </Button>
+  );
+}
+
+/** Said once, at the top, while the browser has no connection: pages it
+ *  kept (public/sw.js) still open; anything else will not. */
+function OfflineNotice() {
+  const online = useOnline();
+  const { t } = useI18n();
+  if (online) return null;
+  return (
+    <p role="status" className="border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-center text-sm text-[var(--muted)]">
+      {t("offline.banner")}
+    </p>
   );
 }

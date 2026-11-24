@@ -4,8 +4,10 @@ import "./index.css";
 import "highlight.js/styles/github-dark.css";
 import App from "./App.tsx";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
+import { registerServiceWorker } from "@/lib/offlineCache";
 
 applyTheme(getPreferredTheme());
+registerServiceWorker();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

@@ -129,6 +129,26 @@ test("a glossary term explains itself on the page", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test("a saved project can be read offline", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const errors = watchErrors(page);
+  await page.goto("/p/handbook");
+  // The service worker takes over this page only once it is active.
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+  await page.getByRole("button", { name: "Save for offline reading" }).click();
+  await expect(page.getByRole("button", { name: "Update the offline copy" })).toBeVisible({ timeout: 30_000 });
+  expect(errors).toEqual([]);
+
+  await context.setOffline(true);
+  await page.goto("/p/handbook/pages/installing-the-widget");
+  await expect(page.getByText("You are offline.")).toBeVisible();
+  await expect(page.locator(".markdown-body")).toContainText("plug");
+  await context.close();
+});
+
 async function openPageInEditor(page: Page, title: string) {
   await signIn(page);
   await page.getByRole("button", { name: "Handbook" }).click();

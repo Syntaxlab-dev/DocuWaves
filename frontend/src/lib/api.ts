@@ -1,3 +1,4 @@
+import { clearReadingCache } from "@/lib/offlineCache";
 /** A per-language mapping of a human-readable field, as the content repo's
  *  YAML may spell it (`name: {de: ..., en: ...}`). Empty for the plain-string
  *  form, which is every field on a single-language instance. The resolved
@@ -976,7 +977,8 @@ export const api = {
     }),
   login: (username: string, password: string) =>
     request<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
-  logout: () => request("/api/auth/logout", { method: "POST" }),
+  // Empties the offline reading cache too: it may hold private projects.
+  logout: () => request("/api/auth/logout", { method: "POST" }).finally(() => clearReadingCache()),
   notifications: () => request<NotificationSettings>("/api/auth/notifications"),
   setNotifications: (email: string, notify: NotificationKind[]) =>
     request<Omit<NotificationSettings, "kinds">>("/api/auth/notifications", {
