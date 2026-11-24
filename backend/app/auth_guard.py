@@ -91,7 +91,9 @@ _READ_METHODS = ("GET", "HEAD")
 # submitted for approval. Reviewing is reading -- often the people best
 # placed to check a text are the ones who should not be editing it -- and
 # the decision changes no word of it (services/page_review.py).
-_REVIEW_DECISION_RE = re.compile(r"^/api/admin/pages/\d+/review/(approve|request-changes)$")
+# Comments on passages are the same kind of act: pointing at a sentence.
+_REVIEW_DECISION_RE = re.compile(r"^/api/admin/pages/\d+/review/(approve|request-changes|comments)$")
+_REVIEW_COMMENT_RE = re.compile(r"^/api/admin/pages/\d+/review/comments/[0-9a-f]{1,16}(/resolve|/reopen)?$")
 
 # Prefixes only an admin may touch, by ANY method -- a viewer's GET included.
 # Each one is authority over the instance rather than over its documentation:
@@ -267,7 +269,9 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
             )
         if request.method in _READ_METHODS:
             return None
-        reviewing = request.method == "POST" and _REVIEW_DECISION_RE.match(path) is not None
+        reviewing = (request.method == "POST" and _REVIEW_DECISION_RE.match(path) is not None) or (
+            request.method in ("POST", "DELETE") and _REVIEW_COMMENT_RE.match(path) is not None
+        )
         if reviewing:
             return None
 

@@ -222,6 +222,22 @@ export interface ReviewState {
   decided_by: string;
   /** Who last changed the text -- the one person who may not approve it. */
   changed_by: string;
+  /** Notes on passages of the text under review, oldest first. */
+  comments?: ReviewComment[];
+}
+
+/** A note on one passage (backend page_review.add_comment). */
+export interface ReviewComment {
+  id: string;
+  /** The passage, as it was selected. */
+  quote: string;
+  text: string;
+  by: string;
+  at: string;
+  /** Who marked it done; "" while it is open. */
+  resolved_by: string;
+  /** The passage is no longer in the text -- rewritten since. */
+  outdated: boolean;
 }
 
 /** One entry of the approval queue. */
@@ -1171,6 +1187,20 @@ export const api = {
     request<EditorPage>(`/api/admin/pages/${id}/review/request-changes`, {
       method: "POST",
       body: JSON.stringify({ comment }),
+    }),
+  adminReviewComment: (id: number, quote: string, text: string) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/comments`, {
+      method: "POST",
+      body: JSON.stringify({ quote, text }),
+    }),
+  adminReviewResolveComment: (id: number, commentId: string, resolved: boolean) =>
+    request<EditorPage>(
+      `/api/admin/pages/${id}/review/comments/${encodeURIComponent(commentId)}/${resolved ? "resolve" : "reopen"}`,
+      { method: "POST" },
+    ),
+  adminReviewDeleteComment: (id: number, commentId: string) =>
+    request<EditorPage>(`/api/admin/pages/${id}/review/comments/${encodeURIComponent(commentId)}`, {
+      method: "DELETE",
     }),
   adminReviewWithdraw: (id: number) =>
     request<EditorPage>(`/api/admin/pages/${id}/review/withdraw`, { method: "POST" }),

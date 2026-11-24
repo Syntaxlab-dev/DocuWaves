@@ -1142,6 +1142,23 @@ export function PageEditor({
             setReloadKey((k) => k + 1);
             onSaved();
           }}
+          onLocate={(quote) => {
+            setTab("edit");
+            // The Markdown editor: select the passage and scroll to it.
+            const area = editorRef.current;
+            if (area) {
+              const at = area.value.indexOf(quote);
+              if (at >= 0) {
+                area.focus();
+                area.setSelectionRange(at, at + quote.length);
+                const line = area.value.slice(0, at).split("\n").length;
+                area.scrollTop = Math.max(0, (line - 3) * (parseFloat(getComputedStyle(area).lineHeight) || 20));
+                return;
+              }
+            }
+            // The visual editor: let the browser find it on the page.
+            (window as Window & { find?: (text: string) => boolean }).find?.(quote);
+          }}
         />
       )}
 

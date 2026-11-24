@@ -9,8 +9,25 @@
  *  else has to, not find a button that answers with an error. */
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { CheckCircle2, ClipboardCheck, GitPullRequestArrow, MessageSquareWarning, X } from "lucide-react";
-import { api, ApiError, type Page, type ReviewDiff, type ReviewQueueEntry, type ReviewState } from "@/lib/api";
+import {
+  CheckCircle2,
+  ClipboardCheck,
+  GitPullRequestArrow,
+  MessageSquarePlus,
+  MessageSquareWarning,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  api,
+  ApiError,
+  type Page,
+  type ReviewComment,
+  type ReviewDiff,
+  type ReviewQueueEntry,
+  type ReviewState,
+} from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { formatIsoDate } from "@/lib/dates";
@@ -30,6 +47,9 @@ function reviewError(err: unknown, t: Translate): string {
     already_submitted: "review.errAlready",
     not_submitted: "review.errNotSubmitted",
     review_required: "review.errRequired",
+    no_draft: "review.errNoDraft",
+    not_yours: "review.errNotYours",
+    empty: "review.errEmpty",
   };
   return known[err.message] ? t(known[err.message]) : err.message;
 }
@@ -60,6 +80,7 @@ export function ReviewPanel({
   dirty,
   canWrite,
   onChanged,
+  onLocate,
 }: {
   pageId: number;
   review: ReviewState;
@@ -67,6 +88,8 @@ export function ReviewPanel({
   dirty: boolean;
   canWrite: boolean;
   onChanged: () => void;
+  /** Shows a comment's passage in the editor. */
+  onLocate?: (quote: string) => void;
 }) {
   const { t, lang } = useI18n();
   const { status: auth } = useAuth();
@@ -88,7 +111,8 @@ export function ReviewPanel({
   const submitted = review.status === "pending";
   const changesRequested = review.status === "changes_requested";
   const somethingToReview = review.pending || !published;
-  if (!review.required && !review.status && !review.pending) return null;
+  const comments = review.comments ?? [];
+  if (!review.required && !review.status && !review.pending && comments.length === 0) return null;
 
   async function run(action: () => Promise<unknown>, success: Parameters<Translate>[0]) {
     setBusy(true);
@@ -241,6 +265,17 @@ export function ReviewPanel({
             </div>
           )}
 
+          {(somethingToReview || comments.length > 0) && (
+            <ReviewComments
+              pageId={pageId}
+              comments={comments}
+              canAdd={somethingToReview}
+              disabled={disabled}
+              onChanged={onChanged}
+              onLocate={onLocate}
+            />
+          )}
+
           {showDiff && diff && (
             <div className="mt-2">
               {diff.live === null && <p className="mb-1 text-xs opacity-80">{t("review.newPage")}</p>}
@@ -254,6 +289,216 @@ export function ReviewPanel({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/** What is selected in the editor right now: the Markdown textarea's
+ *  selection when it has focus (a textarea's selection is not part of the
+ *  document's), otherwise the document's -- the visual editor and the
+ *  preview. Read on mousedown of the button, which keeps the focus where it
+ *  was. */
+function currentSelection(): string {
+  const active = document.activeElement;
+  if (active instanceof HTMLTextAreaElement) {
+    return active.value.slice(active.selectionStart, active.selectionEnd).trim();
+  }
+  return (window.getSelection()?.toString() ?? "").trim();
+}
+
+/** Notes on passages: select words in the editor, press "Comment on
+ *  selection", write what should change. The list shows each passage with
+ *  its note; open ones first, a rewritten passage marked as such. Anyone
+ *  who may review can add one and mark one done; only its author deletes
+ *  it. An approval clears them all (the history keeps them). */
+function ReviewComments({
+  pageId,
+  comments,
+  canAdd,
+  disabled,
+  onChanged,
+  onLocate,
+}: {
+  pageId: number;
+  comments: ReviewComment[];
+  canAdd: boolean;
+  disabled: boolean;
+  onChanged: () => void;
+  onLocate?: (quote: string) => void;
+}) {
+  const { t, lang } = useI18n();
+  const { status: auth } = useAuth();
+  const me = auth?.username ?? "";
+  const [quote, setQuote] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [showResolved, setShowResolved] = useState(false);
+
+  useEffect(() => {
+    setQuote(null);
+    setText("");
+  }, [pageId]);
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    try {
+      await action();
+      onChanged();
+      return true;
+    } catch (err) {
+      toast.error(reviewError(err, t));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const open = comments.filter((c) => !c.resolved_by);
+  const resolved = comments.filter((c) => c.resolved_by);
+  const shown = showResolved ? [...open, ...resolved] : open;
+
+  return (
+    <div className="mt-3 border-t border-current/15 pt-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-medium">
+          {t("review.comments").replace("{open}", String(open.length))}
+        </p>
+        {resolved.length > 0 && (
+          <button type="button" className="text-xs underline opacity-80" onClick={() => setShowResolved((v) => !v)}>
+            {(showResolved ? t("review.hideResolved") : t("review.showResolved")).replace(
+              "{count}",
+              String(resolved.length),
+            )}
+          </button>
+        )}
+        {canAdd && quote === null && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="ml-auto"
+            disabled={disabled || busy}
+            // mousedown, not click: by the time of the click the editor has
+            // lost focus, and a textarea forgets nothing but the document
+            // forgets which textarea it was.
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const selected = currentSelection();
+              if (!selected) {
+                toast.message(t("review.selectFirst"));
+                return;
+              }
+              setQuote(selected.slice(0, 500));
+            }}
+          >
+            <MessageSquarePlus className="mr-1 h-4 w-4" />
+            {t("review.commentSelection")}
+          </Button>
+        )}
+      </div>
+
+      {quote !== null && (
+        <div className="mt-2 flex flex-col gap-2">
+          <blockquote className="border-l-2 border-current/40 pl-2 text-xs italic opacity-90">{quote}</blockquote>
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={2}
+            maxLength={2000}
+            autoFocus
+            aria-label={t("review.commentLabel")}
+            placeholder={t("review.commentLabel")}
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              disabled={busy || disabled || !text.trim()}
+              onClick={() =>
+                void run(() => api.adminReviewComment(pageId, quote, text)).then((ok) => {
+                  if (ok) {
+                    setQuote(null);
+                    setText("");
+                  }
+                })
+              }
+            >
+              {t("review.addComment")}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setQuote(null)}>
+              {t("admin.cancel")}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {shown.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-2">
+          {shown.map((c) => (
+            <li
+              key={c.id}
+              className={`rounded-md border border-current/15 bg-[var(--surface)] px-2 py-1.5 text-[var(--ink)]${
+                c.resolved_by ? " opacity-60" : ""
+              }`}
+            >
+              <button
+                type="button"
+                className="block w-full text-left"
+                disabled={c.outdated || !onLocate}
+                title={c.outdated ? t("review.outdatedHint") : t("review.locate")}
+                onClick={() => onLocate?.(c.quote)}
+              >
+                <blockquote
+                  className={`border-l-2 pl-2 text-xs italic ${
+                    c.outdated ? "border-[var(--border)] line-through opacity-70" : "border-[var(--accent)]"
+                  }`}
+                >
+                  {c.quote}
+                </blockquote>
+              </button>
+              <p className="mt-1 whitespace-pre-wrap text-sm">{c.text}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-[var(--muted)]">
+                <span>
+                  {c.by} · {day(c.at, lang)}
+                </span>
+                {c.outdated && <span>{t("review.outdated")}</span>}
+                {c.resolved_by && <span>{t("review.resolvedBy").replace("{name}", c.resolved_by)}</span>}
+                <span className="ml-auto flex gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    disabled={busy || disabled}
+                    onClick={() => void run(() => api.adminReviewResolveComment(pageId, c.id, !c.resolved_by))}
+                  >
+                    {c.resolved_by ? (
+                      <>
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        {t("review.reopen")}
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="mr-1 h-3 w-3" />
+                        {t("review.resolve")}
+                      </>
+                    )}
+                  </Button>
+                  {c.by === me && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-6 px-2"
+                      aria-label={t("review.deleteComment")}
+                      disabled={busy || disabled}
+                      onClick={() => void run(() => api.adminReviewDeleteComment(pageId, c.id))}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  )}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

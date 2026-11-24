@@ -1137,7 +1137,13 @@ class ReviewDecisionIn(BaseModel):
     comment: str = ""
 
 
-_REVIEW_ERROR_STATUS = {"not_found": 404}
+class ReviewCommentIn(BaseModel):
+    # The passage it is about, as the reviewer selected it, and the note.
+    quote: str
+    text: str
+
+
+_REVIEW_ERROR_STATUS = {"not_found": 404, "no_comment": 404, "empty": 400, "not_yours": 403}
 
 
 def _review_action(action, *args):
@@ -1220,6 +1226,36 @@ def admin_review_request_changes(page_id: int, body: ReviewDecisionIn, request: 
 @router.post("/pages/{page_id}/review/withdraw", summary="Take a submission back; the text stays")
 def admin_review_withdraw(page_id: int, request: Request):
     return _review_action(page_review.withdraw, page_id, _author(request))
+
+
+@router.post(
+    "/pages/{page_id}/review/comments",
+    summary="Comment on a passage of the text under review",
+    description="`quote` is the passage (at most 500 characters), `text` the note. Only while there is a proposal "
+    "or a draft (409 `no_draft` otherwise). Open to read-only accounts, like approving. The answer is the page's "
+    "editor view; `review.comments` lists every comment, `outdated` when its passage is no longer in the text.",
+)
+def admin_review_add_comment(page_id: int, body: ReviewCommentIn, request: Request):
+    return _review_action(page_review.add_comment, page_id, _author(request), body.quote, body.text)
+
+
+@router.post("/pages/{page_id}/review/comments/{comment_id}/resolve", summary="Mark a comment done")
+def admin_review_resolve_comment(page_id: int, comment_id: str, request: Request):
+    return _review_action(page_review.resolve_comment, page_id, _author(request), comment_id, True)
+
+
+@router.post("/pages/{page_id}/review/comments/{comment_id}/reopen", summary="Open a resolved comment again")
+def admin_review_reopen_comment(page_id: int, comment_id: str, request: Request):
+    return _review_action(page_review.resolve_comment, page_id, _author(request), comment_id, False)
+
+
+@router.delete(
+    "/pages/{page_id}/review/comments/{comment_id}",
+    summary="Delete your own comment",
+    description="403 `not_yours` for somebody else's: resolve it instead.",
+)
+def admin_review_delete_comment(page_id: int, comment_id: str, request: Request):
+    return _review_action(page_review.delete_comment, page_id, _author(request), comment_id)
 
 
 @router.post(

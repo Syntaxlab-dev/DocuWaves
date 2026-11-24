@@ -398,3 +398,85 @@ class TestMcp:
             self.TOKEN,
         )
         assert result["page"]["published"] is False and result["review"] == "pending"
+
+
+def comment(c, pid, quote, text):
+    return post(c, f"/api/admin/pages/{pid}/review/comments", {"quote": quote, "text": text})
+
+
+class TestCommentsOnPassages:
+    def test_a_reviewer_comments_and_it_lands_in_the_proposal(self, world):
+        anna, clara = client(world, ANNA), client(world, CLARA)
+        pid = page_id("handbuch", "start")
+        save(anna, pid, "Start", "Erster Satz. Zweiter Satz mit Tippfeler.")
+        post(anna, f"/api/admin/pages/{pid}/review/submit")
+        # A read-only account may point at a sentence, like it may approve.
+        r = comment(clara, pid, "Tippfeler", "Tippfehler")
+        assert r.status_code == 200, r.text
+        comments = r.json()["review"]["comments"]
+        assert [(c["quote"], c["text"], c["by"], c["outdated"]) for c in comments] == [
+            ("Tippfeler", "Tippfehler", "clara", False)
+        ]
+        # In the repository, in the proposal -- the live file is untouched.
+        proposal = frontmatter.load(world["content"] / "handbuch/guide/_pending/start.md")
+        assert proposal.metadata["review_comments"][0]["text"] == "Tippfehler"
+        assert "review_comments" not in (world["content"] / "handbuch/guide/start.md").read_text()
+        # The submission stands: a comment is not an edit.
+        assert anna.get(f"/api/admin/pages/{pid}").json()["review"]["status"] == "pending"
+
+    def test_an_edit_keeps_the_comments_and_marks_a_rewritten_passage(self, world):
+        anna, ben = client(world, ANNA), client(world, BEN)
+        pid = page_id("handbuch", "start")
+        save(anna, pid, "Start", "Erster Satz. Zweiter Satz mit Tippfeler.")
+        comment(ben, pid, "Tippfeler", "Tippfehler")
+        comment(ben, pid, "Erster Satz.", "Kürzer?")
+        answer = save(anna, pid, "Start", "Erster Satz. Zweiter Satz ohne Fehler.")
+        outdated = {c["quote"]: c["outdated"] for c in answer["review"]["comments"]}
+        assert outdated == {"Tippfeler": True, "Erster Satz.": False}
+
+    def test_resolve_reopen_and_only_the_author_deletes(self, world):
+        anna, ben = client(world, ANNA), client(world, BEN)
+        pid = page_id("handbuch", "start")
+        save(anna, pid, "Start", "Ein Satz.")
+        cid = comment(ben, pid, "Ein Satz.", "Mehr?").json()["review"]["comments"][0]["id"]
+        r = post(anna, f"/api/admin/pages/{pid}/review/comments/{cid}/resolve")
+        assert r.json()["review"]["comments"][0]["resolved_by"] == "anna"
+        r = post(anna, f"/api/admin/pages/{pid}/review/comments/{cid}/reopen")
+        assert r.json()["review"]["comments"][0]["resolved_by"] == ""
+        assert anna.delete(f"/api/admin/pages/{pid}/review/comments/{cid}", headers=ORIGIN).status_code == 403
+        r = ben.delete(f"/api/admin/pages/{pid}/review/comments/{cid}", headers=ORIGIN)
+        assert r.status_code == 200 and r.json()["review"]["comments"] == []
+        assert post(anna, f"/api/admin/pages/{pid}/review/comments/{cid}/resolve").status_code == 404
+
+    def test_the_approval_clears_them_and_the_history_keeps_them(self, world):
+        anna, ben = client(world, ANNA), client(world, BEN)
+        pid = page_id("handbuch", "start")
+        save(anna, pid, "Start", "Fertig.")
+        comment(ben, pid, "Fertig.", "Passt.")
+        post(anna, f"/api/admin/pages/{pid}/review/submit")
+        assert post(ben, f"/api/admin/pages/{pid}/review/approve").status_code == 200
+        assert "review_comments" not in (world["content"] / "handbuch/guide/start.md").read_text()
+        assert any(c.message.startswith("Comment: Start") for c in world["repo"].iter_commits())
+
+    def test_a_draft_can_be_commented_a_live_page_without_changes_cannot(self, world):
+        ben = client(world, BEN)
+        assert comment(ben, page_id("handbuch", "entwurf"), "Noch nicht", "Wann?").status_code == 200
+        r = comment(ben, page_id("handbuch", "start"), "Der freigegebene", "Hm")
+        assert r.status_code == 409 and r.json()["detail"] == "no_draft"
+        assert comment(ben, page_id("handbuch", "entwurf"), "  ", "Wann?").status_code == 400
+
+    def test_a_viewer_cannot_reach_anything_else_through_the_comment_paths(self, world):
+        clara = client(world, CLARA)
+        pid = page_id("handbuch", "entwurf")
+        assert clara.put(f"/api/admin/pages/{pid}/review/comments", json={}, headers=ORIGIN).status_code in (403, 405)
+        assert post(clara, f"/api/admin/pages/{pid}/review/comments/x/../../submit").status_code in (403, 404, 405)
+
+    def test_a_broken_hand_edited_entry_is_ignored(self, world):
+        write(
+            world["content"], "handbuch/guide/entwurf.md",
+            "---\ntitle: Entwurf\npublished: false\nreview_comments:\n- just a string\n- {id: '', text: x}\n"
+            "- {id: ab12, quote: Noch, text: Gut}\n---\n\nNoch nicht live.\n",
+        )
+        content_sync.full_sync()
+        view = client(world, BEN).get(f"/api/admin/pages/{page_id('handbuch', 'entwurf')}").json()
+        assert [c["id"] for c in view["review"]["comments"]] == ["ab12"]
