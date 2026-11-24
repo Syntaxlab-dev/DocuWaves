@@ -231,6 +231,8 @@ WRITE_ROUTES: list[tuple[str, re.Pattern, str]] = [
         ("DELETE", f"/projects/{_SLUG}/assets/[^/]+", "project_slug"),
         ("POST", "/import/preview", "query"),
         ("POST", "/import", "query"),
+        ("POST", "/import/git/preview", "query"),
+        ("POST", "/import/git", "query"),
         ("DELETE", f"/feedback/{_SLUG}/[^/]+", "project_slug"),
         ("POST", "/search-gaps/draft", "body"),
         ("DELETE", "/search-gaps", "instance"),

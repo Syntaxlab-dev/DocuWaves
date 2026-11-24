@@ -429,6 +429,10 @@ export type ReplaceResult = {
   replacements: number;
 };
 
+/** Import from a Git repository (backend services/import_git.py). The
+ *  token opens a private repository for this one clone and is not stored. */
+export type GitImportSource = { url: string; branch: string; path: string; token: string };
+
 export type BulkAction = "publish" | "unpublish" | "move" | "delete";
 
 /** A draft's scheduled publication (backend services/scheduled_publish.py). */
@@ -1145,6 +1149,16 @@ export const api = {
       `/api/admin/import?${new URLSearchParams({ ...target, filename: file.name }).toString()}`,
       file,
     ),
+  adminImportGitPreview: (source: GitImportSource, target: ImportTarget) =>
+    request<ImportSummary>(`/api/admin/import/git/preview?${new URLSearchParams(target).toString()}`, {
+      method: "POST",
+      body: JSON.stringify(source),
+    }),
+  adminImportGit: (source: GitImportSource, target: ImportTarget) =>
+    request<ImportSummary>(`/api/admin/import/git?${new URLSearchParams(target).toString()}`, {
+      method: "POST",
+      body: JSON.stringify(source),
+    }),
   adminBulkPages: (action: BulkAction, pageIds: number[], categoryId?: number) =>
     request<{ done: number[]; skipped: { id: number; reason: string }[] }>("/api/admin/pages/bulk", {
       method: "POST",

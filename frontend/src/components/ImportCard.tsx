@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { FileArchive, X } from "lucide-react";
-import { api, ApiError, type ImportSummary, type ImportTarget, type Project } from "@/lib/api";
+import { api, ApiError, type GitImportSource, type ImportSummary, type ImportTarget, type Project } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,8 @@ export function ImportCard({
 }) {
   const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
+  const [source, setSource] = useState<"zip" | "git">("zip");
+  const [git, setGit] = useState<GitImportSource>({ url: "", branch: "", path: "", token: "" });
   const [mode, setMode] = useState<"new" | "existing">("new");
   const [name, setName] = useState("");
   const [project, setProject] = useState(projects[0]?.slug ?? "");
@@ -40,7 +42,20 @@ export function ImportCard({
   const [busy, setBusy] = useState(false);
 
   const target: ImportTarget = mode === "new" ? { name: name.trim() } : { project };
-  const ready = Boolean(file) && (mode === "new" ? Boolean(name.trim()) : Boolean(project));
+  const haveSource = source === "zip" ? Boolean(file) : /^https:\/\/\S+/.test(git.url.trim());
+  const ready = haveSource && (mode === "new" ? Boolean(name.trim()) : Boolean(project));
+
+  function editGit(change: Partial<GitImportSource>) {
+    setGit((prev) => {
+      const next = { ...prev, ...change };
+      if (change.url !== undefined && !name.trim()) {
+        const repo = next.url.trim().replace(/\/+$/, "").split("/").pop() ?? "";
+        setName(repo.replace(/\.git$/i, "").replace(/[-_]+/g, " "));
+      }
+      return next;
+    });
+    setPreview(null);
+  }
 
   function choose(next: File | null) {
     setFile(next);
@@ -49,10 +64,20 @@ export function ImportCard({
   }
 
   async function run(apply: boolean) {
-    if (!file || !ready) return;
+    if (!ready) return;
     setBusy(true);
     try {
-      if (apply) {
+      if (source === "git") {
+        if (apply) {
+          const done = await api.adminImportGit(git, target);
+          toast.success(t("import.done").replace("{n}", String(done.pages)));
+          onImported(done.project.slug);
+        } else {
+          setPreview(await api.adminImportGitPreview(git, target));
+        }
+      } else if (!file) {
+        return;
+      } else if (apply) {
         const done = await api.adminImport(file, target);
         toast.success(t("import.done").replace("{n}", String(done.pages)));
         onImported(done.project.slug);
@@ -80,15 +105,68 @@ export function ImportCard({
       <CardContent className="flex flex-col gap-3 text-sm">
         <p className="text-xs text-[var(--muted)]">{t("import.hint")}</p>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-[var(--muted)]">{t("import.file")}</span>
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            onChange={(e) => choose(e.target.files?.[0] ?? null)}
-            className="text-sm"
-          />
-        </label>
+        <div role="group" aria-label={t("import.source")} className="flex w-fit rounded-lg border border-[var(--border)] p-0.5">
+          {(["zip", "git"] as const).map((s) => (
+            <button
+              key={s}
+              type="button"
+              aria-pressed={source === s}
+              onClick={() => {
+                setSource(s);
+                setPreview(null);
+              }}
+              className={`rounded-md px-2.5 py-1 text-xs ${
+                source === s ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)]"
+              }`}
+            >
+              {t(s === "zip" ? "import.sourceZip" : "import.sourceGit")}
+            </button>
+          ))}
+        </div>
+
+        {source === "zip" ? (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-[var(--muted)]">{t("import.file")}</span>
+            <input
+              type="file"
+              accept=".zip,application/zip"
+              onChange={(e) => choose(e.target.files?.[0] ?? null)}
+              className="text-sm"
+            />
+          </label>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-[var(--muted)]">{t("import.gitHint")}</p>
+            <Input
+              aria-label={t("import.gitUrl")}
+              placeholder="https://github.com/org/project.git"
+              value={git.url}
+              onChange={(e) => editGit({ url: e.target.value })}
+            />
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                aria-label={t("import.gitPath")}
+                placeholder={t("import.gitPath")}
+                value={git.path}
+                onChange={(e) => editGit({ path: e.target.value })}
+              />
+              <Input
+                aria-label={t("import.gitBranch")}
+                placeholder={t("import.gitBranch")}
+                value={git.branch}
+                onChange={(e) => editGit({ branch: e.target.value })}
+              />
+            </div>
+            <Input
+              type="password"
+              autoComplete="off"
+              aria-label={t("import.gitToken")}
+              placeholder={t("import.gitToken")}
+              value={git.token}
+              onChange={(e) => editGit({ token: e.target.value })}
+            />
+          </div>
+        )}
 
         <fieldset className="flex flex-col gap-2 rounded-md border border-[var(--border)] p-2">
           <legend className="px-1 text-xs font-medium text-[var(--muted)]">{t("import.target")}</legend>

@@ -6,7 +6,8 @@ title: Importing a ZIP
 
 **Import** in the admin header takes a ZIP of Markdown files — an export
 from another tool, or simply a folder of `.md` files — into a new project or
-an existing one.
+an existing one. Documentation that lives in a repository can be imported
+from its address instead: see [Importing from a Git repository](/p/docuwaves/pages/importing-from-a-git-repository).
 
 ## Preview first
 

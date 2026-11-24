@@ -52,6 +52,7 @@ from app.services import (
     content_sync,
     content_versions,
     git_content_repo,
+    import_git,
     page_templates,
     repo_exposure,
     review_due,
@@ -1578,6 +1579,55 @@ async def admin_import(request: Request, project: str = "", name: str = "", file
         return await run_in_threadpool(
             importer.apply, data, _author(request), archive_name=filename.strip()[:120], **target
         )
+    except importer.ImportError_ as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+
+
+class GitImportIn(BaseModel):
+    url: str
+    branch: str = ""
+    # A folder inside the repository, e.g. "docs". Blank = all of it.
+    path: str = ""
+    # For a private repository: used for this clone only, never stored.
+    token: str = ""
+
+
+def _git_archive(body: GitImportIn) -> bytes:
+    return import_git.archive(body.url, branch=body.branch, subdir=body.path, token=body.token)
+
+
+@router.post(
+    "/import/git/preview",
+    summary="What importing from a Git repository would do -- writes nothing",
+    description="Clones `url` (https only, one commit deep) and answers like the ZIP preview. `path` limits it "
+    "to one folder, `branch` picks another branch, `token` opens a private repository and is not stored. "
+    "`project` / `name` as for the ZIP import.",
+)
+async def admin_import_git_preview(body: GitImportIn, project: str = "", name: str = ""):
+    target = _import_target(project, name)
+    try:
+        data = await run_in_threadpool(_git_archive, body)
+        result = await run_in_threadpool(importer.plan, data, **target)
+    except importer.ImportError_ as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return result.summary()
+
+
+@router.post(
+    "/import/git",
+    summary="Import from a Git repository -- every page as a draft, one commit",
+    description="Same body and parameters as the preview. The repository is cloned again, so what is imported "
+    "is its state now.",
+)
+async def admin_import_git(body: GitImportIn, request: Request, project: str = "", name: str = ""):
+    _require_content_repo()
+    target = _import_target(project, name)
+    label = body.url.strip().rstrip("/").rsplit("/", 1)[-1][:120]
+    try:
+        data = await run_in_threadpool(_git_archive, body)
+        return await run_in_threadpool(importer.apply, data, _author(request), archive_name=label, **target)
     except importer.ImportError_ as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except git_content_repo.GitContentError as exc:

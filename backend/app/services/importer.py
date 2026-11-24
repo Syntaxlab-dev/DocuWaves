@@ -179,6 +179,10 @@ def _wanted(path: str) -> bool:
     return posixpath.splitext(lower)[1] in content_assets.CONTENT_TYPES and not any(p.startswith(".") for p in parts)
 
 
+# What services/import_git.py packs from a clone: the same choice.
+wanted_path = _wanted
+
+
 def read_archive(data: bytes, _nested: bool = False) -> tuple[dict[str, bytes], set[str], list[dict]]:
     """(files we read, every path in the archive, skipped entries). Raises
     ImportError_ for an archive that must not be read at all.
