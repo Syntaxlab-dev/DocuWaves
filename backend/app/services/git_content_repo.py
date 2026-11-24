@@ -988,6 +988,49 @@ def _recent(repo: git.Repo, prefix: str, max_commits: int) -> list[dict]:
     return changes
 
 
+def recent_commits(prefix: str, max_commits: int) -> list[dict]:
+    """The newest commits touching `prefix`, newest first, with who made them
+    and what they said: `{sha, date, author, message, files: [{status,
+    path}]}`. ONE git invocation, cached per HEAD like the rest of this
+    module's history readers. The admin activity feed (services/activity.py)."""
+    repo = _read_repo()
+    if repo is None:
+        return []
+    return _cached(repo, ("recent_commits", prefix, max_commits), lambda: _commits(repo, prefix, max_commits))
+
+
+def _commits(repo: git.Repo, prefix: str, max_commits: int) -> list[dict]:
+    try:
+        output = repo.git.execute(
+            [
+                "git",
+                "-c",
+                "core.quotePath=false",
+                "log",
+                f"-n{max_commits}",
+                "--first-parent",
+                f"--pretty=format:{_LOG_MARKER}%H%x1f%aI%x1f%an%x1f%s",
+                "--name-status",
+                "--no-renames",
+                "--",
+                prefix,
+            ],
+        )
+    except git.GitCommandError:
+        return []
+
+    commits: list[dict] = []
+    for line in output.splitlines():
+        if line.startswith(_LOG_MARKER):
+            sha, date, author, message = (line[1:].split("\x1f") + ["", "", "", ""])[:4]
+            commits.append({"sha": sha, "date": date, "author": author, "message": message, "files": []})
+        elif line and commits:
+            status, _, path = line.partition("\t")
+            if path:
+                commits[-1]["files"].append({"status": status[:1], "path": path})
+    return commits
+
+
 def blob_text(sha: str, path: str) -> str | None:
     """A file's text at a commit, through GitPython's long-lived cat-file
     process rather than one `git show` per call -- the changelog reads two

@@ -51,6 +51,7 @@ import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
+import { ActivityCard } from "@/components/ActivityCard";
 import { TwoFactorCard } from "@/components/TwoFactorCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
 import { PrivateBadge } from "@/components/PrivateBadge";
@@ -131,7 +132,7 @@ function storedEditorMode(): EditorMode {
   }
 }
 
-type AdminPanel = "account" | "branding" | "insights" | "tokens" | "diagnostics" | "users" | "reviews" | "import";
+type AdminPanel = "account" | "activity" | "branding" | "insights" | "tokens" | "diagnostics" | "users" | "reviews" | "import";
 
 type FieldValues = Record<string, string>;
 
@@ -239,6 +240,8 @@ export function AdminApp() {
   const setShowAccount = panelSetter("account");
   const showBranding = panel === "branding";
   const setShowBranding = panelSetter("branding");
+  const showActivity = panel === "activity";
+  const setShowActivity = panelSetter("activity");
   const showInsights = panel === "insights";
   const setShowInsights = panelSetter("insights");
   const showTokens = panel === "tokens";
@@ -472,6 +475,7 @@ export function AdminApp() {
         ]
       : []),
     { key: "reviews", label: t("review.queueButton"), onClick: () => setShowReviews((v) => !v), badge: reviewBadge },
+    { key: "activity", label: t("activity.title"), onClick: () => setShowActivity((v) => !v) },
     { key: "insights", label: t("admin.insights"), onClick: () => setShowInsights((v) => !v) },
     ...(isAdmin
       ? [
@@ -600,6 +604,7 @@ export function AdminApp() {
         )}
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
         {showTokens && <ApiTokensCard projects={projects} onClose={() => setShowTokens(false)} />}
+        {showActivity && <ActivityCard onClose={() => setShowActivity(false)} />}
         {showInsights && (
           <AdminInsightsCard onClose={() => setShowInsights(false)} onCreatePage={startPageFromGap} />
         )}

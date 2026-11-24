@@ -30,6 +30,7 @@ from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 
 from app.services import (
+    activity,
     backup,
     diagnostics,
     editing_presence,
@@ -879,6 +880,17 @@ def _review_action(action, *args):
         raise HTTPException(status_code=_REVIEW_ERROR_STATUS.get(exc.code, 409), detail=exc.code) from exc
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
+
+
+@router.get(
+    "/activity",
+    summary="Recent changes to the documentation, attributed",
+    description="The content repo's newest commits (default 50, at most 200), each with its author, message, "
+    "date and the pages it touched -- including drafts, proposals, reviews and changes made directly in Git. "
+    "A page's `title` is \"\" when it no longer exists under that slug.",
+)
+def admin_activity(limit: int = activity.DEFAULT_LIMIT):
+    return {"entries": activity.recent(limit)}
 
 
 @router.get(
