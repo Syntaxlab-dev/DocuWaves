@@ -50,6 +50,14 @@ The `instructions` string an MCP client puts in front of the model is filled in 
 
 A read-only token is told so, and told that a write token is something the operator issues.
 
+## Working alongside people
+
+Three tools are for an assistant that hands its work to a person rather than publishing it:
+
+- **`page_history`** lists who changed a page and when, with the commit messages, newest first.
+- **`request_approval`** submits a draft for review in a project that [requires approval](/p/docuwaves/pages/approval-before-publishing), with an optional note for the reviewer. Pages an assistant publishes there are submitted anyway; this is for a draft it wants read before anyone decides.
+- **`create_preview_link`** makes a [preview link](/p/docuwaves/pages/draft-preview-links) to one page, for 1 to 90 days, so somebody without an account can read a draft. The link is in the answer only once. Set `PUBLIC_BASE_URL` and the answer carries the full address, not just the path.
+
 ## Two different kinds of failure
 
 The distinction is the MCP convention and it matters here:

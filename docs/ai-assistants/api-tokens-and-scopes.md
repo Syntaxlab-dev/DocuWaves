@@ -20,8 +20,8 @@ The `dwt_` prefix is not decoration. A value starting with it is recognisable as
 
 | | `read` | `write` |
 |---|---|---|
-| `list_projects`, `list_pages`, `read_page`, `search` | yes | yes |
-| `create_project`, `create_page`, `update_page`, `create_category` | **no** | yes |
+| `list_projects`, `list_pages`, `read_page`, `search`, `page_history` | yes | yes |
+| `create_project`, `create_page`, `update_page`, `translate_page`, `move_page`, `create_category`, `request_approval`, `create_preview_link` | **no** | yes |
 
 `write` implies `read`. There is no write-only token, because every write tool has to look the existing content up first — which project, which category, which page — and a scope that forbade that would describe a token that cannot be used.
 

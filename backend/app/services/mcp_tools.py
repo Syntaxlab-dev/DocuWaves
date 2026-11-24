@@ -50,9 +50,11 @@ from app.services import (
     git_content_repo,
     page_review,
     pages_store,
+    preview_links_store,
     projects_store,
     site_languages,
 )
+from app.settings import settings
 
 
 class ToolError(Exception):
@@ -203,6 +205,9 @@ def list_projects(_arguments: dict, _token: dict) -> dict:
                 "writable_version": content_versions.writable_version(project["slug"]),
                 "default_version": content_versions.default_version(project["slug"]),
                 "frozen_versions": [v["id"] for v in document["versions"]] if document else [],
+                # Whether a person has to approve a page before it goes live
+                # (request_approval; create_page and update_page submit by themselves).
+                "review_required": pages_store.review_required(project),
             }
         )
     return {
@@ -695,6 +700,107 @@ def _publish_flag(arguments: dict) -> bool:
     if not isinstance(published, bool):
         raise ToolError("'published' must be true or false.")
     return published
+
+
+# ---- History, approval, preview links ----
+
+
+def _exact_page(project: dict, version: str, arguments: dict) -> dict:
+    """Exactly this language's page, never a fallback -- the history of a
+    file, a request for approval and a preview link are each about ONE
+    translation's file."""
+    language = _language(arguments.get("language"))
+    slug = (arguments.get("page") or "").strip()
+    if not slug:
+        raise ToolError("The 'page' parameter is required -- a page slug, as list_pages reports it.")
+    page = pages_store.get_page_by_slug(project["id"], slug, language, version)
+    if page is None:
+        existing = pages_store.page_languages(project["id"], slug, version)
+        if existing:
+            raise ToolError(
+                f"Page '{slug}' has no version in language '{language}' -- it exists in: {', '.join(existing)}."
+            )
+        raise ToolError(
+            f"No page '{slug}' in project '{project['slug']}' (version '{version or 'the project itself'}'). "
+            f"Call list_pages to see the pages that exist there."
+        )
+    return page
+
+
+def page_history(arguments: dict, _token: dict) -> dict:
+    project = _project(arguments.get("project", ""))
+    version = _version(project, arguments.get("version"))
+    page = _exact_page(project, version, arguments)
+    limit = arguments.get("limit", 20)
+    if not isinstance(limit, int) or limit < 1:
+        raise ToolError("'limit' must be a positive whole number.")
+    history = pages_store.page_history(page["id"], min(limit, git_content_repo.MAX_HISTORY)) or {"commits": []}
+    return {
+        "project": project["slug"],
+        "page": _page_entry(page),
+        "commits": [
+            {"sha": c["sha"], "date": c["date"], "author": c["author"], "message": c["subject"]}
+            for c in history["commits"]
+        ],
+    }
+
+
+def request_approval(arguments: dict, token: dict) -> dict:
+    project = _project(arguments.get("project", ""))
+    version = _writable_version(project, arguments.get("version"))
+    _require_content_repo()
+    if not pages_store.review_required(project):
+        raise ToolError(
+            f"Project '{project['slug']}' does not require approval: a page goes live directly. To publish, call "
+            f"update_page with 'published': true."
+        )
+    page = _exact_page(project, version, arguments)
+    note = arguments.get("note") or _MCP_REVIEW_NOTE
+    if not isinstance(note, str):
+        raise ToolError("'note' must be a string.")
+    author = api_tokens_store.author_name(token["name"])
+    try:
+        page_review.submit(page["id"], author, note)
+    except page_review.ReviewError as exc:
+        reason = str(exc)
+        if reason == "already_submitted":
+            raise ToolError("This page is already waiting for approval. Nothing was changed.") from exc
+        if reason == "nothing_to_review":
+            raise ToolError(
+                "This page is live and has no proposed changes, so there is nothing to approve. Change it with "
+                "update_page first; the change becomes a proposal."
+            ) from exc
+        raise ToolError(f"The page could not be submitted: {reason}.") from exc
+    return {"submitted": True, "project": project["slug"], "page": _page_entry(page), **_review_outcome(project, page["id"])}
+
+
+def create_preview_link(arguments: dict, token: dict) -> dict:
+    project = _project(arguments.get("project", ""))
+    version = _version(project, arguments.get("version"))
+    page = _exact_page(project, version, arguments)
+    days = arguments.get("days", preview_links_store.DEFAULT_DAYS)
+    if not isinstance(days, int):
+        raise ToolError("'days' must be a whole number of days.")
+    link = preview_links_store.create(
+        project["slug"], page["slug"], page["language"], page["version"],
+        days, api_tokens_store.author_name(token["name"]),
+    )
+    if link is None:
+        raise ToolError(
+            f"This page already has {preview_links_store.MAX_LINKS_PER_PAGE} live preview links. A person has to "
+            f"revoke one in the admin area before another can be made."
+        )
+    base = settings.public_base_url
+    return {
+        "project": project["slug"],
+        "page": _page_entry(page),
+        # The link exists only in this answer: it is stored as a hash.
+        "url": f"{base}{link['url_path']}" if base else "",
+        "url_path": link["url_path"],
+        "expires_at": link["expires_at"],
+        "hint": "Shown once and stored only as a hash: pass it on now. Anyone with it can read this one page "
+        "until it expires." + ("" if base else " Prefix url_path with the instance's address."),
+    }
 
 
 # ---- The catalogue `tools/list` answers with ----

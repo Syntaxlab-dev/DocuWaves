@@ -360,6 +360,38 @@ class TestMcp:
         pid = page_id("handbuch", "start")
         assert post(client(world, ANNA), f"/api/admin/pages/{pid}/review/approve").status_code == 200
 
+    def test_page_history(self, world):
+        mcp_tools.update_page({"project": "frei", "page": "info", "markdown": "Neu."}, self.TOKEN)
+        result = mcp_tools.page_history({"project": "frei", "page": "info"}, self.TOKEN)
+        assert [c["message"] for c in result["commits"]] == ["Update page: Info", "Inhalt"]
+        assert "assistent" in result["commits"][0]["author"]
+        with pytest.raises(mcp_tools.ToolError, match="list_pages"):
+            mcp_tools.page_history({"project": "frei", "page": "nope"}, self.TOKEN)
+
+    def test_requesting_approval_for_a_draft(self, world):
+        result = mcp_tools.request_approval({"project": "handbuch", "page": "entwurf", "note": "Bitte lesen."}, self.TOKEN)
+        assert result["submitted"] and result["review"] == "pending"
+        assert len(page_review.queue()) == 1
+        with pytest.raises(mcp_tools.ToolError, match="already waiting"):
+            mcp_tools.request_approval({"project": "handbuch", "page": "entwurf"}, self.TOKEN)
+
+    def test_requesting_approval_is_refused_where_none_is_needed(self, world):
+        with pytest.raises(mcp_tools.ToolError, match="does not require approval"):
+            mcp_tools.request_approval({"project": "frei", "page": "info"}, self.TOKEN)
+        with pytest.raises(mcp_tools.ToolError, match="nothing to approve"):
+            mcp_tools.request_approval({"project": "handbuch", "page": "start"}, self.TOKEN)
+
+    def test_a_preview_link_opens_the_draft(self, world):
+        result = mcp_tools.create_preview_link({"project": "handbuch", "page": "entwurf", "days": 3}, self.TOKEN)
+        assert result["url"] == "" and result["url_path"].startswith("/preview/")
+        token = result["url_path"].rsplit("/", 1)[-1]
+        r = client(world).get(f"/api/public/preview/{token}")
+        assert r.status_code == 200 and "Noch nicht live." in r.text
+
+    def test_list_projects_says_which_need_approval(self, world):
+        projects = {p["slug"]: p["review_required"] for p in mcp_tools.list_projects({}, self.TOKEN)["projects"]}
+        assert projects == {"handbuch": True, "frei": False}
+
     def test_an_assistant_cannot_publish_a_new_page_directly(self, world):
         result = mcp_tools.create_page(
             {"project": "handbuch", "category": "guide", "title": "KI-Seite", "markdown": "x", "published": True},
