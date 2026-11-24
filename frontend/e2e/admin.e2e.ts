@@ -1,0 +1,145 @@
+import { expect, test, type Page } from "@playwright/test";
+
+/**
+ * The path a new operator takes: set the instance up, sign in, write a
+ * page, publish it, and find it on the public site. One instance for the
+ * whole file (e2e/serve.sh), so each test starts where the last one ended.
+ */
+
+const ADMIN = { username: "admin", password: "e2e-password-123" };
+
+/** Console errors and uncaught exceptions, collected per test: a panel
+ *  that renders but throws on the way is a failure here too. */
+function watchErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  return errors;
+}
+
+async function signIn(page: Page) {
+  await page.goto("/admin");
+  await page.getByLabel("Username").fill(ADMIN.username);
+  await page.getByLabel("Password").fill(ADMIN.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+}
+
+test.describe.configure({ mode: "serial" });
+
+test("a fresh instance asks for the first admin", async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto("/admin");
+  await expect(page.getByText("Create the first admin account.")).toBeVisible();
+  await page.getByLabel("Username").fill(ADMIN.username);
+  await page.getByLabel("Password").fill(ADMIN.password);
+  await page.getByRole("button", { name: "Set up" }).click();
+  await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("a wrong password is refused, the right one signs in", async ({ page }) => {
+  await page.goto("/admin");
+  await page.getByLabel("Username").fill(ADMIN.username);
+  await page.getByLabel("Password").fill("not-the-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByText("Incorrect username or password.")).toBeVisible();
+  await signIn(page);
+});
+
+test("a project, a category and a published page", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("heading", { name: "Projects" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Handbook");
+  await page.getByRole("textbox", { name: "Description" }).fill("Everything about the product.");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByText("Handbook", { exact: true }).click();
+  await page.getByRole("heading", { name: "Categories" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Getting started");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Installing the widget");
+  await page.getByRole("button", { name: "Markdown" }).click();
+  await page.locator("textarea").first().fill("Unpack the widget and plug it in.\n\n## Checking it works\n\nThe light turns green.\n");
+  await page.getByRole("button", { name: "Draft" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "History" })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test("the page is on the public site", async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto("/");
+  // With one project, the homepage is that project's page.
+  await expect(page.getByText("Everything about the product.")).toBeVisible();
+  await page.getByRole("link", { name: /Getting started/ }).click();
+  await page.getByRole("link", { name: /Installing the widget/ }).first().click();
+  await expect(page).toHaveURL(/\/p\/handbook\/pages\/installing-the-widget$/);
+  await expect(page.getByRole("heading", { name: "Installing the widget" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Checking it works" })).toBeVisible();
+  await expect(page.getByText("The light turns green.")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("search finds it", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Search…" }).fill("green light");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  const hit = page.getByRole("link", { name: /Installing the widget/ });
+  await expect(hit).toHaveAttribute("href", "/p/handbook/pages/installing-the-widget");
+  await expect(hit.locator("mark").first()).toBeVisible();
+});
+
+async function openPageInEditor(page: Page, title: string) {
+  await signIn(page);
+  await page.getByRole("button", { name: "Handbook" }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  await page.getByRole("button", { name: title }).first().click();
+  await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(title);
+}
+
+test("renaming a page keeps its old address working", async ({ page }) => {
+  await openPageInEditor(page, "Installing the widget");
+  await page.getByRole("textbox", { name: "Title" }).fill("Setting up the widget");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect
+    .poll(async () => (await page.request.get("/api/public/projects/handbook/pages/installing-the-widget", { maxRedirects: 0 })).status())
+    .toBe(301);
+
+  await page.goto("/p/handbook/pages/installing-the-widget");
+  await expect(page).toHaveURL(/\/p\/handbook\/pages\/setting-up-the-widget$/);
+  await expect(page.getByRole("heading", { name: "Setting up the widget" })).toBeVisible();
+});
+
+test("an unpublished page leaves the public site", async ({ page, request }) => {
+  await openPageInEditor(page, "Setting up the widget");
+  await page.getByRole("button", { name: "Published" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "Draft" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+
+  // A reader without a session: the editor's own browser may still see drafts.
+  // Polled, because the button flips before the server has written the file.
+  await expect
+    .poll(async () => (await request.get("/api/public/projects/handbook/pages/setting-up-the-widget", { maxRedirects: 0 })).status())
+    .toBe(404);
+});
+
+test("every admin panel opens without an error", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  const nav = page.getByRole("banner").getByRole("navigation");
+  for (const name of ["Branding", "Accounts", "Approvals", "Activity", "Insights", "API tokens", "Diagnostics", "Import", "Account"]) {
+    await nav.getByRole("button", { name, exact: true }).click();
+    // Every panel opens with a card title; seeing one means it rendered.
+    await expect(page.locator("main, body").getByRole("heading", { level: 3 }).first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+  }
+  expect(errors).toEqual([]);
+});

@@ -58,6 +58,21 @@ They are not a complete suite, and a pull request doesn't need to add to them.
 But if you're changing one of those rules, changing its test alongside is the
 clearest way to say what you meant the new rule to be.
 
+The frontend has two more:
+
+```bash
+cd frontend && npm test                          # unit tests, incl. the visual editor's round trip
+cd frontend && npm run build && npm run e2e      # a real browser against a real instance
+```
+
+The end-to-end tests (`frontend/e2e/`) start a throwaway DocuWaves from
+`e2e/serve.sh` with an empty content repository, then do what a new operator
+would: set the instance up, write and publish a page, read and search it,
+rename and unpublish it, and open every admin panel. They need the backend's
+dependencies on `python3` (or point `E2E_PYTHON` at a virtualenv's python) and
+a Chromium for Playwright (`npx playwright install chromium`). A failure in CI
+uploads the trace as an artifact; `npx playwright show-trace` replays it.
+
 `npm run build` in `frontend/` type-checks the whole app; there is no frontend
 test suite yet. CI runs both on every pull request.
 
