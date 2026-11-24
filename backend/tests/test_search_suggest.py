@@ -5,6 +5,8 @@ from collections import Counter
 from contextlib import contextmanager
 
 import pytest
+from fastapi import Response
+from starlette.requests import Request
 
 from app.routers import public_content
 from app.services import search_suggest
@@ -91,6 +93,11 @@ def test_drafts_are_not_in_the_vocabulary(monkeypatch):
     assert not built.knows("vertraulich")
 
 
+def _request() -> Request:
+    """A plain anonymous request, no Origin: what the route sees from the site itself."""
+    return Request({"type": "http", "method": "GET", "path": "/api/public/search", "headers": []})
+
+
 class TestRoute:
     @pytest.fixture
     def searched(self, monkeypatch):
@@ -106,9 +113,9 @@ class TestRoute:
         return queries
 
     def test_the_corrected_query_is_searched_and_named(self, searched):
-        result = public_content.public_search(None, q="instalation", lang=None, project=None, version=None)
+        result = public_content.public_search(_request(), Response(), q="instalation", lang=None, project=None, version=None)
         assert result == {"results": [{"title": "Installation"}], "corrected": "installation"}
 
     def test_a_correct_query_is_searched_once(self, searched):
-        result = public_content.public_search(None, q="installation", lang=None, project=None, version=None)
+        result = public_content.public_search(_request(), Response(), q="installation", lang=None, project=None, version=None)
         assert result["corrected"] is None and searched == ["installation"]
