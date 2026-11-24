@@ -58,6 +58,21 @@ Two rules protect addresses:
 - **Only the default language's title steers the slug.** Renaming a translation cannot move the page's URL out from under anyone.
 - **`order` belongs to the page, not to one translation.** Reordering writes the new position into every language's file, so a reader who switches language gets the same sidebar order and the same previous/next links.
 
+### A first draft with AI
+
+With the [documentation chat's model](/p/docuwaves/pages/the-documentation-chat)
+configured, the empty tab of a missing translation offers **Translate from
+… with AI**. It translates the page's title and text from the default
+language (or the first language the page exists in) and fills the editor.
+Nothing is saved and nothing is published until you save, and in a project
+with approval the translation goes through review like any change.
+
+Code blocks and inline code never reach the model: they are taken out
+before translating and put back unchanged. Link targets, image paths and
+`{{variables}}` stay as they are. A long page is translated section by
+section. Read the draft before saving: a machine translation is a start,
+not a finished text.
+
 Each translation has its **own history**, because each is its own file. The History tab names the file it is showing.
 
 **Deleting a page deletes all of its translations.** To remove just one, delete that file in the content repository — see [Editing in Git](/p/docuwaves/pages/editing-in-git).

@@ -1198,6 +1198,17 @@ export const api = {
       "/api/admin/search-gaps/draft",
       { method: "POST", body: JSON.stringify({ query, project_slug: projectSlug, language }) },
     ),
+  adminTranslationDraft: (title: string, markdown: string, source: string, target: string, projectSlug: string) =>
+    request<{ title: string; markdown: string; missing_code: number }>("/api/admin/translation-draft", {
+      method: "POST",
+      body: JSON.stringify({
+        title,
+        markdown,
+        source_language: source,
+        target_language: target,
+        project_slug: projectSlug,
+      }),
+    }),
   adminWritingHelp: (text: string, action: WritingAction, projectSlug: string, language: string) =>
     request<{ text: string }>("/api/admin/writing-help", {
       method: "POST",

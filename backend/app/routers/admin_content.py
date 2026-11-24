@@ -65,6 +65,7 @@ from app.services import (
     site_languages,
     snippets,
     static_export,
+    translation_drafts,
     visibility,
     writing_help,
 )
@@ -2032,6 +2033,32 @@ def admin_writing_help(body: WritingHelpIn, request: Request):
     except doc_chat.ChatError as exc:
         code = str(exc)
         status = 409 if code == "not_configured" else 400 if code in ("empty_question", "unknown_action", "too_long") else 502
+        raise HTTPException(status_code=status, detail=code) from exc
+
+
+class TranslationDraftIn(BaseModel):
+    title: str = Field(default="", max_length=500)
+    markdown: str = Field(default="", max_length=translation_drafts.MAX_TEXT * 2)
+    source_language: str
+    target_language: str
+    project_slug: str = ""
+
+
+@router.post(
+    "/translation-draft",
+    summary="A first draft of a translation, with AI",
+    description="Translates a page's title and text into another language with the documentation chat's model "
+    "(services/translation_drafts.py); code is taken out first and put back unchanged. Nothing is saved: the "
+    "editor shows the draft in the empty translation, and the author checks and saves it. 409 `not_configured` "
+    "without a chat model, 400 for empty or too long text or the same language twice, 502 when the model fails.",
+)
+def admin_translation_draft(body: TranslationDraftIn, request: Request):
+    project_access.require_write(request, body.project_slug or None)
+    try:
+        return translation_drafts.draft(body.title, body.markdown, body.source_language, body.target_language)
+    except doc_chat.ChatError as exc:
+        code = str(exc)
+        status = 409 if code == "not_configured" else 400 if code in ("empty_question", "too_long", "same_language") else 502
         raise HTTPException(status_code=status, detail=code) from exc
 
 

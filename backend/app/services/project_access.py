@@ -236,6 +236,7 @@ WRITE_ROUTES: list[tuple[str, re.Pattern, str]] = [
         ("DELETE", f"/feedback/{_SLUG}/[^/]+", "project_slug"),
         ("POST", "/search-gaps/draft", "body"),
         ("POST", "/writing-help", "body"),
+        ("POST", "/translation-draft", "body"),
         ("DELETE", "/search-gaps", "instance"),
         ("DELETE", f"/search-gaps/{_ID}", "instance"),
     ]

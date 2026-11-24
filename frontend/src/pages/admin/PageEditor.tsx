@@ -22,6 +22,7 @@ import {
   History,
   Trash2,
   Upload,
+  Languages,
 } from "lucide-react";
 import { SchedulePanel } from "@/components/SchedulePanel";
 import { Button } from "@/components/ui/button";
@@ -728,6 +729,41 @@ export function PageEditor({
     });
   }
 
+  /** The language a translation draft is made from: the default language
+   *  when the page exists in it, otherwise the first one it exists in. */
+  const translationSource =
+    existing.includes(site.default_language) && site.default_language !== language
+      ? site.default_language
+      : existing.find((code) => code !== language) ?? "";
+  const [translating, setTranslating] = useState(false);
+
+  async function draftTranslation() {
+    if (!translationSource || !slug) return;
+    setTranslating(true);
+    try {
+      const source = await api.adminFindPage(projectSlug, slug, translationSource, version || undefined);
+      if (!source.page) return;
+      const draft = await api.adminTranslationDraft(
+        source.page.title,
+        source.page.markdown_content,
+        translationSource,
+        language,
+        projectSlug,
+      );
+      setTitle(draft.title || source.page.title);
+      setContent(draft.markdown);
+      setDirty(true);
+      setTextArrived((n) => n + 1);
+      if (draft.missing_code > 0) toast.warning(t("translate.missingCode"));
+      else toast.success(t("translate.done"));
+    } catch (err) {
+      const code = err instanceof ApiError ? err.message : "";
+      toast.error(code === "too_long" ? t("translate.tooLong") : t("translate.failed"));
+    } finally {
+      setTranslating(false);
+    }
+  }
+
   /** Where an insert goes: the current selection, or the end of the text
    *  when the textarea isn't mounted (the preview tab has no caret of its
    *  own to speak of). */
@@ -1156,6 +1192,22 @@ export function PageEditor({
             ))}
           </div>
           <p className="mt-1.5 text-xs text-[var(--muted)]">{t("admin.templatesHint")}</p>
+        </div>
+      )}
+
+      {/* A translation that doesn't exist yet can start as a machine draft
+          of the page in another language (backend services/
+          translation_drafts.py): filled into the editor, never saved by
+          itself -- the author reads it and saves it like their own text. */}
+      {!readOnly && blank && multilingual && slug && !existing.includes(language) && translationSource && site.chat?.enabled && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-[var(--border)] px-3 py-2">
+          <Button type="button" size="sm" variant="outline" disabled={translating} onClick={() => void draftTranslation()}>
+            <Languages className="h-3.5 w-3.5" aria-hidden="true" />
+            {translating
+              ? t("translate.working")
+              : t("translate.button").replace("{language}", languageName(translationSource, uiLang))}
+          </Button>
+          <span className="text-xs text-[var(--muted)]">{t("translate.hint")}</span>
         </div>
       )}
 
