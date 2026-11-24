@@ -242,6 +242,39 @@ def _analytics(data: dict) -> dict:
     return {"umami_url": url, "umami_website_id": website_id}
 
 
+PDF_TEMPLATES = ("classic", "band", "minimal")
+_PDF_DEFAULTS = {"template": "classic", "header": "", "footer": "", "page_numbers": True, "logo": True}
+
+
+def _pdf(data: dict) -> dict:
+    """How a printed manual or page looks (pages/PrintBook.tsx and the print
+    CSS): a cover `template`, a running `header` and `footer` line (plain
+    text with {project}, {version}, {title}, {date} and {site} filled in by
+    the browser), page numbers, and the logo on the cover. Always every key,
+    defaults filled in; a hand-edited value of the wrong type falls back to
+    its default rather than breaking the print view."""
+    raw = data.get("pdf")
+    raw = raw if isinstance(raw, dict) else {}
+    out = dict(_PDF_DEFAULTS)
+    if raw.get("template") in PDF_TEMPLATES:
+        out["template"] = raw["template"]
+    for key in ("header", "footer"):
+        if isinstance(raw.get(key), str):
+            # One line: a margin box has room for nothing more.
+            out[key] = " ".join(raw[key].split())[:_MAX_TEXT]
+    for key in ("page_numbers", "logo"):
+        if isinstance(raw.get(key), bool):
+            out[key] = raw[key]
+    return out
+
+
+def _pdf_to_file(payload: dict) -> dict:
+    """Only what differs from the defaults, so an untouched instance's
+    _site.yml gets no `pdf:` block at all."""
+    resolved = _pdf(payload)
+    return {k: v for k, v in resolved.items() if v != _PDF_DEFAULTS[k]}
+
+
 def _asset_field(data: dict, key: str) -> tuple[str, str | None]:
     """(configured filename, servable URL). The URL is None whenever the name
     doesn't resolve to a real allowed image inside `_site/` -- a typo'd or
@@ -302,6 +335,7 @@ def read_branding() -> dict:
         # secret -- a Umami website id identifies a dashboard, it does not
         # open one.
         "analytics": _analytics(data),
+        "pdf": _pdf(data),
     }
 
 
@@ -358,6 +392,7 @@ def write_branding(payload: dict) -> list[str]:
         ),
         "footer_links": _footer_links(payload),
         "analytics": _analytics(payload),
+        "pdf": _pdf_to_file(payload),
     }
     document = {k: v for k, v in normalized.items() if v}
 

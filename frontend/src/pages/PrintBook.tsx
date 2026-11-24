@@ -7,6 +7,7 @@ import { NotFound } from "@/components/NotFound";
 import { formatIsoDate } from "@/lib/dates";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
+import { PDF_DEFAULTS, PrintMargins } from "@/lib/printBranding";
 import { siteText, useDocumentTitle, useSite } from "@/lib/site";
 
 /**
@@ -85,6 +86,12 @@ export function PrintBook() {
     : "";
   const anchor = (categorySlug: string, pageSlug: string) => `book-${categorySlug}-${pageSlug}`;
   const back = path(`/p/${projectSlug}${version ? `/${version}` : ""}${category ? `/c/${category}` : ""}`);
+  // The branding's print settings (backend site_branding._pdf): cover
+  // template, running header/footer, page numbers, logo.
+  const pdf = site.pdf ?? PDF_DEFAULTS;
+  const printedOn = formatIsoDate(new Date().toISOString().slice(0, 10), uiLang);
+  const siteName = siteText(site, "name", lang);
+  const logo = pdf.logo && pdf.template !== "minimal" ? site.logo_url : null;
 
   return (
     <div className="book mx-auto max-w-3xl px-4 py-8">
@@ -108,15 +115,24 @@ export function PrintBook() {
         <p className="w-full text-xs text-[var(--muted)]">{t("book.hint")}</p>
       </div>
 
+      <PrintMargins
+        pdf={pdf}
+        coverSheet={pdf.template !== "minimal"}
+        values={{ project: book.project.name, version: versionLabel, title: chapterName || book.project.name, date: printedOn, site: siteName }}
+      />
       <div ref={body}>
-        <section className="book-cover">
-          <p className="text-sm uppercase tracking-wide text-[var(--muted)]">{siteText(site, "name", lang)}</p>
+        <section
+          className={`book-cover book-cover-${pdf.template}`}
+          style={pdf.template === "band" ? { ["--cover" as string]: site.accent || "#4f6df5" } : undefined}
+        >
+          {logo && <img src={logo} alt="" className="book-cover-logo mb-6 h-12 w-auto max-w-[14rem] object-contain" />}
+          <p className="text-sm uppercase tracking-wide text-[var(--muted)]">{siteName}</p>
           <h1 className="mt-2 text-4xl font-semibold">{book.project.name}</h1>
           {chapterName && <p className="mt-2 text-2xl">{chapterName}</p>}
           {versionLabel && <p className="mt-4 text-lg">{t("book.version").replace("{version}", versionLabel)}</p>}
           {book.project.description && <p className="mt-6 text-[var(--muted)]">{book.project.description}</p>}
           <p className="mt-12 text-sm text-[var(--muted)]">
-            {t("book.printedOn").replace("{date}", formatIsoDate(new Date().toISOString().slice(0, 10), uiLang))}
+            {t("book.printedOn").replace("{date}", printedOn)}
             <br />
             {typeof window !== "undefined" ? window.location.origin + back : ""}
           </p>

@@ -23,6 +23,28 @@ The browser does the PDF on purpose: nothing to install or run on the
 server, no fonts to ship, and diagrams, formulas and code come out exactly as
 the site renders them, because it is the site's own rendering.
 
+## Your own look: cover, header, footer
+
+Under **Branding → PDF and print**, an administrator sets how printouts
+look, for single pages and whole manuals alike:
+
+- **Cover**: *Classic* (title on a white sheet), *Band in the accent
+  colour* (a coloured block with the title in white) or *Minimal* (no cover
+  sheet, the title sits above the contents).
+- **Logo on the cover**: the instance's logo above the title.
+- **Header** and **Footer**: one line each, repeated on every sheet. Use
+  `{project}`, `{version}`, `{title}`, `{date}` and `{site}` as
+  placeholders, for example `{project} · {version}` and
+  `ACME GmbH · Confidential · {date}`. A placeholder with nothing to fill,
+  such as the version of an unversioned project, disappears together with
+  its separator.
+- **Page numbers**: "3 / 12" in the bottom corner.
+
+The cover sheet of a manual carries no header, footer or number. The
+settings live in `_site.yml` under `pdf:`, like the rest of the branding.
+Chrome and Edge print headers and footers; Firefox and Safari print the
+rest and leave them out.
+
 ## EPUB and Markdown
 
 Next to **PDF / print**, a project page offers two downloads of the same

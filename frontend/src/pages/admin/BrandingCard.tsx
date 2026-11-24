@@ -13,11 +13,13 @@ import {
   type SiteAnalytics,
   type SiteAsset,
   type SiteBranding,
+  type SitePdf,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { languageName } from "@/lib/lang";
 import { logoForTheme, useSite } from "@/lib/site";
 import { accentVariables } from "@/lib/theme";
+import { PDF_DEFAULTS } from "@/lib/printBranding";
 import { toFieldValues, fromFieldValues, LocalizedInput } from "./shared";
 
 /** The instance's own identity: name, tagline, accent colour, logo/favicon
@@ -69,6 +71,7 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
         footer_text_i18n: draft.footer_text_i18n,
         footer_links: draft.footer_links,
         analytics: draft.analytics ?? {},
+        pdf: draft.pdf ?? PDF_DEFAULTS,
       });
       setDraft(saved);
       await reload();
@@ -196,6 +199,8 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
               analytics={draft.analytics ?? {}}
               onChange={(analytics) => patch({ analytics })}
             />
+
+            <PdfFields pdf={draft.pdf ?? PDF_DEFAULTS} onChange={(pdf) => patch({ pdf })} />
 
             <div className="flex gap-2">
               <Button onClick={onSave} disabled={saving}>
@@ -468,6 +473,56 @@ export function FooterLinksEditor({ links, onChange }: { links: FooterLink[]; on
         <Plus className="h-3.5 w-3.5" />
         {t("admin.brandingAddLink")}
       </Button>
+    </div>
+  );
+}
+
+/**
+ * How a printed manual or page looks: the cover template of the whole-project
+ * print view, a running header and footer on every sheet, page numbers, and
+ * the logo on the cover. All of it is drawn by the browser when printing
+ * (lib/printBranding.tsx); nothing here changes the site on screen.
+ */
+export function PdfFields({ pdf, onChange }: { pdf: SitePdf; onChange: (pdf: SitePdf) => void }) {
+  const { t } = useI18n();
+  const set = (patch: Partial<SitePdf>) => onChange({ ...pdf, ...patch });
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">{t("admin.pdf")}</span>
+      <span className="text-xs text-[var(--muted)]">{t("admin.pdfHint")}</span>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.pdfTemplate")}
+          <select
+            value={pdf.template}
+            onChange={(e) => set({ template: e.target.value as SitePdf["template"] })}
+            className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--ink)]"
+          >
+            <option value="classic">{t("admin.pdfClassic")}</option>
+            <option value="band">{t("admin.pdfBand")}</option>
+            <option value="minimal">{t("admin.pdfMinimal")}</option>
+          </select>
+        </label>
+        <div className="flex flex-col justify-end gap-1 text-sm">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={pdf.page_numbers} onChange={(e) => set({ page_numbers: e.target.checked })} />
+            {t("admin.pdfPageNumbers")}
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={pdf.logo} onChange={(e) => set({ logo: e.target.checked })} />
+            {t("admin.pdfLogo")}
+          </label>
+        </div>
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.pdfHeader")}
+          <Input value={pdf.header} onChange={(e) => set({ header: e.target.value })} placeholder="{project} · {version}" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+          {t("admin.pdfFooter")}
+          <Input value={pdf.footer} onChange={(e) => set({ footer: e.target.value })} placeholder="{site} · {date}" />
+        </label>
+      </div>
+      <span className="text-xs text-[var(--muted)]">{t("admin.pdfPlaceholders")}</span>
     </div>
   );
 }

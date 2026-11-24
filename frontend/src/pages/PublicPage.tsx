@@ -18,7 +18,8 @@ import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
 import { useDocPath, useReportProjectVersion } from "@/lib/version";
 import { useGlossary } from "@/lib/glossary";
-import { useDocumentTitle } from "@/lib/site";
+import { PrintMargins } from "@/lib/printBranding";
+import { siteText, useDocumentTitle, useSite } from "@/lib/site";
 
 /** Below this, a contents list is just the page's own outline restated --
  *  one entry is never worth a column, and two is where it starts telling a
@@ -34,6 +35,7 @@ export function PublicPage() {
   }>();
   const { hash } = useLocation();
   const { t, lang: uiLang } = useI18n();
+  const { site } = useSite();
   const { lang } = useContentLang();
   const docPath = useDocPath();
   const { nav, status: navStatus } = useProjectNav(projectSlug, lang, version);
@@ -219,6 +221,18 @@ export function PublicPage() {
       <PageFooterNav nav={nav} pageSlug={data.page.slug} />
       {/* Screen-invisible; the address and date a printout would otherwise
           not carry. Last in the flow so it lands at the foot of the text. */}
+      <PrintMargins
+        pdf={site.pdf}
+        values={{
+          project: data.project.name,
+          version: data.versions
+            ? (data.versions.frozen.find((v) => v.id === data.versions!.selected)?.label ?? data.versions.current_label)
+            : "",
+          title: data.page.title,
+          date: formatIsoDate(new Date().toISOString().slice(0, 10), uiLang),
+          site: siteText(site, "name", lang),
+        }}
+      />
       <PrintSource updated={data.last_updated ? formatIsoDate(data.last_updated, uiLang) : undefined} />
     </DocsShell>
   );

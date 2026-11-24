@@ -554,6 +554,17 @@ export interface FooterLink {
  *  (meaning "keep the built-in one, which differs per colour scheme"), and a
  *  `*_url` is null whenever the configured file doesn't resolve to a real
  *  allowed image, so the UI falls back instead of showing a broken one. */
+/** How printouts look (branding `pdf:`; see lib/printBranding.tsx). */
+export interface SitePdf {
+  template: "classic" | "band" | "minimal";
+  /** One line each; {project} {version} {title} {date} {site} are filled in. */
+  header: string;
+  footer: string;
+  page_numbers: boolean;
+  /** The logo on the cover of a printed manual. */
+  logo: boolean;
+}
+
 export interface SiteBranding {
   /** The CONTENT languages this instance is configured for, in order, the
    *  first being the default. Empty = single-language: no URL prefix, no
@@ -582,6 +593,8 @@ export interface SiteBranding {
    *  written SERVER-side (backend/app/services/seo.py), so nothing in the
    *  browser has to inject it; this is here for the admin form. */
   analytics: SiteAnalytics;
+  /** Always present from the server; optional for a stale cached copy. */
+  pdf?: SitePdf;
   /** Present on the PUBLIC branding response only -- it describes the
    *  instance's environment (env vars), not the `_site.yml` the admin form
    *  edits, so the admin response does not carry it. */
@@ -1359,6 +1372,7 @@ export const api = {
     footer_text_i18n: LocalizedText;
     footer_links: FooterLink[];
     analytics: SiteAnalytics;
+    pdf: SitePdf;
   }) => request<SiteBranding>("/api/admin/site", { method: "PUT", body: JSON.stringify(data) }),
   adminUploadSiteAsset: (file: File) =>
     upload<SiteAsset>(`/api/admin/site/assets?filename=${encodeURIComponent(file.name)}`, file),

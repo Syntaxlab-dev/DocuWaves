@@ -1825,6 +1825,9 @@ class SiteBrandingIn(BaseModel):
     # step -- anything it doesn't recognize is dropped before it reaches the
     # file, not stored and filtered later.
     analytics: dict[str, str] = {}
+    # {"template", "header", "footer", "page_numbers", "logo"} -- free-form
+    # for the same reason; site_branding._pdf is the validator.
+    pdf: dict[str, str | bool] = {}
 
 
 @router.get(

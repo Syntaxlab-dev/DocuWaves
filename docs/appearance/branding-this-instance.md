@@ -38,6 +38,12 @@ footer_text: © 2026 SyntaxLab         # optional
 footer_links:                         # optional
   - label: Imprint
     url: https://example.com/imprint
+pdf:                                  # optional, how printouts look
+  template: band                      # classic (default), band or minimal
+  header: "{project} · {version}"
+  footer: "SyntaxLab · {date}"
+  page_numbers: true                  # default true
+  logo: true                          # logo on the cover, default true
 ```
 
 | Field | What happens when it is absent |
@@ -49,6 +55,7 @@ footer_links:                         # optional
 | `favicon` | The shipped DocuWaves icon |
 | `accent` | The built-in accent, which is deliberately a different value in light and dark mode |
 | `footer_text` / `footer_links` | No footer at all |
+| `pdf` | A classic cover with the logo, page numbers, no header or footer line — see [Printing, PDF and EPUB](/p/docuwaves/pages/printing-and-pdf#your-own-look-cover-header-footer) |
 
 `accent` must be `#rgb` or `#rrggbb`. Anything else falls back to "keep the built-in accent" — the value is written into a CSS custom property, so `red; background: url(...)` must never reach the stylesheet.
 
