@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Download, Minus, RefreshCw } from "lucide-react";
+import { AlertTriangle, Check, Download, Minus, RefreshCw, Globe } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { api, type Diagnostics, type ExportSummary } from "@/lib/api";
@@ -248,6 +248,15 @@ export function AdminDiagnosticsCard({ onClose }: { onClose: () => void }) {
                 >
                   <Download className="h-3.5 w-3.5" aria-hidden="true" />
                   {t("diag.exportDownload")}
+                </a>
+                {/* The public pages as plain HTML (backend services/static_export.py). */}
+                <a
+                  href={api.adminStaticExportUrl()}
+                  title={t("diag.exportStaticHint")}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[var(--border)] px-2.5 text-sm hover:border-[var(--accent)] hover:text-[var(--accent)]"
+                >
+                  <Globe className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t("diag.exportStatic")}
                 </a>
                 {/* The size of what goes IN, not a promise about the
                     download: a zip of compressible Markdown comes out

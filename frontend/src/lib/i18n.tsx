@@ -381,6 +381,8 @@ const de = {
   "diag.exportExcludes":
     "Enthält bewusst keine Zugangsdaten: kein Passwort-Hash, keine Sitzungen, keine API-Tokens, keine Vorschaulinks.",
   "diag.exportDownload": "Herunterladen",
+  "diag.exportStatic": "Als statische Website (HTML)",
+  "diag.exportStaticHint": "Die öffentlichen Seiten als HTML-Dateien, die ohne DocuWaves funktionieren: zum Archivieren, für einen USB-Stick oder einen beliebigen Webserver.",
   "diag.exportSize": "Inhalte: {size} in {files} Dateien",
   "diag.exportHistory": "mit Versionsgeschichte",
   "diag.exportNoHistory": "ohne Versionsgeschichte (noch keine Commits)",
@@ -1176,6 +1178,8 @@ const en: Dict = {
   "diag.exportExcludes":
     "Deliberately contains no credentials: no password hash, no sessions, no API tokens, no preview links.",
   "diag.exportDownload": "Download",
+  "diag.exportStatic": "As a static website (HTML)",
+  "diag.exportStaticHint": "The public pages as HTML files that work without DocuWaves: for an archive, a USB stick or any web server.",
   "diag.exportSize": "content: {size} across {files} files",
   "diag.exportHistory": "with version history",
   "diag.exportNoHistory": "without version history (no commits yet)",

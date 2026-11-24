@@ -33,3 +33,9 @@ pycparser==3.12
 pyasn1==0.6.5
 pyasn1_modules==0.4.2
 pyOpenSSL==26.4.0
+# The static website export (services/static_export.py): Markdown -> HTML on
+# the server, CommonMark plus tables, strikethrough and task lists. MIT, pure
+# Python, no system library.
+markdown-it-py==4.2.0
+mdurl==0.1.2
+mdit-py-plugins==0.6.1

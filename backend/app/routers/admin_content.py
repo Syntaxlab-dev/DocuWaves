@@ -63,6 +63,7 @@ from app.services import (
     site_branding,
     site_languages,
     snippets,
+    static_export,
     visibility,
 )
 
@@ -1869,6 +1870,31 @@ def admin_export(request: Request):
         path,
         media_type="application/zip",
         filename=backup.archive_name(),
+        background=BackgroundTask(path.unlink, missing_ok=True),
+    )
+
+
+@router.get(
+    "/export/static",
+    summary="Download the public documentation as a static website",
+    description="A zip of plain HTML files that need no DocuWaves to open: published pages of every project "
+    "that is not private, in its default version and the site's default language, with their images "
+    "(services/static_export.py). Diagrams and formulas stay as their source text.",
+)
+def admin_export_static(request: Request):
+    handle = tempfile.NamedTemporaryFile(prefix="docuwaves-site-", suffix=".zip", delete=False)
+    handle.close()
+    path = Path(handle.name)
+    try:
+        static_export.build(path)
+    except OSError as exc:
+        path.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"The export could not be written: {exc}") from exc
+    admin_log.record(request, "export.static", static_export.archive_name())
+    return FileResponse(
+        path,
+        media_type="application/zip",
+        filename=static_export.archive_name(),
         background=BackgroundTask(path.unlink, missing_ok=True),
     )
 

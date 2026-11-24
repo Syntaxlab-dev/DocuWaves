@@ -1289,6 +1289,7 @@ export const api = {
    *  is as big as the documentation is, and pulling one into a Blob just to
    *  hand it back to the browser doubles it through memory for nothing. */
   adminExportUrl: () => "/api/admin/export",
+  adminStaticExportUrl: () => "/api/admin/export/static",
 
   adminGetSite: () => request<SiteBranding>("/api/admin/site"),
   adminUpdateSite: (data: {

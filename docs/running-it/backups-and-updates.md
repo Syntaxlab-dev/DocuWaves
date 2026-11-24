@@ -74,6 +74,30 @@ export taken during a save can catch one page a version older or newer than
 its neighbours. Locking every write in the application to avoid that would
 cost more than it buys.
 
+## As a static website
+
+Next to it, **As a static website (HTML)** downloads the public
+documentation as plain HTML files that need no DocuWaves to open: from a
+disk, a USB stick, an archive, or any web server.
+
+```
+index.html                         the projects
+style.css
+<project>/index.html               its categories and pages
+<project>/<category>/<page>.html
+<project>/assets/…                 its images
+```
+
+It contains exactly what an anonymous reader sees: published pages of
+projects that are not private, in each project's default version and the
+site's default language. Links between pages point at the exported files.
+Tables, task lists and callouts are rendered; diagrams and formulas stay as
+their source text, because drawing them needs JavaScript the static copy
+leaves out. There is no search.
+
+It is a copy to read, not a backup: the export above is the one to restore
+from.
+
 ## Restoring
 
 1. Start a container with the same `.env`.
