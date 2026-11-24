@@ -138,3 +138,6 @@ source:
 
 Switch **Where the pages come from** back to *Here, in the editor* in the
 project settings to edit the pages in DocuWaves again — until the next sync.
+
+To see a pull request's docs before the merge, build a
+[preview in CI](/p/docuwaves/pages/previews-for-pull-requests).

@@ -4,6 +4,12 @@ on the host (installer/docuwaves) -- or by hand:
     docker compose exec docuwaves python -m app.cli reset-password <username>
     docker compose exec docuwaves python -m app.cli users
     docker compose exec docuwaves python -m app.cli snapshot-db /data/snapshot.db
+    docker run --rm -v "$PWD/docs:/docs:ro" -v "$PWD/out:/out" ghcr.io/syntaxlab-dev/docuwaves \
+        python -m app.cli preview-site /docs /out/site.zip
+
+preview-site builds a docs folder into a static website the way DocuWaves
+would show it, without an instance: for a pull request's CI (see
+docs/bringing-docs-in/previews-for-pull-requests.md).
 
 reset-password reads the new password from standard input, never from the
 command line: an argument would sit in the shell history and in `ps` for
@@ -62,6 +68,72 @@ def snapshot_db(target: str) -> int:
     return 0
 
 
+def preview_site(docs_dir: str, target: str, name: str, summary: str = "") -> int:
+    """The docs folder as DocuWaves would publish it, built as a static
+    website ZIP (services/static_export.py) -- in a throwaway instance in a
+    temporary directory: its own content repository and index, no network,
+    no webhooks, no e-mail, nothing kept. The same import as a real sync
+    (services/docs_sync.py), so what the preview shows and warns about is
+    what the sync will do."""
+    import io
+    import json
+    import tempfile
+    import zipfile
+
+    from app.services import (
+        content_sync,
+        content_versions,
+        docs_sync,
+        git_content_repo,
+        importer,
+        projects_store,
+        session_secret,
+        static_export,
+    )
+
+    source = Path(docs_dir)
+    if not source.is_dir():
+        print(f"{docs_dir} is not a folder.", file=sys.stderr)
+        return 1
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as packed:
+        for file in sorted(source.rglob("*")):
+            relative = file.relative_to(source).as_posix()
+            if file.is_file() and not file.is_symlink() and importer.wanted_path(relative):
+                packed.write(file, relative)
+
+    with tempfile.TemporaryDirectory(prefix="docuwaves-preview-") as tmp:
+        settings.content_repo_path = str(Path(tmp) / "content-repo")
+        settings.content_repo_url = ""
+        settings.database_url = ""
+        settings.sqlite_path = str(Path(tmp) / "index.db")
+        settings.webhook_urls = ()
+        settings.smtp_host = ""
+        session_secret._SECRET_PATH = Path(tmp) / ".session_secret"
+        content_versions._cache = {}
+        db.init_schema()
+        git_content_repo.ensure_clone()
+        content_sync.full_sync()
+        projects_store.create_project(name, "preview", "", "", "", "preview")
+        try:
+            result = docs_sync.sync(buffer.getvalue(), "preview", "preview")
+        except (docs_sync.SyncError, importer.ImportError_) as exc:
+            print(f"The docs could not be read: {exc}", file=sys.stderr)
+            return 1
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        built = static_export.build(target)
+
+    warnings = result.get("warnings", [])
+    print(f"{built['pages']} pages built into {target}.")
+    for warning in warnings:
+        print(f"warning: {warning['source']}: {warning['message']}")
+    if summary:
+        Path(summary).write_text(
+            json.dumps({"pages": built["pages"], "warnings": warnings}, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -70,6 +142,11 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("users", help="list the accounts and their roles")
     snapshot = commands.add_parser("snapshot-db", help="copy the SQLite index consistently")
     snapshot.add_argument("target")
+    preview = commands.add_parser("preview-site", help="build a docs folder into a static website ZIP, no instance needed")
+    preview.add_argument("docs_dir")
+    preview.add_argument("target", help="the ZIP to write")
+    preview.add_argument("--name", default="Documentation", help="the project's name on the site")
+    preview.add_argument("--summary", default="", help="also write pages and warnings as JSON to this file")
     args = parser.parse_args(argv)
 
     if args.command == "reset-password":
@@ -77,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         return reset_password(args.username, password)
     if args.command == "users":
         return list_users()
+    if args.command == "preview-site":
+        return preview_site(args.docs_dir, args.target, args.name, args.summary)
     return snapshot_db(args.target)
 
 
