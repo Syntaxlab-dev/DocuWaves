@@ -492,7 +492,7 @@ def public_changelog(
     "/site",
     summary="This instance's branding",
     description="Name, tagline, logo/favicon URLs, accent colour and footer, read from content/_site.yml in "
-    "the content repo (see the README's 'Site branding'). Every field is filled in with a default, so a "
+    "the content repo (see docs/appearance/branding-this-instance.md). Every field is filled in with a default, so a "
     "missing, empty or malformed _site.yml answers exactly like an unbranded instance rather than failing.",
 )
 def public_get_site():
@@ -516,8 +516,8 @@ def public_get_site():
 @router.get(
     "/assets/{project_slug}/{asset_path:path}",
     summary="Serve an image from a project's content directory",
-    description="Images live in the content repo next to the Markdown that uses them (see the README's "
-    "'Content repo structure'). `asset_path` is relative to the project's own directory -- the frontend "
+    description="Images live in the content repo next to the Markdown that uses them (see "
+    "docs/the-content-repository/the-file-layout.md). `asset_path` is relative to the project's own directory -- the frontend "
     "resolves a page's relative Markdown src against the page's directory first, so `../assets/x.png` on a "
     "page arrives here as `assets/x.png`. A project's or category's cover image (`image_url` on those "
     "objects) is served from here too, resolved the same way and by the same code.",

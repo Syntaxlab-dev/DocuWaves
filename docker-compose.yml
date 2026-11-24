@@ -14,7 +14,7 @@ services:
       # created once, not on every restart.
       # Without CONTENT_REPO_URL set (the default) that repository has no
       # remote, so THIS DIRECTORY IS THE ONLY COPY OF YOUR DOCUMENTATION:
-      # back it up, or add a remote -- see the README's "Setup".
+      # back it up, or add a remote -- see docs/running-it/backups-and-updates.md.
       - ./data:/data
 
   # Optional, only started with `docker compose --profile postgres up -d`.

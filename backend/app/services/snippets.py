@@ -33,7 +33,7 @@ search snippets, the page description, the chat's sources, webhook
 summaries. The content repo, the editor and the MCP read tool keep the
 SOURCE, because that is what gets edited: resolving it there would mean the
 next save wrote `2.0` over every `{{version}}`. What search MATCHES is also
-still the source text (see README, "Snippets and variables").
+still the source text (see docs/writing-documentation/snippets-and-variables.md).
 """
 import logging
 import re

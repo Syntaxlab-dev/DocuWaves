@@ -319,7 +319,7 @@ def _dispatch(message: dict, token: dict) -> JSONResponse | None:
     description="Lets an AI assistant read this instance's documentation, and write it when the token allows. "
     "Requires an API token: `Authorization: Bearer dwt_...` (create one under 'API tokens' in the admin area). "
     "An admin session is deliberately NOT accepted here. Implements initialize, ping, tools/list and tools/call; "
-    "see the README's 'MCP endpoint' section.",
+    "see docs/ai-assistants/the-mcp-endpoint.md.",
 )
 async def mcp_endpoint(request: Request):
     # Set by AuthGuardMiddleware, which is the only way to reach this route.

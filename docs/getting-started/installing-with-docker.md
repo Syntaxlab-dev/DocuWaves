@@ -85,6 +85,10 @@ docker compose up -d
 
 Do not point two DocuWaves instances at the same repository.
 
+On that start, the history you already have is pushed to the new remote in full, every commit from the first page on. From then on, saves push, merged pull requests are pulled back in on a timer, and **Sync now** in the admin area fetches immediately. Removing `CONTENT_REPO_URL` again is just as safe: the instance goes back to local mode with all of its history, and the stored push token is dropped from the repository's config.
+
+**If the remote is not empty and its history is unrelated to yours**, DocuWaves does nothing and says so. It won't merge the two, won't force-push over the remote, and won't clone over your local content. The instance keeps working locally, and the admin area's status bar names the two ways out: point `CONTENT_REPO_URL` at an empty repository instead, or, if the remote's content is the one to keep, delete `./data/content-repo` so it is cloned fresh, which discards what is in it.
+
 ## Changing settings later
 
 `.env` is read when the container is **created**, not when it is restarted. After editing it:

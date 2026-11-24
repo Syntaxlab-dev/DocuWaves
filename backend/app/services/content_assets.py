@@ -2,7 +2,7 @@
 rules around it, no git and no database (same split as content_files.py,
 which owns the Markdown/YAML side of the same clone).
 
-Convention (see the README's "Content repo structure" section):
+Convention (see docs/the-content-repository/the-file-layout.md):
 
     content/<project-slug>/assets/<filename>
     content/<project-slug>/<version>/assets/<filename>   (once versioned)

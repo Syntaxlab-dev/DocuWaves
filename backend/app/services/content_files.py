@@ -1,6 +1,6 @@
 """Reads and writes the actual Markdown/YAML files under the content repo's
-`content/` directory -- pure file I/O, no git and no database. See the
-project README's "Content repo structure" section for the on-disk
+`content/` directory -- pure file I/O, no git and no database. See
+docs/the-content-repository/the-file-layout.md for the on-disk
 convention this implements (also documented inline below, since that's the
 single source of truth a community contributor would read this file to
 understand):
