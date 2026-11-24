@@ -67,7 +67,7 @@ export function PrintBook() {
       if (!root) return;
       root.querySelectorAll<HTMLImageElement>("img[loading='lazy']").forEach((img) => (img.loading = "eager"));
       const images = Array.from(root.querySelectorAll("img"));
-      const done = !root.querySelector(".mermaid-pending") && images.every((img) => img.complete);
+      const done = !root.querySelector(".mermaid-pending, .render-pending") && images.every((img) => img.complete);
       if (done) {
         setFinished(true);
         window.clearInterval(timer);

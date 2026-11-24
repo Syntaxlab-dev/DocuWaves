@@ -32,7 +32,8 @@
     "remark-parse": "^11.0.0",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
