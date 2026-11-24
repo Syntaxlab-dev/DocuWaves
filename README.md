@@ -98,6 +98,9 @@ in `frontend/`. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to send a
 change, and [SECURITY.md](SECURITY.md) for reporting a vulnerability. A pull
 request that changes a feature should change its page in [`docs/`](docs/) too.
 
+What is planned next is in [ROADMAP.md](ROADMAP.md). Questions and ideas are
+welcome in [Discussions](https://github.com/Syntaxlab-dev/DocuWaves/discussions).
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

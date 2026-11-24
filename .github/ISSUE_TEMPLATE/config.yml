@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
+  - name: Questions and ideas
+    url: https://github.com/Syntaxlab-dev/DocuWaves/discussions
+    about: Ask how to do something, share what you built, or suggest what comes next.
   - name: Documentation
     url: https://docs.docuwaves.app
     about: Installation, configuration and every feature, explained.

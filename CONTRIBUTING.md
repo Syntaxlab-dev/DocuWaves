@@ -5,6 +5,16 @@ error messages, translations, documentation of the tool. If you run DocuWaves
 and something annoys you, that's exactly the kind of thing worth opening an
 issue about.
 
+## Where to start
+
+- [ROADMAP.md](ROADMAP.md) lists what is planned, phase by phase. Anything on
+  it is fair game; say in its issue or in Discussions that you're on it.
+- Issues labelled [`good first issue`](https://github.com/Syntaxlab-dev/DocuWaves/labels/good%20first%20issue)
+  are small, self-contained and explain where in the code to look.
+- Questions ("how do I...", "would this make sense...") belong in
+  [Discussions](https://github.com/Syntaxlab-dev/DocuWaves/discussions)
+  rather than in issues.
+
 ## Before you build something big
 
 Open an issue first and describe what you have in mind. Not as a formality —
