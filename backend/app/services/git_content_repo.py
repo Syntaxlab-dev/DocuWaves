@@ -66,6 +66,16 @@ log = logging.getLogger("docuwaves")
 _lock = threading.Lock()
 _repo: git.Repo | None = None
 
+# GitPython reads objects (HEAD's commit, a blob at a commit) through ONE
+# long-lived `git cat-file --batch` process per Repo, and that process is a
+# request/response pipe with no locking of its own: two threads asking at once
+# interleave their requests and both wait forever for an answer. Page views run
+# in a thread pool, so every object read goes through this lock. It is held
+# only for the read itself (microseconds against a warm cat-file), never across
+# a `git log` subprocess, and it is separate from _lock so a read never waits
+# for a whole write. Reentrant because a holder may call a helper that takes it.
+_odb_lock = threading.RLock()
+
 # What this repository's remote turned out to be, as far as the last
 # reconciliation could work out (see _reconcile_remote). Read by status() for
 # the admin panel, by commit_and_push() to decide whether a push is even a
@@ -214,7 +224,8 @@ def _open_existing(path: Path) -> git.Repo | None:
         ) from exc
 
     try:
-        _ = repo.head.commit  # touch it -- raises on a half-finished clone or an empty repository
+        with _odb_lock:
+            _ = repo.head.commit  # touch it -- raises on a half-finished clone or an empty repository
     except Exception:
         if has_remote():
             shutil.rmtree(path, ignore_errors=True)
@@ -239,10 +250,11 @@ def _initial_commit(repo: git.Repo) -> None:
     keep_file = Path(repo.working_tree_dir) / ".gitkeep"
     keep_file.write_text("")
     repo.index.add([".gitkeep"])
-    repo.index.commit(
-        "Initial commit (DocuWaves content repository)",
-        author=git.Actor("DocuWaves", "docuwaves@local"),
-    )
+    with _odb_lock:
+        repo.index.commit(
+            "Initial commit (DocuWaves content repository)",
+            author=git.Actor("DocuWaves", "docuwaves@local"),
+        )
 
 
 def _clone_remote(path: Path) -> git.Repo:
@@ -377,7 +389,7 @@ def _reconcile_remote(repo: git.Repo) -> None:
     try:
         # merge-base exits non-zero with no output when the two commits share
         # no ancestor at all -- which is the entire question being asked here.
-        repo.git.merge_base(repo.head.commit.hexsha, "FETCH_HEAD")
+        repo.git.merge_base(_head_hexsha(repo), "FETCH_HEAD")
     except git.GitCommandError:
         message = _UNRELATED_MESSAGE.format(
             url=settings.content_repo_url, branch=branch, path=settings.content_repo_path
@@ -403,9 +415,9 @@ def _is_behind(repo: git.Repo) -> bool:
     rewrite anything. False both for "in step" and for "diverged"."""
     try:
         remote_head = repo.git.rev_parse("FETCH_HEAD").strip()
-        if remote_head == repo.head.commit.hexsha:
+        if remote_head == _head_hexsha(repo):
             return False
-        repo.git.merge_base("--is-ancestor", remote_head, repo.head.commit.hexsha)
+        repo.git.merge_base("--is-ancestor", remote_head, _head_hexsha(repo))
     except git.GitCommandError:
         return False
     return True
@@ -570,7 +582,8 @@ def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
         if not repo.is_dirty(index=True, working_tree=False) and not repo.untracked_files:
             return  # nothing actually changed (e.g. re-saving identical content)
 
-        repo.index.commit(message, author=_actor(author_name), committer=git.Actor("DocuWaves", "docuwaves@local"))
+        with _odb_lock:  # commit reads the parent through the shared cat-file process
+            repo.index.commit(message, author=_actor(author_name), committer=git.Actor("DocuWaves", "docuwaves@local"))
 
         if _mode == REMOTE:
             _push_with_retry(repo)
@@ -631,12 +644,13 @@ def status() -> dict:
     what says so."""
     try:
         repo = ensure_clone()
-        head = repo.head.commit
-        last_commit = {
-            "sha": head.hexsha[:8],
-            "message": head.message.strip().splitlines()[0],
-            "date": head.committed_datetime.isoformat(),
-        }
+        with _odb_lock:
+            head = repo.head.commit
+            last_commit = {
+                "sha": head.hexsha[:8],
+                "message": head.message.strip().splitlines()[0],
+                "date": head.committed_datetime.isoformat(),
+            }
     except (GitContentError, ValueError, git.GitError) as exc:
         return {
             "configured": True,
@@ -718,15 +732,22 @@ def _read_repo() -> git.Repo | None:
     right now), or a repo that holds no commits at all."""
     try:
         repo = ensure_clone()
-        _ = repo.head.commit  # an initialized but commit-less repo has no history to read
+        _head_hexsha(repo)  # an initialized but commit-less repo has no history to read
         return repo
     except (GitContentError, ValueError, git.GitError):
         return None
 
 
+def _head_hexsha(repo: git.Repo) -> str:
+    """HEAD's sha, read under _odb_lock (see there). Raises ValueError on a
+    repository with no commits, as `repo.head.commit` does."""
+    with _odb_lock:
+        return repo.head.commit.hexsha
+
+
 def _cached(repo: git.Repo, key: tuple, compute):
     global _read_cache_head
-    head = repo.head.commit.hexsha
+    head = _head_hexsha(repo)
     if head != _read_cache_head:
         _read_cache.clear()
         _read_cache_head = head
@@ -969,7 +990,7 @@ def head_sha() -> str:
     """HEAD's full sha, or "" with no repo/commits -- a cache key for readers
     of history that live outside this module (see services/changelog.py)."""
     repo = _read_repo()
-    return repo.head.commit.hexsha if repo is not None else ""
+    return _head_hexsha(repo) if repo is not None else ""
 
 
 def recent_file_changes(prefix: str, max_commits: int = RECENT_COMMITS) -> list[dict]:
@@ -1068,6 +1089,8 @@ def blob_text(sha: str, path: str) -> str | None:
     if repo is None or not sha:
         return None
     try:
-        return (repo.commit(sha).tree / path).data_stream.read().decode("utf-8", errors="replace")
+        with _odb_lock:
+            data = (repo.commit(sha).tree / path).data_stream.read()
+        return data.decode("utf-8", errors="replace")
     except (KeyError, ValueError, git.GitError):
         return None
