@@ -384,6 +384,9 @@ export interface SearchResult {
    *  when the search was scoped to a version, each project's default
    *  otherwise. */
   version: string;
+  /** "meaning": found by semantic search alone -- the reader's words may not
+   *  be in it, and the snippet is the section that matched. */
+  match?: "meaning";
 }
 
 /** viewer reads the admin area, editor writes the documentation, admin also
@@ -641,6 +644,16 @@ export interface Diagnostics {
     default_language: string;
     sync_interval_seconds: number;
     chat: ChatStatus;
+    /** Finding pages by meaning (backend services/semantic_search.py). */
+    semantic_search?: {
+      enabled: boolean;
+      model: string;
+      indexing: boolean;
+      chunks: number;
+      embedded: number;
+      last_error: string;
+      last_error_at: string;
+    };
     error?: string;
   };
   content: {

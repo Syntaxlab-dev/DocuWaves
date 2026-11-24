@@ -178,6 +178,19 @@ export function AdminDiagnosticsCard({ onClose }: { onClose: () => void }) {
                   label={t("diag.chat")}
                   value={report.instance.chat?.enabled ? report.instance.chat.model : t("diag.chatOff")}
                 />
+                <Row
+                  label={t("diag.semantic")}
+                  value={
+                    report.instance.semantic_search?.enabled
+                      ? `${report.instance.semantic_search.model} · ${t("diag.semanticIndexed")
+                          .replace("{done}", String(report.instance.semantic_search.embedded))
+                          .replace("{total}", String(report.instance.semantic_search.chunks))}` +
+                        (report.instance.semantic_search.last_error
+                          ? ` · ${report.instance.semantic_search.last_error}`
+                          : "")
+                      : t("diag.chatOff")
+                  }
+                />
               </Section>
 
               <Section title={t("diag.content")}>

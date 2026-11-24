@@ -68,6 +68,19 @@ def get_connection():
 
 
 _SQLITE_SCHEMA = [
+    # Semantic search (services/semantic_search.py): one vector per chunk of
+    # text, keyed by a hash of the model and the text -- so an unchanged
+    # paragraph is never sent to the embeddings endpoint twice, a reindex
+    # (which drops the content tables) costs no request at all, and a page
+    # edit only re-embeds the chunk that changed. Not a content table: it is
+    # expensive to rebuild, and a stale row is merely unused.
+    """
+    CREATE TABLE IF NOT EXISTS embeddings (
+        hash TEXT PRIMARY KEY,
+        vector BLOB NOT NULL,
+        used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS auth (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -426,6 +439,14 @@ _SQLITE_SCHEMA = [
 ]
 
 _POSTGRES_SCHEMA = [
+    # See the SQLite schema above (services/semantic_search.py).
+    """
+    CREATE TABLE IF NOT EXISTS embeddings (
+        hash TEXT PRIMARY KEY,
+        vector BYTEA NOT NULL,
+        used_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
     """
     CREATE TABLE IF NOT EXISTS auth (
         id SERIAL PRIMARY KEY,

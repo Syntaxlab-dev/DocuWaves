@@ -34,6 +34,7 @@ from app.services import (
     content_versions,
     db,
     doc_chat,
+    semantic_search,
     git_content_repo,
     preview_links_store,
     page_feedback_store,
@@ -75,6 +76,9 @@ def _instance() -> dict:
         # see whether it took. Never the API key -- `enabled` is the whole
         # truth that is theirs to read here.
         "chat": doc_chat.status(),
+        # Same reasoning: env-var configured, so this is where an operator
+        # sees whether it took, how far indexing got, and what last failed.
+        "semantic_search": semantic_search.status(),
     }
 
 

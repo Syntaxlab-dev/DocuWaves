@@ -52,6 +52,7 @@ from app.services import (
     pages_store,
     preview_links_store,
     projects_store,
+    semantic_search,
     site_languages,
 )
 from app.settings import settings
@@ -302,6 +303,9 @@ def search(arguments: dict, _token: dict) -> dict:
         # same page would come back once per frozen release.
         version = _version(project, arguments.get("version"))
     results = pages_store.search(query, limit=limit, language=language, project_id=project_id, version=version, include_private=True)
+    # By meaning too, when configured -- the same retrieval the built-in
+    # chat uses (services/semantic_search.py).
+    results = semantic_search.merge(results, query, language, project_id, version, True, limit=limit)
     return {
         "query": query,
         "count": len(results),

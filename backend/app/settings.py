@@ -106,6 +106,17 @@ class Settings:
     # check included -- stops answering until they come back.
     chat_max_concurrent: int = max(1, int(os.environ.get("CHAT_MAX_CONCURRENT", "4")))
 
+    # Semantic search (services/semantic_search.py): finding pages by what
+    # they mean, not only by the words in them. Off unless BASE and MODEL are
+    # set -- same "no outbound request unless an operator asks for one" rule
+    # as the chat above. The endpoint is OpenAI-compatible, POST
+    # {base}/embeddings, which a local Ollama (http://host:11434/v1 with e.g.
+    # nomic-embed-text), llama.cpp, OpenAI and most providers all speak. The
+    # key is optional: a local server usually wants none.
+    embeddings_api_base: str = os.environ.get("EMBEDDINGS_API_BASE", "").strip().rstrip("/")
+    embeddings_model: str = os.environ.get("EMBEDDINGS_MODEL", "").strip()
+    embeddings_api_key: str = os.environ.get("EMBEDDINGS_API_KEY", "").strip()
+
     # A one-time code the first-run setup asks for (routers/auth.py). The
     # installer generates one and prints it, so that between `docker compose
     # up` and the admin's first visit nobody else who finds the address can

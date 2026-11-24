@@ -49,7 +49,7 @@ import threading
 
 import requests
 
-from app.services import pages_store, projects_store, prose, search_suggest, snippets
+from app.services import pages_store, projects_store, prose, search_suggest, semantic_search, snippets
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -182,6 +182,12 @@ def find_sources(
     # as the search box (services/search_suggest.py).
     corrected = search_suggest.correct(question)
     hits = (pages_store.search(corrected, **scope) if corrected else []) or pages_store.search(question, **scope)
+    # A question is phrased the way people talk, not the way the page is
+    # written -- exactly where finding pages by meaning helps most (off
+    # unless configured, services/semantic_search.py).
+    hits = semantic_search.merge(
+        hits, question, language, project_id, scope["version"], include_private, limit=_SOURCE_LIMIT
+    )
     return hits[:_SOURCE_LIMIT]
 
 

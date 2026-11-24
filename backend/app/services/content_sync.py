@@ -144,6 +144,12 @@ def _full_sync() -> None:
     # is nothing on disk to reconcile against", and stamping that as a
     # successful sync would report an index as current that was never built.
     _last_sync = datetime.now(timezone.utc).isoformat()
+    # The meaning index catches up in the background (a no-op unless
+    # semantic search is configured). Imported here: it reads the index this
+    # module writes, and a module-level import would make them a cycle.
+    from app.services import semantic_search
+
+    semantic_search.schedule()
 
 
 def _placeholder() -> str:

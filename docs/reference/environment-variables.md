@@ -61,6 +61,17 @@ every question, so the feature stays off until the third is filled in. An
 instance that sets none of them makes no request to any model, ever. See
 [The documentation chat](/p/docuwaves/pages/the-documentation-chat).
 
+## Search by meaning
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `EMBEDDINGS_API_BASE` | *(empty — off)* | Base URL of an **OpenAI-compatible** embeddings endpoint, i.e. one that answers `POST {base}/embeddings`. A local Ollama is `http://host:11434/v1` |
+| `EMBEDDINGS_MODEL` | *(empty)* | The embedding model, e.g. `nomic-embed-text` |
+| `EMBEDDINGS_API_KEY` | *(empty)* | Sent as `Authorization: Bearer` when set. A local server usually needs none |
+
+Off until both the base and the model are set. See
+[Search by meaning](/p/docuwaves/pages/search-by-meaning).
+
 ## Webhooks
 
 | Variable | Default | Purpose |

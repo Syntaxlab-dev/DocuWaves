@@ -44,6 +44,7 @@ from app.services import (
     changelog,
     search_gaps,
     search_suggest,
+    semantic_search,
     snippets,
     visibility,
 )
@@ -574,6 +575,16 @@ def public_search(
     results = pages_store.search(
         q, language=language, project_id=project_id, version=resolved, include_private=include_private
     )
+
+    def with_meaning(hits: list[dict]) -> list[dict]:
+        # Pages about the question that do not use its words (off unless
+        # configured, see services/semantic_search.py). Not for search as
+        # you type: an embedding request per keystroke is a cost nobody
+        # asked for, and the results page is where a reader reads.
+        if not record:
+            return hits
+        return semantic_search.merge(hits, q, language, project_id, resolved, include_private)
+
     # A misspelled word matches nothing (see services/search_suggest.py).
     # When the query has one, the corrected query runs instead -- it can
     # only find more, never less -- and the response says what was searched,
@@ -584,9 +595,10 @@ def public_search(
             corrected, language=language, project_id=project_id, version=resolved, include_private=include_private
         )
         if fixed:
-            return {"results": fixed, "corrected": corrected}
-    # Found nothing even with the correction: a gap. Not for a signed-in
-    # account or a private project -- see services/search_gaps.py.
+            return {"results": with_meaning(fixed), "corrected": corrected}
+    results = with_meaning(results)
+    # Found nothing even with the correction (or by meaning): a gap. Not for
+    # a signed-in account or a private project -- see services/search_gaps.py.
     if record and not results and not include_private and not private_scope:
         search_gaps.record(q, language, project or "", _client_key(request))
     return {"results": results, "corrected": None}

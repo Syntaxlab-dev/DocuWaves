@@ -1129,33 +1129,76 @@ def search(
     # The words to build each snippet around, worked out once for the whole
     # result set rather than per row.
     terms = prose.terms_of(query)
+    return [_result(r, priority, terms) for r in rows]
 
-    results = []
-    for r in rows:
-        results.append(
-            {
-                "page_id": r[0],
-                "title": r[1],
-                "page_slug": r[2],
-                # A window around where the reader's words actually appear,
-                # as prose. It used to be the page's first 220 characters,
-                # which for a documentation page is its opening sentence --
-                # the same text for every hit in that page, and no evidence
-                # of why it matched.
-                "snippet": prose.snippet(prose.to_prose(snippets.resolve(r[3] or "", r[5], r[11], r[8])), terms),
-                # The project/category names come out of the same rows the
-                # tiles and the sidebar use, so a hit is labelled with the
-                # names the reader has been seeing, not the default
-                # language's.
-                "project_name": site_languages.pick(r[4], site_languages.parse_i18n(r[9]), priority[0]),
-                "project_slug": r[5],
-                "category_name": site_languages.pick(r[6], site_languages.parse_i18n(r[10]), priority[0]),
-                "category_slug": r[7],
-                "language": r[8],
-                "fallback": r[8] != priority[0],
-                # Which version this hit is in, so the result link lands in
-                # the same docs the reader is standing in.
-                "version": r[11],
-            }
-        )
-    return results
+
+def _result(r, priority: list[str], terms) -> dict:
+    """One search hit from a row of _SEARCH_COLUMNS."""
+    return {
+        "page_id": r[0],
+        "title": r[1],
+        "page_slug": r[2],
+        # A window around where the reader's words actually appear,
+        # as prose. It used to be the page's first 220 characters,
+        # which for a documentation page is its opening sentence --
+        # the same text for every hit in that page, and no evidence
+        # of why it matched.
+        "snippet": prose.snippet(prose.to_prose(snippets.resolve(r[3] or "", r[5], r[11], r[8])), terms),
+        # The project/category names come out of the same rows the
+        # tiles and the sidebar use, so a hit is labelled with the
+        # names the reader has been seeing, not the default
+        # language's.
+        "project_name": site_languages.pick(r[4], site_languages.parse_i18n(r[9]), priority[0]),
+        "project_slug": r[5],
+        "category_name": site_languages.pick(r[6], site_languages.parse_i18n(r[10]), priority[0]),
+        "category_slug": r[7],
+        "language": r[8],
+        "fallback": r[8] != priority[0],
+        # Which version this hit is in, so the result link lands in
+        # the same docs the reader is standing in.
+        "version": r[11],
+    }
+
+
+# The columns every search query selects, in the order _result reads them.
+_SEARCH_COLUMNS = (
+    "p.id, p.title, p.slug, p.markdown_content, pr.name, pr.slug, c.name, c.slug, "
+    "p.language, pr.name_i18n, c.name_i18n, p.version"
+)
+
+
+def search_pool(
+    language: str | None = None,
+    project_id: int | None = None,
+    version: str | None = None,
+    include_private: bool = False,
+) -> list[tuple]:
+    """Every page a search with these arguments may return, as raw rows of
+    _SEARCH_COLUMNS -- the same published, language, version and privacy
+    rules as search(), without the words. What the semantic search ranks
+    by meaning (services/semantic_search.py)."""
+    private_filter = "" if include_private else "AND pr.private = 0"
+    priority = _priority(language)
+    language_params = (*priority, *priority)
+    pairs = [(project_id, version or "")] if project_id is not None and version is not None else _default_version_pairs()
+    if not pairs:
+        return []
+    version_params = tuple(value for pair in pairs for value in pair)
+    placeholder, true_literal = ("%s", "TRUE") if db.is_postgres() else ("?", "1")
+    sql = f"""
+        SELECT {_SEARCH_COLUMNS}
+        FROM pages p
+        JOIN projects pr ON pr.id = p.project_id
+        JOIN categories c ON c.id = p.category_id
+        WHERE p.published = {true_literal} {private_filter}
+          {_language_filter(priority, placeholder, true_literal)}
+{_version_filter(pairs, placeholder)}
+    """
+    with db.get_connection() as conn:
+        return [tuple(r) for r in conn.execute(sql, (*language_params, *version_params)).fetchall()]
+
+
+def result_row(row: tuple, language: str | None, query: str) -> dict:
+    """A row from search_pool() as a search hit, its snippet built around
+    `query`'s words when they occur in it."""
+    return _result(row, _priority(language), prose.terms_of(query))

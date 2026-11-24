@@ -181,6 +181,16 @@ export function SearchResults() {
             <div className="flex items-center font-medium">
               {r.title}
               {r.fallback && <FallbackBadge language={r.language} />}
+              {/* Found by what it is about rather than by the reader's
+                  words: say so, or the result looks like a mistake. */}
+              {r.match === "meaning" && (
+                <span
+                  className="ml-2 rounded-full border border-[var(--border)] px-2 py-0.5 text-xs font-normal text-[var(--muted)]"
+                  title={t("search.byMeaningHint")}
+                >
+                  {t("search.byMeaning")}
+                </span>
+              )}
             </div>
             <div className="mt-1 text-sm text-[var(--muted)]">
               <Highlighted text={r.snippet} terms={terms} />
