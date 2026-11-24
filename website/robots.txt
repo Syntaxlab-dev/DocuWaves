@@ -1,0 +1,8 @@
+# Marketing-Seite -- eine einzige oeffentliche Seite, nichts auszuschliessen.
+# Achtung: enconf legt beim Anlegen einer Website hier eine robots.txt mit
+# 'Disallow: /' an, und der vhost liefert diese Datei direkt aus. Nach
+# Panel-Reparaturen also pruefen, ob sie wieder ueberschrieben wurde.
+User-agent: *
+Allow: /
+
+Sitemap: https://docuwaves.app/sitemap.xml
