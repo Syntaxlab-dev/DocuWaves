@@ -660,6 +660,10 @@ export interface ExportSummary {
   history: boolean;
 }
 
+/** What the editor's writing help can do with a selection (backend
+ *  services/writing_help.py). */
+export type WritingAction = "rephrase" | "shorten" | "simplify" | "fix" | "summarize";
+
 /** Whether an operator has configured a model for the documentation chat,
  *  and which one. Carries no key and no endpoint secret -- what it says is
  *  what a reader is entitled to know before typing a question. Absent on
@@ -1194,6 +1198,11 @@ export const api = {
       "/api/admin/search-gaps/draft",
       { method: "POST", body: JSON.stringify({ query, project_slug: projectSlug, language }) },
     ),
+  adminWritingHelp: (text: string, action: WritingAction, projectSlug: string, language: string) =>
+    request<{ text: string }>("/api/admin/writing-help", {
+      method: "POST",
+      body: JSON.stringify({ text, action, project_slug: projectSlug, language }),
+    }),
   adminForgetSearchGap: (id: number) =>
     request<{ cleared: number }>(`/api/admin/search-gaps/${id}`, { method: "DELETE" }),
   adminClearSearchGaps: () => request<{ cleared: number }>("/api/admin/search-gaps", { method: "DELETE" }),

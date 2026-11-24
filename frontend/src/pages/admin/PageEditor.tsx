@@ -30,6 +30,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownView, resolveImageSrc } from "@/components/MarkdownView";
 import type { VisualEditorHandle } from "@/components/visual/VisualEditor";
 import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
+import { WritingHelp } from "@/components/WritingHelp";
 import { PresenceBanner } from "@/components/PresenceBanner";
 import { ReviewPanel } from "@/components/ReviewWorkflow";
 import { useEditingPresence } from "@/lib/presence";
@@ -1226,6 +1227,28 @@ export function PageEditor({
               insertables={loadInsertables}
             />
           </Suspense>
+        )}
+        {/* The Markdown editor only: its selection is plain offsets into the
+            text, which is what the suggestion replaces. */}
+        {tab === "edit" && (editorMode === "markdown" || visualCheck === "lossy") && !readOnly && site.chat?.enabled && (
+          <WritingHelp
+            projectSlug={projectSlug}
+            language={multilingual ? language : site.default_language}
+            getSelection={() => {
+              const { from, to } = caretRange();
+              return { from, to, text: content.slice(from, to) };
+            }}
+            onApply={(selection, text) => {
+              // Only when the text there is still what was sent: typing
+              // in between must not be overwritten by a stale suggestion.
+              if (content.slice(selection.from, selection.to) !== selection.text) {
+                toast.error(t("writing.changed"));
+                return;
+              }
+              replaceRange(selection.from, selection.to, text);
+              focusAt(selection.from + text.length);
+            }}
+          />
         )}
         {tab === "edit" && (editorMode === "markdown" || visualCheck === "lossy") && (
           <Textarea

@@ -66,6 +66,7 @@ from app.services import (
     snippets,
     static_export,
     visibility,
+    writing_help,
 )
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -2005,6 +2006,32 @@ def admin_draft_from_gap(body: GapDraftIn, request: Request):
     except doc_chat.ChatError as exc:
         code = str(exc)
         status = 409 if code == "not_configured" else 400 if code == "empty_question" else 502
+        raise HTTPException(status_code=status, detail=code) from exc
+
+
+class WritingHelpIn(BaseModel):
+    text: str = Field(max_length=writing_help.MAX_TEXT * 2)
+    action: str
+    project_slug: str = ""
+    language: str = ""
+
+
+@router.post(
+    "/writing-help",
+    summary="Rephrase, shorten, simplify, correct or summarise a selection with AI",
+    description="Uses the documentation chat's model on the selected text only, with no facts added "
+    "(services/writing_help.py). `action` is rephrase, shorten, simplify, fix or summarize. Nothing is saved: "
+    "the editor shows the suggestion and the author decides. 409 `not_configured` without a chat model, "
+    "400 for an empty or too long text or an unknown action, 502 when the model fails.",
+)
+def admin_writing_help(body: WritingHelpIn, request: Request):
+    project_access.require_write(request, body.project_slug or None)
+    language = body.language or site_languages.default_language()
+    try:
+        return {"text": writing_help.rewrite(body.text, body.action, language)}
+    except doc_chat.ChatError as exc:
+        code = str(exc)
+        status = 409 if code == "not_configured" else 400 if code in ("empty_question", "unknown_action", "too_long") else 502
         raise HTTPException(status_code=status, detail=code) from exc
 
 
