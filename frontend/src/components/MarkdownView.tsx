@@ -9,6 +9,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { GlossaryTerm } from "@/components/GlossaryTerm";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
 import { Tabs } from "@/components/Tabs";
+import { remarkBlocks } from "@/lib/blocks";
 import { remarkCallouts, type CalloutKind } from "@/lib/callouts";
 import { rehypeGlossary, type GlossaryEntry } from "@/lib/glossary";
 import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
@@ -160,7 +161,8 @@ export function MarkdownView({
         // which matters because these pages are also printed.
         // remarkCallouts: GitHub's `> [!WARNING]` boxes, see lib/callouts.ts.
         // remarkTabs: `<!-- tabs -->` groups, see lib/tabs.ts.
-        remarkPlugins={[remarkGfm, remarkMath, remarkTabs, remarkCallouts]}
+        // remarkBlocks: steps, cards and badges, see lib/blocks.ts.
+        remarkPlugins={[remarkGfm, remarkMath, remarkTabs, remarkCallouts, remarkBlocks]}
         // Highlighting and KaTeX: see lazyRehype above.
         rehypePlugins={rehypePlugins}
         urlTransform={urlTransform}
