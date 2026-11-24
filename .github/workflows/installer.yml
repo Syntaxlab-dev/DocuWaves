@@ -100,6 +100,30 @@ jobs:
           test "$(login "$pw2")" = 200
           test "$(login "$pw3")" = 401
 
+      - name: Off-site copies to S3 (rclone serve s3 as the storage)
+        run: |
+          # An S3 endpoint on this runner: rclone's own S3 server, from the
+          # same pinned image the command uses; the bucket is a directory.
+          mkdir -p "$RUNNER_TEMP/s3/backups"
+          docker run -d --name s3 --network host -v "$RUNNER_TEMP/s3:/data" rclone/rclone:1.68.2 \
+            serve s3 /data --addr 127.0.0.1:9000 --auth-key ci-access,ci-secret-12345
+          for _ in $(seq 30); do curl -s -o /dev/null http://127.0.0.1:9000/ && break; sleep 1; done
+          sudo sh -c 'umask 077; printf "%s\n" OFFSITE_TARGET=s3://backups/dw OFFSITE_S3_ENDPOINT=http://127.0.0.1:9000 \
+            OFFSITE_S3_ACCESS_KEY=ci-access OFFSITE_S3_SECRET_KEY=ci-secret-12345 OFFSITE_PASSPHRASE=ci-passphrase \
+            > /opt/docuwaves/offsite.env'
+          sudo docuwaves offsite test
+          sudo docuwaves backup
+          name=$(sudo docuwaves offsite list | grep -o 'docuwaves-[0-9]*-[0-9]*\.tar\.gz\.gpg' | tail -n 1)
+          test -n "$name"
+          # What the storage holds is ciphertext, not a tar.gz.
+          sudo file "$RUNNER_TEMP/s3/backups/dw/$name" | grep -qi encrypted
+          sudo sh -c 'rm -f /opt/docuwaves/backups/*.tar.gz'
+          sudo docuwaves offsite fetch "$name"
+          sudo docuwaves restore "/opt/docuwaves/backups/$name" --yes
+          curl -fsS "$BASE/health"
+          sudo rm -f /opt/docuwaves/offsite.env
+          docker rm -f s3
+
       - name: update, channel, domain
         run: |
           sudo DOCUWAVES_SKIP_PULL=1 docuwaves update
