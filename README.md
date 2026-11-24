@@ -72,7 +72,8 @@ later".
   no JavaScript, so pasting a link to your installation guide shows *that
   page*, not the app shell. Plus `/sitemap.xml` and `/robots.txt` (see
   "Search engines and link previews").
-- **Single admin account** — password login, or single sign-on via any
+- **Accounts with four roles** — Reader, Read, Write and Manage (see
+  "Accounts and roles"); password login, or single sign-on via any
   standard OIDC provider (Authentik, Keycloak, Authelia, Zitadel, ...).
 - **An AI assistant can read and write the docs** — generate an API token
   in the admin UI, hand it to Claude (or anything else that speaks MCP),
@@ -93,13 +94,24 @@ a feature should change its page there too.
 
 ## Setup
 
-No account anywhere, no repository to create first, no token to mint:
+On a fresh Linux server, the installer does everything below in one
+command, with HTTPS (Caddy + Let's Encrypt), nightly backups and the
+`docuwaves` command — see
+[Installing with the installer](https://docs.docuwaves.app/p/docuwaves/pages/installing-with-the-installer):
 
-1. Clone this repo and `cd` into it.
+```bash
+curl -fsSL https://get.docuwaves.app | sudo sh
+```
+
+By hand — no account anywhere, no repository to create first, no token to
+mint:
+
+1. Clone this repo, `cd` into it, and `cp .env.example .env` (every line in
+   it is commented out; Compose only needs the file to exist).
 2. `docker compose up -d --build`
 3. Open `http://<your-server>:8091` — the first thing you'll see is the
-   setup screen. Pick a username and password; this becomes the one admin
-   account. (On a server the internet can reach, set `SETUP_TOKEN` in
+   setup screen. Pick a username and password; this becomes the first
+   administrator account. (On a server the internet can reach, set `SETUP_TOKEN` in
    `.env` first, so that only someone with that code can do this — see
    "The first run" in the docs.)
 4. In the admin area, add a project, add a category to it, add a page,

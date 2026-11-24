@@ -36,7 +36,7 @@ This is the reason the content is in Git at all. Someone with no account on your
 Tell contributors three things:
 
 1. **Slugs are addresses.** A file's name is the page's URL. Renaming a published page breaks links to it.
-2. **`published: false` really is invisible.** A merged draft is still a draft; it needs the flag flipped to appear.
+2. **`published: true` really is invisible.** A merged draft is still a draft; it needs the flag flipped to appear.
 3. **A page slug is unique per project, not per category.** Two categories in the same project cannot both hold `installation.md`. If that ever happens, the first one wins, the second is skipped, and the reason is listed under [Diagnostics](/p/docuwaves/pages/diagnostics) — which is the only place it shows, so a page that exists in the repository and is missing from the site is worth looking for there first.
 
 ## Rules that hold no matter who wrote the file

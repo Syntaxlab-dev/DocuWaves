@@ -1,6 +1,6 @@
 ---
 order: 4
-published: false
+published: true
 title: Forgejo on the same server
 ---
 

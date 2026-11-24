@@ -72,7 +72,7 @@ the repository** button.
   breaks a link. `slug: my-address` in the front matter pins one;
   `docs/setup/index.md` is the page `setup`, the top `index.md` is `start`.
 - **Pages go live.** They were reviewed as a pull request, which is the
-  approval. `draft: true` (or `published: false`) in the front matter keeps
+  approval. `draft: true` (or `published: true`) in the front matter keeps
   a page a draft.
 - **One commit per sync** ("Sync from a1b2c3d"), and **none when nothing
   changed** — syncing on every push is safe. The answer to the CI says what

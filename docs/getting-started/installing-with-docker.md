@@ -6,6 +6,8 @@ title: Installing with Docker
 
 Three commands. A fourth step only if you want the content pushed somewhere.
 
+On a fresh Linux server, [the installer](/p/docuwaves/pages/installing-with-the-installer) does all of this in one command, with HTTPS and nightly backups. This page is the manual way, for when you want to run the containers yourself.
+
 ## 1. Get DocuWaves
 
 ```bash
@@ -52,7 +54,7 @@ You should land on the first-run setup screen. If you do, continue with [The fir
 
 A remote gives you a second copy of the content and a place where other people can read and edit the files. You can do this now or years later — an instance that has been running locally pushes its existing history when a remote is added.
 
-Make an empty repository on GitHub, GitLab, Gitea or anything else that speaks a normal Git remote URL, and get a credential for it — see [Requirements](/p/docuwaves/pages/requirements). Do not add a README, a `.gitignore` or a licence.
+Make an empty repository on GitHub, GitLab, Gitea or anything else that speaks a normal Git remote URL, and get a credential for it — see [Requirements](/p/docuwaves/pages/requirements). Do not add a README, a `.gitignore` or a licence. To host the repository yourself, see [Forgejo on the same server](/p/docuwaves/pages/forgejo-on-the-same-server).
 
 Then edit `.env`. For an HTTPS remote:
 

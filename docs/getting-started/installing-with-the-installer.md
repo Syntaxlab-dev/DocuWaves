@@ -1,6 +1,6 @@
 ---
 order: 2
-published: false
+published: true
 title: Installing with the installer
 ---
 

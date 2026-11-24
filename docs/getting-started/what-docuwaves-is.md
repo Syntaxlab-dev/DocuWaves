@@ -38,7 +38,7 @@ The database — SQLite by default — is only ever a **rebuildable search and b
 - **Real HTML for crawlers.** Every public URL is answered with its own title, description, Open Graph tags, canonical link and structured data, written by the server before the response leaves it — so pasting a link into Slack or Discord shows *that page*, not the app shell.
 - **Optional [languages](/p/docuwaves/pages/enabling-a-second-language) and optional [versions](/p/docuwaves/pages/freezing-a-version).** Both are off until you ask for them, and an instance that never asks behaves as though neither existed.
 - **An [MCP endpoint](/p/docuwaves/pages/the-mcp-endpoint)** so an AI assistant can read and — with a token that says so — write the documentation, with every change arriving as an ordinary commit.
-- **[Accounts with three roles](/p/docuwaves/pages/accounts-and-roles)** — read, write, manage — so the person who reviews a page need not be able to change it.
+- **[Accounts with four roles](/p/docuwaves/pages/accounts-and-roles)** — reader, read, write, manage — so the person who reviews a page need not be able to change it, and a [private project](/p/docuwaves/pages/private-projects) is shown only to signed-in accounts.
 - **[Diagnostics](/p/docuwaves/pages/diagnostics) and a one-file [export](/p/docuwaves/pages/backups-and-updates)** of the whole instance.
 - **Optionally [analytics](/p/docuwaves/pages/analytics) and a [documentation chat](/p/docuwaves/pages/the-documentation-chat).** Both are off until you configure them, and an instance that never does makes no third-party request at all.
 
