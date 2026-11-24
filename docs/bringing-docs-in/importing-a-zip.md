@@ -54,10 +54,14 @@ overwritten: a name that is taken gets `-2`.
 | DocuWaves | `_category.yml` | a content folder from another instance, names, icons and order included |
 | [Confluence](/p/docuwaves/pages/importing-from-confluence) | an HTML space export | the page tree, macros, attachments |
 | [Notion](/p/docuwaves/pages/importing-from-notion) | Notion's ids in the file names | the page tree, databases, callouts |
+| [BookStack](/p/docuwaves/pages/importing-from-bookstack-wiki-js-and-mediawiki) | `data.json` of a "Portable ZIP" | chapters, images, attachments |
+| [Wiki.js](/p/docuwaves/pages/importing-from-bookstack-wiki-js-and-mediawiki) | the `<!-- title: … -->` head of its pages | folders, links, callouts |
+| [MediaWiki](/p/docuwaves/pages/importing-from-bookstack-wiki-js-and-mediawiki) | an XML export (also as a bare `.xml`) | categories, wikitext, tables, images |
 
 ## Limits
 
 An uploaded archive is untrusted, so: at most **50 MB** (200 MB unpacked,
 5000 files); ZIP bombs, absolute paths and `..` are refused; only Markdown,
-image and media files and the navigation files above are read. Only
+image and media files, the navigation files above and the exports'
+own data files are read. Only
 accounts that may write can import.

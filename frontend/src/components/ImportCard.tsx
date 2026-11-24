@@ -19,6 +19,9 @@ const TOOL_NAMES: Record<ImportSummary["tool"], string> = {
   obsidian: "Obsidian",
   confluence: "Confluence",
   notion: "Notion",
+  bookstack: "BookStack",
+  wikijs: "Wiki.js",
+  mediawiki: "MediaWiki",
 };
 const LIST_LIMIT = 30;
 
@@ -60,7 +63,7 @@ export function ImportCard({
   function choose(next: File | null) {
     setFile(next);
     setPreview(null);
-    if (next && !name.trim()) setName(next.name.replace(/\.zip$/i, "").replace(/[-_]+/g, " "));
+    if (next && !name.trim()) setName(next.name.replace(/\.(zip|xml)$/i, "").replace(/[-_]+/g, " "));
   }
 
   async function run(apply: boolean) {
@@ -129,7 +132,7 @@ export function ImportCard({
             <span className="text-xs font-medium text-[var(--muted)]">{t("import.file")}</span>
             <input
               type="file"
-              accept=".zip,application/zip"
+              accept=".zip,application/zip,.xml,application/xml,text/xml"
               onChange={(e) => choose(e.target.files?.[0] ?? null)}
               className="text-sm"
             />

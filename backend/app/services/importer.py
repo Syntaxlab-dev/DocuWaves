@@ -56,13 +56,16 @@ import yaml
 
 from app.services import (
     categories_store,
-    import_confluence,
-    import_notion,
     content_assets,
     content_files,
     content_sync,
     content_versions,
     git_content_repo,
+    import_bookstack,
+    import_confluence,
+    import_mediawiki,
+    import_notion,
+    import_wikijs,
     pages_store,
     projects_store,
     site_languages,
@@ -167,6 +170,10 @@ def _wanted(path: str) -> bool:
         return False
     if name in _NAV_FILES or name.startswith("docusaurus.config."):
         return True
+    if name == "data.json" or lower.endswith(".xml"):
+        # BookStack's portable ZIP and MediaWiki's XML dump
+        # (services/import_bookstack.py, import_mediawiki.py).
+        return not any(p.startswith(".") for p in parts)
     if lower.endswith((".zip", ".csv")):
         # A ZIP of ZIPs and Notion's databases (services/import_notion.py).
         return not any(p.startswith(".") for p in parts)
@@ -193,6 +200,12 @@ def read_archive(data: bytes, _nested: bool = False) -> tuple[dict[str, bytes], 
     unpacked-size limit. Never deeper than that."""
     if len(data) > MAX_UPLOAD_BYTES:
         raise ImportError_(f"The archive is larger than {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.")
+    if not _nested and import_mediawiki.is_dump(data):
+        # A MediaWiki export uploaded as it is: the XML file alone.
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as packed:
+            packed.writestr("export.xml", data)
+        data = buffer.getvalue()
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
@@ -395,6 +408,15 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "", syn
     elif import_notion.looks_like(files):
         files, order, notes = import_notion.convert(files)
         layout = _Layout("notion", "", order, {})
+    elif import_bookstack.looks_like(files):
+        files, order, notes = import_bookstack.convert(files)
+        layout = _Layout("bookstack", "", order, {})
+    elif import_mediawiki.looks_like(files):
+        files, order, notes = import_mediawiki.convert(files)
+        layout = _Layout("mediawiki", "", order, {})
+    elif import_wikijs.looks_like(files):
+        files, order, notes = import_wikijs.convert(files)
+        layout = _Layout("wikijs", "", order, {})
     else:
         notes = []
         for path in html:
@@ -403,6 +425,9 @@ def plan(data: bytes, *, project_slug: str = "", new_project_name: str = "", syn
         for path in [p for p in files if p.lower().endswith(".csv")]:
             files.pop(path)
             skipped.append({"path": path, "reason": "CSV is only imported from a Notion export"})
+        for path in [p for p in files if p.lower().endswith((".xml", ".json")) and p.split("/")[-1] not in _NAV_FILES]:
+            files.pop(path)
+            skipped.append({"path": path, "reason": "not a Markdown, image or media file"})
         layout = detect(files, names)
     for note in notes:
         source, _, message = note.partition(": ")

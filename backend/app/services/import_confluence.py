@@ -313,3 +313,9 @@ def _json_string(text: str) -> str:
     import json
 
     return json.dumps(text, ensure_ascii=False)
+
+
+# For the other HTML-based converters (services/import_bookstack.py,
+# import_wikijs.py): the same conversion, the same quoting.
+html_to_markdown = _markdown
+yaml_string = _yaml_string
