@@ -23,7 +23,7 @@ within its project, so one of the two wins and the other is invisible on the
 public site while sitting perfectly happily in the repository. Nothing else
 in the application says so. Rename or remove one of them.
 
-**Instance** — which database, which languages, the content repository path,
+**Instance** — which version of DocuWaves this is (`1.0.0` for a release, `latest` for a build of main, each with the commit it was built from, or `dev` for a checkout you built yourself; the same value is in the response of `/health` and in the log line at startup), which database, which languages, the content repository path,
 the sync interval, whether a public address is pinned, and whether the
 [documentation chat](/p/docuwaves/pages/the-documentation-chat) is configured (it is
 set through environment variables, so this is the only place it can be read

@@ -479,6 +479,10 @@ export interface SiteBranding {
  *  environment dump, because this is a page operators screenshot. */
 export interface Diagnostics {
   instance: {
+    /** "1.0.0", "latest" (a build of main) or "dev" (a checkout run by hand). */
+    version: string;
+    /** The commit the image was built from; empty for "dev". */
+    revision: string;
     python: string;
     database: string;
     content_repo_path: string;

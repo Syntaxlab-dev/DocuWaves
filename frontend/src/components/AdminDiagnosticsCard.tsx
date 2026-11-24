@@ -151,6 +151,14 @@ export function AdminDiagnosticsCard({ onClose }: { onClose: () => void }) {
 
             <div className="grid gap-3 sm:grid-cols-2">
               <Section title={t("diag.instance")}>
+                <Row
+                  label={t("diag.version")}
+                  value={
+                    report.instance.revision
+                      ? `${report.instance.version} (${report.instance.revision.slice(0, 7)})`
+                      : report.instance.version
+                  }
+                />
                 <Row label={t("diag.database")} value={report.instance.database} />
                 <Row label={t("diag.python")} value={report.instance.python} />
                 <Row label={t("diag.contentPath")} value={report.instance.content_repo_path} />

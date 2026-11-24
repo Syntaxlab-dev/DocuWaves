@@ -12,6 +12,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.auth_guard import AuthGuardMiddleware
 from app.routers import admin_content, api_tokens, auth, feeds, mcp, public_content, sitemap, sync, users
 from app.services import content_sync, content_versions, db, git_content_repo, seo, session_registry_store, session_secret
+from app import version
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -35,6 +36,7 @@ async def _periodic_content_sync() -> None:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    log.info("DocuWaves %s starting", version.describe())
     db.init_schema()
     session_registry_store.prune_stale()
     sync_task: asyncio.Task | None = None
@@ -149,7 +151,7 @@ app.include_router(feeds.router)
 def health():
     with db.get_connection() as conn:
         conn.execute("SELECT 1")
-    return {"ok": True}
+    return {"ok": True, "version": version.VERSION}
 
 # Resolved (not just absolute): serve_spa below compares it against a resolved
 # candidate path, so a symlinked bundle directory would otherwise never match.

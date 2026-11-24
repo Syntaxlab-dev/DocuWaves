@@ -38,6 +38,14 @@ COPY backend/app ./app
 COPY installer/docuwaves /usr/share/docuwaves/docuwaves
 COPY --from=frontend-build /app/frontend/dist ./static
 
+# Last, so a new version number never invalidates the layers above: what this
+# build is (app/version.py). The release workflow passes them; a local
+# `docker compose build` leaves them empty and the app says "dev".
+ARG DOCUWAVES_VERSION=""
+ARG DOCUWAVES_REVISION=""
+ENV DOCUWAVES_VERSION=$DOCUWAVES_VERSION \
+    DOCUWAVES_REVISION=$DOCUWAVES_REVISION
+
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

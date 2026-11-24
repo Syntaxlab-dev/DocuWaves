@@ -127,8 +127,8 @@ tests that.
 ## Reporting a bug
 
 Include what you did, what you expected, and what happened instead — plus your
-DocuWaves version (`docuwaves version` on an installer setup, otherwise
-the image tag or the commit you built from), whether you're on SQLite or
+DocuWaves version (under **Diagnostics** in the admin area, or
+`docuwaves version` on an installer setup), whether you're on SQLite or
 Postgres, and whether you're behind a reverse proxy. That last one explains a
 surprising share of login and redirect problems.
 

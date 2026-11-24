@@ -40,6 +40,7 @@ from app.services import (
     site_languages,
     backup,
 )
+from app import version
 from app.settings import settings
 
 log = logging.getLogger("docuwaves")
@@ -57,6 +58,8 @@ def _safe(section, default):
 
 def _instance() -> dict:
     return {
+        "version": version.VERSION,
+        "revision": version.REVISION,
         "python": platform.python_version(),
         # Which backend, never the DSN: DATABASE_URL carries a password.
         "database": "postgres" if db.is_postgres() else "sqlite",

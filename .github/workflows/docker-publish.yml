@@ -96,6 +96,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Shown under Diagnostics and on /health (backend/app/version.py):
+          # "1.0.0" for a release tag, "latest" for main, plus the commit.
+          build-args: |
+            DOCUWAVES_VERSION=${{ steps.meta.outputs.version }}
+            DOCUWAVES_REVISION=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # The weekly (and a manual) rebuild exists to pick up Debian's fixes --
@@ -138,10 +143,14 @@ jobs:
             echo "$image:stable"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Check out the release
+        id: revision
         if: steps.release.outputs.tag != ''
-        run: git checkout --quiet "${{ steps.release.outputs.tag }}"
+        run: |
+          git checkout --quiet "${{ steps.release.outputs.tag }}"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         if: steps.release.outputs.tag != ''
@@ -167,6 +176,16 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.release.outputs.tags }}
+          # The same labels and version the release build had: `docuwaves
+          # version` reads the label, the app reads the build arguments, and
+          # without them a refreshed `stable` would no longer say what it is.
+          labels: |
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.revision.outputs.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          build-args: |
+            DOCUWAVES_VERSION=${{ steps.release.outputs.version }}
+            DOCUWAVES_REVISION=${{ steps.revision.outputs.sha }}
           # Only ever runs to refresh the release's Debian userland: no cache (see above).
           no-cache: true
           pull: true
