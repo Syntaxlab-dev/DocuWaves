@@ -127,3 +127,10 @@ def test_the_index_lists_the_projects(world):
 
 def test_the_endpoint_is_admin_only_and_returns_a_zip(world):
     assert world.get("/api/admin/export/static").status_code in (401, 403)
+
+
+def test_badges_become_labels():
+    rendered = static_export._badges("<p>A <code>badge:Beta</code>, <code>badge:warning:Old &amp; slow</code>, <code>x</code></p>")
+    assert '<span class="badge badge-info">Beta</span>' in rendered
+    assert '<span class="badge badge-warning">Old &amp; slow</span>' in rendered
+    assert "<code>x</code>" in rendered

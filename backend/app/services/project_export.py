@@ -199,6 +199,7 @@ table{border-collapse:collapse}th,td{border:1px solid #999;padding:.2em .4em}img
 blockquote{margin-left:1em;padding-left:.8em;border-left:3px solid #ccc}
 .callout{border:1px solid #bbb;border-left:4px solid #2563eb;padding:.3em .8em;margin:1em 0}
 .callout-warning,.callout-caution{border-left-color:#d97706}.callout strong{display:block}
+.badge{font-size:.75em;font-weight:bold;border:1px solid #999;border-radius:1em;padding:0 .4em}
 nav ol{list-style:none;padding-left:1em}
 """
 
@@ -266,7 +267,7 @@ def epub(project: dict, language: str, version: str, now: datetime | None = None
             for page in pages:
                 here = links.pages[page["slug"]]
                 page_language = page["language"] or language
-                rendered = static_export._callouts(md.render(page["markdown_content"]), page_language)
+                rendered = static_export._badges(static_export._callouts(md.render(page["markdown_content"]), page_language))
                 body = f"<h1>{html.escape(page['title'])}</h1>\n{_xhtml(links.rewrite(rendered, here))}"
                 put(f"OEBPS/{here}", _page_document(page["title"], page_language, "../style.css", body))
                 count += 1

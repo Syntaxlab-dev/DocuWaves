@@ -461,3 +461,38 @@ body {
 .visual-editor .visual-tabs[data-active="9"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(10)) { display: none; }
 .visual-editor .visual-tabs[data-active="10"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(11)) { display: none; }
 .visual-editor .visual-tabs[data-active="11"] > .visual-tabs-body > [data-type="tab"]:not(:nth-child(12)) { display: none; }
+
+/* Steps, cards and badges (lib/blocks.ts). */
+.markdown-body ol.steps, .markdown-body ul.steps { list-style: none; padding-left: 0; counter-reset: step; }
+.markdown-body .steps > li { position: relative; counter-increment: step; padding: 0 0 1.1rem 2.75rem; margin: 0; }
+.markdown-body .steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: -0.05rem; display: grid; place-items: center;
+  width: 1.9rem; height: 1.9rem; border-radius: 999px; background: var(--accent-soft); color: var(--accent);
+  font-weight: 600; font-size: 0.9rem;
+}
+.markdown-body .steps > li:not(:last-child)::after {
+  content: ""; position: absolute; left: 0.93rem; top: 2.1rem; bottom: 0.2rem; width: 2px; background: var(--border);
+}
+.markdown-body ul.cards, .markdown-body ol.cards {
+  list-style: none; padding-left: 0; display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.markdown-body .cards > li.card {
+  position: relative; margin: 0; padding: 0.85rem 1rem; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface); transition: border-color 0.15s;
+}
+.markdown-body .cards > li.card > p { margin: 0; }
+.markdown-body .cards > li.card strong { display: block; margin-bottom: 0.2rem; color: var(--ink); }
+.markdown-body .cards > li.card-linked:hover { border-color: var(--accent); }
+.markdown-body .cards > li.card-linked a:first-of-type { text-decoration: none; }
+.markdown-body .cards > li.card-linked a:first-of-type::after { content: ""; position: absolute; inset: 0; border-radius: 10px; }
+.markdown-body .badge {
+  display: inline-block; padding: 0.05rem 0.5rem; border-radius: 999px; font-size: 0.75em; font-weight: 600;
+  line-height: 1.5; vertical-align: 0.1em; color: var(--badge); background: color-mix(in srgb, var(--badge) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge) 35%, transparent);
+}
+.markdown-body .badge-info { --badge: #3b82f6; }
+.markdown-body .badge-success { --badge: #16a34a; }
+.markdown-body .badge-warning { --badge: #d97706; }
+.markdown-body .badge-danger { --badge: var(--danger); }
+.markdown-body .badge-neutral { --badge: var(--muted); }
+@media print { .markdown-body .cards > li.card { break-inside: avoid; } }

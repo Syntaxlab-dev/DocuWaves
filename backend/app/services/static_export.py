@@ -78,6 +78,18 @@ def _renderer() -> MarkdownIt:
     return md
 
 
+_BADGE = re.compile(r"<code>badge:(?:(info|success|warning|danger|neutral):)?([^<]+)</code>", re.IGNORECASE)
+
+
+def _badges(rendered: str) -> str:
+    """`badge:Beta` written as inline code is a small label on the site
+    (frontend lib/blocks.ts); here too, rather than code nobody wrote."""
+    return _BADGE.sub(
+        lambda m: f'<span class="badge badge-{(m.group(1) or "info").lower()}">{m.group(2).strip()}</span>',
+        rendered,
+    )
+
+
 def _callouts(rendered: str, language: str) -> str:
     labels = _CALLOUT_LABELS["de" if language.startswith("de") else "en"]
 
@@ -148,7 +160,9 @@ img{max-width:100%}blockquote{margin:0;padding:0 16px;border-left:3px solid var(
 .callout{border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:8px 14px;margin:16px 0;background:var(--surface)}
 .callout-warning,.callout-caution{border-left-color:#d97706}.callout strong{display:block}
 .tiles{list-style:none;padding:0;display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(220px,1fr))}
-.tiles li{border:1px solid var(--border);border-radius:10px;padding:14px}footer{color:var(--muted);font-size:13px;text-align:center;padding:24px 16px}
+.tiles li{border:1px solid var(--border);border-radius:10px;padding:14px}
+.badge{display:inline-block;padding:0 .5em;border-radius:999px;font-size:.75em;font-weight:600;border:1px solid currentColor;color:#3b82f6}
+.badge-success{color:#16a34a}.badge-warning{color:#d97706}.badge-danger{color:#dc2626}.badge-neutral{color:var(--muted)}footer{color:var(--muted);font-size:13px;text-align:center;padding:24px 16px}
 @media (max-width:760px){.layout{grid-template-columns:1fr}nav{border-bottom:1px solid var(--border)}}
 """
 
@@ -243,7 +257,7 @@ def build(target) -> dict:
                         continue
                     here = f"{slug}/{category['slug']}/{page['slug']}.html"
                     body = snippets.resolve(page["markdown_content"], slug, page["version"], page["language"])
-                    rendered = site.rewrite(_callouts(md.render(body), page["language"] or language), slug, here)
+                    rendered = site.rewrite(_badges(_callouts(md.render(body), page["language"] or language)), slug, here)
                     article = f"<article><h1>{html.escape(page['title'])}</h1>\n{rendered}</article>"
                     archive.writestr(
                         here,
