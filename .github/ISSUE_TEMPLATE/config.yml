@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://docs.docuwaves.app
+    about: Installation, configuration and every feature, explained.
+  - name: Report a security vulnerability
+    url: https://github.com/Syntaxlab-dev/DocuWaves/security/advisories/new
+    about: Privately, please, not as a public issue.

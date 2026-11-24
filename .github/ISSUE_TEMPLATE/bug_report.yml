@@ -1,0 +1,64 @@
+name: Bug report
+description: Something in DocuWaves does not work as described
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Security problems please **not** here: use
+        "Report a vulnerability" under the repository's Security tab instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. See ...
+  - type: input
+    id: version
+    attributes:
+      label: DocuWaves version
+      description: "`docuwaves version` on an installer setup; otherwise the image tag you run, or the commit you built from."
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How it is installed
+      options:
+        - Installer (get.docuwaves.app)
+        - Docker Compose from the repository
+        - Published image (ghcr.io)
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite (default)
+        - PostgreSQL
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: Behind a reverse proxy?
+      description: This explains a surprising share of login and redirect problems.
+      options:
+        - "No"
+        - Yes, the installer's Caddy
+        - Yes, my own (nginx, Traefik, Caddy, ...)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`docker compose logs docuwaves` around the time it happened. Remove anything secret."
+      render: text
