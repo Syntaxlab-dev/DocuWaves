@@ -121,7 +121,7 @@ class TestWhenItFires:
     @pytest.fixture
     def fired(self, monkeypatch):
         events = []
-        monkeypatch.setattr(pages_store.webhooks, "notify", lambda event, *a: events.append(event))
+        monkeypatch.setattr(pages_store.webhooks, "notify", lambda event, *a, **kw: events.append(event))
         state = {"page": dict(PAGE)}
         monkeypatch.setattr(pages_store, "get_page", lambda pid: dict(state["page"]))
         monkeypatch.setattr(pages_store, "get_page_by_slug", lambda *a: dict(state["page"]))

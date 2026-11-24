@@ -327,3 +327,42 @@ def bind_oidc_subject(username: str, subject: str) -> None:
         conn.execute(
             f"UPDATE auth SET oidc_subject = {placeholder} WHERE username = {placeholder}", (subject, username)
         )
+
+
+# ---- E-mail notifications (services/mail_notifications.py) ----
+#
+# Kept out of get_user()/list_users() on purpose: an address is personal
+# data, and the account list an admin reads does not need it.
+
+
+def _notify_set(raw: str) -> list[str]:
+    return [part for part in (raw or "").split(",") if part]
+
+
+def get_notifications(username: str) -> dict:
+    with db.get_connection() as conn:
+        row = conn.execute(
+            f"SELECT email, notify FROM auth WHERE username = {_placeholder()}", (username,)
+        ).fetchone()
+    if row is None:
+        return {"email": "", "notify": []}
+    return {"email": row[0] or "", "notify": _notify_set(row[1])}
+
+
+def set_notifications(username: str, email: str, kinds: list[str]) -> None:
+    placeholder = _placeholder()
+    with db.get_connection() as conn:
+        conn.execute(
+            f"UPDATE auth SET email = {placeholder}, notify = {placeholder} WHERE username = {placeholder}",
+            (email, ",".join(kinds), username),
+        )
+
+
+def notification_accounts() -> list[dict]:
+    """Every account that wants at least one kind of notification."""
+    with db.get_connection() as conn:
+        rows = conn.execute("SELECT username, role, email, notify FROM auth WHERE notify <> ''").fetchall()
+    return [
+        {"username": r[0], "role": normalize_role(r[1]), "email": r[2] or "", "notify": _notify_set(r[3])}
+        for r in rows
+    ]

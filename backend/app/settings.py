@@ -146,6 +146,20 @@ class Settings:
     # Signs JSON deliveries (X-DocuWaves-Signature: sha256=<hmac of the body>).
     webhook_secret: str = os.environ.get("WEBHOOK_SECRET", "")
 
+    # E-mail notifications (services/mailer.py): the SMTP server to send
+    # through. Blank SMTP_HOST = no e-mail at all, and the account settings
+    # do not offer it. Env vars, not the admin UI: the password is a
+    # credential, and _site.yml lives in a repository built to be cloned.
+    smtp_host: str = os.environ.get("SMTP_HOST", "").strip()
+    smtp_port: int = int(os.environ.get("SMTP_PORT", "0") or 0)
+    smtp_username: str = os.environ.get("SMTP_USERNAME", "")
+    smtp_password: str = os.environ.get("SMTP_PASSWORD", "")
+    # The sender, e.g. `DocuWaves <docs@example.com>`. Blank = SMTP_USERNAME.
+    smtp_from: str = os.environ.get("SMTP_FROM", "").strip()
+    # starttls (default, port 587), ssl (port 465) or none (a relay on the
+    # same machine or network, port 25).
+    smtp_security: str = os.environ.get("SMTP_SECURITY", "starttls").strip().lower()
+
     session_cookie_secure: bool = _cookie_secure(
         os.environ.get("SESSION_COOKIE_SECURE", ""), os.environ.get("PUBLIC_BASE_URL", "")
     )

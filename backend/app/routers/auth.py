@@ -1,10 +1,11 @@
+import re
 import secrets
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.services import login_throttle, mfa_store, oidc_client, project_access, session_registry_store, users_store, visibility
+from app.services import login_throttle, mail_notifications, mailer, mfa_store, oidc_client, project_access, session_registry_store, users_store, visibility
 from app.services.client_address import client_address
 from app.services.same_origin import is_same_origin
 from app.settings import settings
@@ -175,6 +176,86 @@ def change_password(body: PasswordChange, request: Request):
     # session the leak was used to open ends here too. This one stays.
     signed_out = session_registry_store.revoke_others(username, session_id)
     return {"ok": True, "other_sessions_signed_out": signed_out}
+
+
+class NotificationsIn(BaseModel):
+    email: str = ""
+    notify: list[str] = []
+
+
+_EMAIL_RE = re.compile(r"^[^@\s<>,;\"]+@[^@\s<>,;\"]+\.[^@\s<>,;\"]+$")
+
+
+def _signed_in_user(request: Request) -> dict:
+    """The account behind this session, checked the way the middleware
+    checks it -- /api/auth/ is exempt from the middleware."""
+    username = request.session.get("username")
+    session_id = request.session.get("session_id")
+    if not username or not session_id or not session_registry_store.exists(session_id):
+        raise HTTPException(status_code=401, detail="Not logged in.")
+    user = users_store.get_user(username)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Not logged in.")
+    return user
+
+
+@router.get(
+    "/notifications",
+    summary="Your own e-mail notifications",
+    description="`enabled` false when this instance has no SMTP server (SMTP_HOST), in which case nothing is "
+    "ever sent and the settings are not offered. `kinds` lists what can be chosen.",
+)
+def get_notifications(request: Request):
+    user = _signed_in_user(request)
+    return {
+        **users_store.get_notifications(user["username"]),
+        "enabled": mailer.is_enabled(),
+        "kinds": list(mail_notifications.KINDS),
+    }
+
+
+@router.put("/notifications", summary="Set your own e-mail address and notifications")
+def set_notifications(body: NotificationsIn, request: Request):
+    _refuse_cross_site(request)
+    user = _signed_in_user(request)
+    email = body.email.strip()
+    if email and (len(email) > 254 or not _EMAIL_RE.match(email)):
+        raise HTTPException(status_code=400, detail="That is not an e-mail address.")
+    unknown = [kind for kind in body.notify if kind not in mail_notifications.KINDS]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown notification: {', '.join(unknown)}.")
+    if body.notify and not email:
+        raise HTTPException(status_code=400, detail="Notifications need an e-mail address.")
+    kinds = [kind for kind in mail_notifications.KINDS if kind in body.notify]
+    users_store.set_notifications(user["username"], email, kinds)
+    return {**users_store.get_notifications(user["username"]), "enabled": mailer.is_enabled()}
+
+
+@router.post(
+    "/notifications/test",
+    summary="Send yourself a test e-mail",
+    description="Sends now and waits for the SMTP server's answer, so a wrong SMTP setting shows up here "
+    "rather than as notifications that never arrive. 409 `not_configured` without SMTP_HOST, 400 without an "
+    "address, 502 with the kind of error (never the password) when the server refuses.",
+)
+def test_notification(request: Request):
+    _refuse_cross_site(request)
+    user = _signed_in_user(request)
+    if not mailer.is_enabled():
+        raise HTTPException(status_code=409, detail="not_configured")
+    email = users_store.get_notifications(user["username"])["email"]
+    if not email:
+        raise HTTPException(status_code=400, detail="Save an e-mail address first.")
+    message = mailer.build(
+        email,
+        "DocuWaves: test",
+        "This is a test message from DocuWaves. E-mail notifications work.\n",
+    )
+    try:
+        mailer.deliver(message)
+    except Exception as exc:  # noqa: BLE001 -- reported by kind, never with its text (may echo credentials)
+        raise HTTPException(status_code=502, detail=f"The mail server refused: {type(exc).__name__}") from exc
+    return {"ok": True}
 
 
 def _oidc_redirect_uri(request: Request) -> str:

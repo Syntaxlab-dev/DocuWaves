@@ -592,7 +592,7 @@ def _update_page(
     # category, is not.
     if current["published"] and (title != current["title"] or markdown_content != current["markdown_content"]):
         announced = updated or {**current, "title": title, "slug": slug, "markdown_content": markdown_content}
-        webhooks.notify("updated", announced, project, new_category)
+        webhooks.notify("updated", announced, project, new_category, actor=author)
     return updated
 
 
@@ -634,7 +634,7 @@ def set_published(page_id: int, published: bool, author: str) -> dict | None:
     # Only a real change of state is announced: the editor publishes after
     # every save, and "published" for each of those would be noise.
     if published != bool(current["published"]):
-        webhooks.notify("published" if published else "unpublished", current, project, category)
+        webhooks.notify("published" if published else "unpublished", current, project, category, actor=author)
     return get_page(page_id)
 
 
@@ -739,7 +739,7 @@ def delete_page(page_id: int, author: str) -> None:
         git_content_repo.commit_and_push(paths, f"Remove page: {current['title']}", author)
         content_sync.full_sync()
         if current["published"]:
-            webhooks.notify("unpublished", current, project, category)
+            webhooks.notify("unpublished", current, project, category, actor=author)
 
 
 # ---- Change history ----

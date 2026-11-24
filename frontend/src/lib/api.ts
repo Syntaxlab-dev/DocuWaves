@@ -400,6 +400,17 @@ export interface AuthStatus {
   project_roles?: Record<string, ProjectRole>;
 }
 
+/** E-mail notifications an account can choose (backend services/mail_notifications.py). */
+export type NotificationKind = "review_requested" | "review_decided" | "changed";
+
+export interface NotificationSettings {
+  email: string;
+  notify: NotificationKind[];
+  /** false = this instance has no SMTP server; nothing is ever sent. */
+  enabled: boolean;
+  kinds: NotificationKind[];
+}
+
 /** What a permission per project can say: read only, or may write. */
 export type ProjectRole = "viewer" | "editor";
 
@@ -892,6 +903,13 @@ export const api = {
   login: (username: string, password: string) =>
     request<LoginResult>("/api/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
+  notifications: () => request<NotificationSettings>("/api/auth/notifications"),
+  setNotifications: (email: string, notify: NotificationKind[]) =>
+    request<Omit<NotificationSettings, "kinds">>("/api/auth/notifications", {
+      method: "PUT",
+      body: JSON.stringify({ email, notify }),
+    }),
+  testNotification: () => request<{ ok: boolean }>("/api/auth/notifications/test", { method: "POST" }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request("/api/auth/password", {
       method: "POST",

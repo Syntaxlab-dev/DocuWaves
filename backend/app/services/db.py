@@ -83,7 +83,11 @@ _SQLITE_SCHEMA = [
         last_login_at TEXT NOT NULL DEFAULT '',
         -- The identity provider's `sub` this account is bound to after its
         -- first SSO sign-in; '' = never signed in via SSO. See routers/auth.py.
-        oidc_subject TEXT NOT NULL DEFAULT ''
+        oidc_subject TEXT NOT NULL DEFAULT '',
+        -- E-mail notifications (services/mail_notifications.py): the
+        -- address, and which events it wants, comma-separated. '' = none.
+        email TEXT NOT NULL DEFAULT '',
+        notify TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -408,7 +412,11 @@ _POSTGRES_SCHEMA = [
         last_login_at TEXT NOT NULL DEFAULT '',
         -- The identity provider's `sub` this account is bound to after its
         -- first SSO sign-in; '' = never signed in via SSO. See routers/auth.py.
-        oidc_subject TEXT NOT NULL DEFAULT ''
+        oidc_subject TEXT NOT NULL DEFAULT '',
+        -- E-mail notifications (services/mail_notifications.py): the
+        -- address, and which events it wants, comma-separated. '' = none.
+        email TEXT NOT NULL DEFAULT '',
+        notify TEXT NOT NULL DEFAULT ''
     )
     """,
     """
@@ -733,6 +741,8 @@ _ADDED_COLUMNS = {
         "created_at": "TEXT NOT NULL DEFAULT ''",
         "last_login_at": "TEXT NOT NULL DEFAULT ''",
         "oidc_subject": "TEXT NOT NULL DEFAULT ''",
+        "email": "TEXT NOT NULL DEFAULT ''",
+        "notify": "TEXT NOT NULL DEFAULT ''",
     },
 }
 

@@ -71,6 +71,19 @@ instance that sets none of them makes no request to any model, ever. See
 
 See [Webhooks](/p/docuwaves/pages/webhooks).
 
+## E-mail
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SMTP_HOST` | *(empty — off)* | The SMTP server notifications are sent through |
+| `SMTP_PORT` | *587, 465 or 25* | Defaults to the usual port for `SMTP_SECURITY` |
+| `SMTP_SECURITY` | `starttls` | `starttls`, `ssl` or `none` |
+| `SMTP_USERNAME` | *(empty)* | Sign in to the SMTP server; no sign-in when empty |
+| `SMTP_PASSWORD` | *(empty)* | The password for `SMTP_USERNAME` |
+| `SMTP_FROM` | `SMTP_USERNAME` | The sender, e.g. `DocuWaves <docs@example.com>` |
+
+See [E-mail notifications](/p/docuwaves/pages/e-mail-notifications).
+
 ## Search
 
 | Variable | Default | Purpose |

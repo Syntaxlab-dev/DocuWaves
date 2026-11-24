@@ -9,6 +9,7 @@ import { UpdateNotice } from "@/components/UpdateNotice";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
 import { ActivityCard } from "@/components/ActivityCard";
 import { TwoFactorCard } from "@/components/TwoFactorCard";
+import { NotificationsCard } from "@/components/NotificationsCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
 import { ImportCard } from "@/components/ImportCard";
 import { SyncBanner } from "@/components/SyncBanner";
@@ -436,6 +437,7 @@ export function AdminApp() {
           <>
             <AccountCard onClose={() => setShowAccount(false)} />
             <TwoFactorCard />
+            <NotificationsCard />
           </>
         )}
         {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}

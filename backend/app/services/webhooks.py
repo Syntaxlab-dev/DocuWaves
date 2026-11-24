@@ -91,11 +91,29 @@ def is_enabled() -> bool:
 
 
 def notify(
-    event: str, page: dict, project: dict, category: dict | None = None, review: dict | None = None
+    event: str,
+    page: dict,
+    project: dict,
+    category: dict | None = None,
+    review: dict | None = None,
+    *,
+    actor: str = "",
+    submitter: str = "",
+    comment: str = "",
 ) -> None:
     """Queue one event for every configured URL. Returns at once. `review`
     is the review events' own part: {"kind": "new"|"change"} for a request,
-    {"decision": "approved"|"changes_requested"} for a decision."""
+    {"decision": "approved"|"changes_requested"} for a decision.
+
+    The same event goes to the e-mail notifications first
+    (services/mail_notifications.py), which have their own rules -- private
+    projects included, since every recipient is an account that may read
+    them. `actor` (who did it), `submitter` (whose submission was decided)
+    and `comment` (a reviewer's) are for those messages only: none of them
+    is ever put into a webhook's payload."""
+    from app.services import mail_notifications
+
+    mail_notifications.notify(event, page, project, review, actor, submitter, comment)
     if event not in EVENTS or event not in settings.webhook_events or not settings.webhook_urls:
         return
     # Never about a private project: the channel's members are unknown
