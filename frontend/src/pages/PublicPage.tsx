@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { Languages } from "lucide-react";
 import { ApiError, api, type Category, type Page, type Project, type VersionInfo } from "@/lib/api";
 import { MarkdownView } from "@/components/MarkdownView";
@@ -24,6 +24,7 @@ import { useDocumentTitle } from "@/lib/site";
 const MIN_TOC_HEADINGS = 2;
 
 export function PublicPage() {
+  const navigate = useNavigate();
   const { projectSlug, pageSlug, version } = useParams<{
     projectSlug: string;
     pageSlug: string;
@@ -52,6 +53,15 @@ export function PublicPage() {
       .publicGetPage(projectSlug, pageSlug, lang, version)
       .then((result) => {
         if (!current) return;
+        if (result.page.slug !== pageSlug) {
+          // The page was renamed and the API followed its redirect
+          // (backend services/page_redirects.py): put the new address in
+          // the bar, so it is the one that gets bookmarked and shared.
+          const { pathname, search, hash } = window.location;
+          const moved = pathname.slice(0, pathname.lastIndexOf("/") + 1) + result.page.slug;
+          navigate(moved + search + hash, { replace: true });
+          return;
+        }
         setData(result);
         setPageStatus("ready");
       })
@@ -65,7 +75,7 @@ export function PublicPage() {
     // lang included: switching language keeps the reader on this same page
     // (the slug is shared by its translations) and reloads its content.
     // version likewise -- the same slug in another version is another file.
-  }, [projectSlug, pageSlug, lang, version]);
+  }, [projectSlug, pageSlug, lang, version, navigate]);
 
   // `versions.available` here is the versions this page is PUBLISHED in, so
   // the switcher can stay on the page where it exists and land on the

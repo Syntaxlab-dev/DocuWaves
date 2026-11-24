@@ -18,6 +18,7 @@ content/
     _variables.yml              <- this project's variables (optional)
     _snippets/                  <- this project's snippets (optional)
     _sync.yml                   <- docs-as-code: which page came from which file
+    _redirects.yml              <- old page addresses and where they lead now
     assets/
       dashboard.png
       imported/                 <- images brought in by an import

@@ -37,7 +37,16 @@ The reading URLs are:
 
 Note what is **not** in a page's URL: its category. A page slug is unique within its whole project, which means **moving a page to another category does not change its address**. It also means two categories in one project cannot hold a file with the same name — if that happens (through a merged pull request, say), the first one wins, the second is skipped, and the reason is listed under [Diagnostics](/p/docuwaves/pages/diagnostics) rather than silently swallowed.
 
-**Renaming changes the slug**, which moves the file and breaks existing links to it. Rename freely before you publish; think twice afterwards.
+**Renaming changes the slug**, which moves the file. Links to the old address keep working: the rename writes the old slug and the new one into the project's `_redirects.yml`, in the same commit, and the old address answers with a permanent redirect (HTTP 301) to the new one. Search engines and link previews follow it and move over; a reader who opens an old bookmark lands on the page and sees its new address.
+
+```yaml
+# content/<project-slug>/_redirects.yml
+pages:
+  install: installation
+  old-name: new-name
+```
+
+The file is tidied automatically: renaming a page again points its older addresses straight at the newest one, and a slug that becomes a real page again stops redirecting. A redirect is only followed when no page has that slug, so it can never hide a page. You can also add entries by hand, for example to send the address of a page you deleted to the one that replaced it.
 
 ## Order
 

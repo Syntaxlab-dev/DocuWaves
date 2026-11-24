@@ -24,7 +24,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 from app.services import (
     categories_store,
@@ -32,6 +32,7 @@ from app.services import (
     doc_chat,
     content_versions,
     page_feedback_store,
+    page_redirects,
     pages_store,
     preview_links_store,
     projects_store,
@@ -293,6 +294,13 @@ def public_get_page(
     # version they could be reading instead (see resolve_page).
     page = pages_store.resolve_page(project["id"], page_slug, language, published_only=True, version=resolved)
     if page is None:
+        # A page that was renamed: answer with the new address, which fetch()
+        # follows on its own -- the app then sees a page whose slug is not
+        # the one in its URL and corrects the URL (PublicPage.tsx).
+        target = page_redirects.resolve(project_slug, page_slug)
+        if target and pages_store.resolve_page(project["id"], target, language, published_only=True, version=resolved):
+            url = request.url.replace(path=request.url.path.rsplit("/", 1)[0] + "/" + target)
+            return RedirectResponse(str(url), status_code=301)
         raise HTTPException(status_code=404, detail="Page not found.")
     category = categories_store.get_category(page["category_id"], language)
     return {

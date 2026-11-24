@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -243,6 +243,12 @@ if FRONTEND_DIST.exists():
         # FileResponse answers a revalidation with the whole file rather than
         # a 304 (only StaticFiles handles If-None-Match) -- fine at a few KB,
         # and the big hashed bundle it points at is cached forever anyway.
+        # A renamed page's old address: a permanent redirect to the new one,
+        # with the query (?lang=...) kept.
+        moved = seo.page_redirect(full_path)
+        if moved is not None:
+            query = request.url.query
+            return RedirectResponse(moved + (f"?{query}" if query else ""), status_code=301)
         document = seo.render_index(index, full_path, request)
         if document is not None:
             return HTMLResponse(document, headers={"Cache-Control": "no-cache"})

@@ -57,6 +57,7 @@ from app.services import (
     categories_store,
     content_files,
     content_versions,
+    page_redirects,
     pages_store,
     projects_store,
     prose,
@@ -554,6 +555,31 @@ def _page_meta(base: str, route: Route, lang: str, branding: dict) -> Meta | Non
 
 
 _BUILDERS = {"project": _project_meta, "category": _category_meta, "page": _page_meta}
+
+
+def page_redirect(full_path: str) -> str | None:
+    """The new address of a renamed page (services/page_redirects.py), for a
+    real HTTP 301 -- which is what moves a search engine's index and a
+    link preview over to it, where the app's own client-side redirect would
+    do neither. None for everything else, including any error."""
+    try:
+        route = parse_route(full_path)
+        if route.kind != "page":
+            return None
+        lang = _language(route.lang)
+        context = _project_context(route, lang)
+        if context is None:
+            return None
+        project, version, _ = context
+        if pages_store.resolve_page(project["id"], route.page, lang, published_only=True, version=version):
+            return None
+        target = page_redirects.resolve(project["slug"], route.page)
+        if not target or not pages_store.resolve_page(project["id"], target, lang, published_only=True, version=version):
+            return None
+        return "/" + full_path.strip("/").rsplit("/", 1)[0] + "/" + target
+    except Exception:
+        log.exception("Could not look up a page redirect for %r", full_path)
+        return None
 
 
 def build_meta(route: Route, base: str) -> Meta:

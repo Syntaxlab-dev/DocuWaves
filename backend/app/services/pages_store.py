@@ -60,6 +60,7 @@ from app.services import (
     content_versions,
     db,
     git_content_repo,
+    page_redirects,
     preview_links_store,
     projects_store,
     prose,
@@ -530,6 +531,9 @@ def _update_page(
     # page. Left behind instead, a link somebody sent a reviewer yesterday
     # would 404 because a typo in the title got fixed today.
     preview_links_store.repoint_page(project["slug"], current["slug"], slug, version)
+    # And the old address keeps working for everybody else: a permanent
+    # redirect to the new one, in the same commit (services/page_redirects.py).
+    paths += page_redirects.record_rename(project["slug"], current["slug"], slug)
     order = current["sort_order"] if new_category["id"] == old_category["id"] else _next_order(category_id)
     # A review note is a statement about a TEXT: "this wording was checked,
     # by this person, on this day". Edit the text and the statement is no
