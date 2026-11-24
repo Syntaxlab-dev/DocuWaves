@@ -247,9 +247,11 @@ def delete_user(username: str) -> bool:
         conn.execute(f"DELETE FROM auth WHERE username = {placeholder}", (username,))
     # Its keys and codes go with it: a later account given the same name
     # must not inherit somebody else's second factor.
-    from app.services import mfa_store
+    from app.services import mfa_store, project_access
 
     mfa_store.delete_all(username)
+    # And its permissions per project, for the same reason.
+    project_access.forget_user(username)
     return True
 
 

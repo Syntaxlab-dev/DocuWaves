@@ -1,10 +1,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { toast } from "sonner";
-import { KeyRound, ShieldOff, Trash2 } from "lucide-react";
+import { FolderKey, KeyRound, ShieldOff, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { api, ApiError, type Role, type User } from "@/lib/api";
+import { api, ApiError, type Project, type ProjectRole, type Role, type User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { formatIsoDate } from "@/lib/dates";
 
@@ -39,6 +39,10 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
   const [newPassword, setNewPassword] = useState("");
   const [newRole, setNewRole] = useState<Role>("viewer");
   const [busy, setBusy] = useState(false);
+  // Permissions per project: which account's list is open, and the
+  // projects to list in it.
+  const [openProjects, setOpenProjects] = useState<string | null>(null);
+  const [projects, setProjects] = useState<Project[]>([]);
 
   async function load() {
     try {
@@ -55,6 +59,10 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
 
   useEffect(() => {
     void load();
+    api
+      .adminListProjects()
+      .then((r) => setProjects(r.projects))
+      .catch(() => setProjects([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount
   }, []);
 
@@ -96,6 +104,19 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
       // rendered), but an admin count that just changed is worth a refresh
       // anyway -- and it costs one request.
       onSelfChanged();
+    } catch (err) {
+      fail(err);
+    }
+  }
+
+  async function onProjectRole(user: User, slug: string, value: ProjectRole | "") {
+    const next = { ...user.projects };
+    if (value) next[slug] = value;
+    else delete next[slug];
+    try {
+      await api.adminSetUserProjects(user.username, next);
+      toast.success(t("users.projectsSaved").replace("{name}", user.username));
+      await load();
     } catch (err) {
       fail(err);
     }
@@ -175,7 +196,25 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
                       : t("users.neverSignedIn")}
                     {user.sessions > 0 && ` · ${t("users.sessions").replace("{n}", String(user.sessions))}`}
                     {user.mfa && ` · ${t("users.mfaOn")}`}
+                    {Object.keys(user.projects ?? {}).length > 0 &&
+                      ` · ${t("users.projectExceptions").replace("{n}", String(Object.keys(user.projects).length))}`}
                   </span>
+
+                  {/* Permissions per project: only viewer and editor
+                      accounts have any (backend services/project_access.py). */}
+                  {(user.role === "viewer" || user.role === "editor") && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      aria-label={t("users.projects")}
+                      aria-expanded={openProjects === user.username}
+                      title={t("users.projects")}
+                      onClick={() => setOpenProjects((o) => (o === user.username ? null : user.username))}
+                    >
+                      <FolderKey className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
 
                   {/* The role is offered on every row, your own included --
                       stepping down is the one self-change with a use. What
@@ -227,6 +266,33 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </>
+                  )}
+                  {openProjects === user.username && (user.role === "viewer" || user.role === "editor") && (
+                    <div className="basis-full rounded-lg bg-[var(--surface-2)] px-3 py-2">
+                      <p className="mb-2 text-xs text-[var(--muted)]">
+                        {t("users.projectsHint").replace("{role}", t(`users.role.${user.role}` as never))}
+                      </p>
+                      {projects.length === 0 && <p className="text-xs text-[var(--muted)]">{t("users.noProjects")}</p>}
+                      <ul className="flex flex-col gap-1">
+                        {projects.map((project) => (
+                          <li key={project.slug} className="flex items-center gap-2 text-xs">
+                            <span className="flex-1">{project.name}</span>
+                            <select
+                              value={user.projects?.[project.slug] ?? ""}
+                              onChange={(e) => void onProjectRole(user, project.slug, e.target.value as ProjectRole | "")}
+                              aria-label={t("users.projectRoleFor").replace("{project}", project.name)}
+                              className="h-7 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-xs"
+                            >
+                              <option value="">
+                                {t("users.projectAsRole").replace("{role}", t(`users.role.${user.role}` as never))}
+                              </option>
+                              {user.role !== "viewer" && <option value="viewer">{t("users.role.viewer")}</option>}
+                              {user.role !== "editor" && <option value="editor">{t("users.role.editor")}</option>}
+                            </select>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               );

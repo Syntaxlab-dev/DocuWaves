@@ -69,7 +69,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.services import api_tokens_store, session_registry_store, users_store
+from app.services import api_tokens_store, project_access, session_registry_store, users_store
 from app.services.same_origin import is_same_origin
 
 _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
@@ -249,11 +249,35 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
                 {"detail": "This part of the admin area is for administrators."},
                 status_code=403,
             )
+        if request.method in _READ_METHODS:
+            return None
         reviewing = request.method == "POST" and _REVIEW_DECISION_RE.match(path) is not None
-        if request.method not in _READ_METHODS and not users_store.may_write(role) and not reviewing:
-            return JSONResponse(
-                {"detail": "Your account can read the admin area but not change anything."},
-                status_code=403,
-            )
+        if reviewing:
+            return None
+
+        # Which project this write is about, so an exception to the
+        # account's role in that project counts (services/project_access.py).
+        # Fail-closed: a route the table does not know is "instance", where
+        # only the account's own role counts -- exactly the rule before
+        # per-project permissions existed.
+        kind, value = project_access.classify(request.method, path)
+        if kind == "body":
+            # The project is in the body, which the endpoint reads and
+            # checks with project_access.require_write(). Here: only whether
+            # this account could be allowed anywhere at all.
+            allowed = project_access.may_write_somewhere(user)
+        elif kind == "instance":
+            allowed = users_store.may_write(role)
+        else:
+            project = project_access.project_of(kind, value, request.query_params.get("project", ""))
+            allowed = users_store.may_write(project_access.effective_role(user, project))
+        if not allowed:
+            if not project_access.may_write_somewhere(user):
+                detail = "Your account can read the admin area but not change anything."
+            elif kind == "instance":
+                detail = project_access.INSTANCE_READ_ONLY
+            else:
+                detail = project_access.PROJECT_READ_ONLY
+            return JSONResponse({"detail": detail}, status_code=403)
 
         return None

@@ -143,3 +143,35 @@ test("every admin panel opens without an error", async ({ page }) => {
   }
   expect(errors).toEqual([]);
 });
+
+test("a read-only account gets Write in one project", async ({ page, browser }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  const made = await page.request.post("/api/admin/users", {
+    data: { username: "petra", password: "petra-password-123", role: "viewer" },
+  });
+  expect(made.status()).toBe(201);
+  await page.getByRole("banner").getByRole("navigation").getByRole("button", { name: "Accounts", exact: true }).click();
+  await page.getByRole("button", { name: "Permissions per project" }).click();
+  await page.getByRole("combobox", { name: "Permission in Handbook" }).selectOption("editor");
+  await expect(page.getByText("1 project exception(s)")).toBeVisible();
+  expect(errors).toEqual([]);
+
+  // Petra, in a browser of her own: the editor is writable in Handbook.
+  const context = await browser.newContext();
+  const petra = await context.newPage();
+  await petra.goto("/admin");
+  await petra.getByLabel("Username").fill("petra");
+  await petra.getByLabel("Password").fill("petra-password-123");
+  await petra.getByRole("button", { name: "Sign in" }).click();
+  await petra.getByText("Handbook", { exact: true }).click();
+  await expect(petra.getByRole("heading", { name: "Categories" })).toBeVisible();
+  await expect(petra.getByText("Your account can read this project but not change it.")).toHaveCount(0);
+  await expect(petra.getByText("Your account can read the admin area but not change anything.")).toHaveCount(0);
+  // ...and creating a project, which is instance-wide, is still refused.
+  const origin = new URL(petra.url()).origin;
+  const refused = await petra.request.post("/api/admin/projects", { data: { name: "Elsewhere" }, headers: { Origin: origin } });
+  expect(refused.status()).toBe(403);
+  expect((await refused.json()).detail).toMatch(/single projects only/);
+  await context.close();
+});

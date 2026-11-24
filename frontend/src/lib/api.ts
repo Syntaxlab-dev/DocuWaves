@@ -395,7 +395,13 @@ export interface AuthStatus {
   username: string | null;
   /** null while signed out. */
   role: Role | null;
+  /** Exceptions to `role` per project, {project slug: role} (backend
+   *  services/project_access.py). Only viewer and editor accounts have any. */
+  project_roles?: Record<string, ProjectRole>;
 }
+
+/** What a permission per project can say: read only, or may write. */
+export type ProjectRole = "viewer" | "editor";
 
 export interface User {
   username: string;
@@ -407,6 +413,8 @@ export interface User {
   sessions: number;
   /** Whether the account signs in with a second factor. */
   mfa: boolean;
+  /** Exceptions to `role`, per project slug. */
+  projects: Record<string, ProjectRole>;
 }
 
 /** What a password login answers: done, or "now the second factor". */
@@ -1162,6 +1170,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ role }),
     }),
+  adminSetUserProjects: (username: string, projects: Record<string, ProjectRole>) =>
+    request<{ username: string; projects: Record<string, ProjectRole> }>(
+      `/api/admin/users/${encodeURIComponent(username)}/projects`,
+      { method: "PUT", body: JSON.stringify({ projects }) },
+    ),
   adminSetUserPassword: (username: string, password: string) =>
     request<{ ok: boolean; sessions_ended: number }>(
       `/api/admin/users/${encodeURIComponent(username)}/password`,

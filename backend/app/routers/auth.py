@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.services import login_throttle, mfa_store, oidc_client, session_registry_store, users_store, visibility
+from app.services import login_throttle, mfa_store, oidc_client, project_access, session_registry_store, users_store, visibility
 from app.services.client_address import client_address
 from app.services.same_origin import is_same_origin
 from app.settings import settings
@@ -96,6 +96,9 @@ def auth_status(request: Request):
         "authenticated": authenticated and user is not None,
         "username": user["username"] if user else None,
         "role": user["role"] if user else None,
+        # Exceptions to that role per project, {slug: role} -- what the
+        # editor shows as writable (services/project_access.py).
+        "project_roles": project_access.writable_projects(user) if user else {},
     }
 
 

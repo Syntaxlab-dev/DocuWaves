@@ -42,6 +42,7 @@ from app.services import (
     importer,
     page_feedback_store,
     page_review,
+    project_access,
     categories_store,
     content_assets,
     content_files,
@@ -262,6 +263,7 @@ class VariablesIn(BaseModel):
 @router.put("/variables", summary="Replace the variables file of a project version or the site")
 def admin_write_variables(body: VariablesIn, request: Request):
     _require_content_repo()
+    project_access.require_write(request, body.project or None)
     slug, resolved = _snippet_scope(body.project, body.version, writing=True)
     try:
         paths = snippets.write_variables(slug, resolved, body.text)
@@ -283,6 +285,7 @@ class SnippetIn(BaseModel):
 @router.put("/snippets/{name}", summary="Create or replace one snippet")
 def admin_write_snippet(name: str, body: SnippetIn, request: Request):
     _require_content_repo()
+    project_access.require_write(request, body.project or None)
     slug, resolved = _snippet_scope(body.project, body.version, writing=True)
     try:
         paths = snippets.write_snippet(slug, resolved, name, body.language, body.content)
@@ -400,6 +403,8 @@ def admin_update_project(project_id: int, body: ProjectIn, request: Request):
         )
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
+    # Per-project permissions are keyed by slug: they follow a rename.
+    project_access.rename_project(project["slug"], updated["slug"] if updated else slug)
     # `id` too: renaming moves the file, and the reindex that follows keys
     # rows by slug -- so the row this call started from is gone and the
     # caller's id is stale. The page endpoint already answers this way; a
@@ -422,12 +427,14 @@ def admin_move_project(project_id: int, direction: int, request: Request):
 @router.delete("/projects/{project_id}")
 def admin_delete_project(project_id: int, request: Request):
     _require_content_repo()
-    if projects_store.get_project(project_id) is None:
+    project = projects_store.get_project(project_id)
+    if project is None:
         raise HTTPException(status_code=404, detail="Project not found.")
     try:
         projects_store.delete_project(project_id, _author(request))
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
+    project_access.forget_project(project["slug"])
     return {"ok": True}
 
 
@@ -726,6 +733,7 @@ def admin_create_page(body: PageIn, request: Request):
     category = categories_store.get_category(body.category_id)
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found.")
+    project_access.require_write(request, project_id=category["project_id"])
     title = body.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Title is required.")
@@ -769,6 +777,10 @@ def admin_update_page(page_id: int, body: PageIn, request: Request):
     category = categories_store.get_category(body.category_id)
     if category is None:
         raise HTTPException(status_code=404, detail="Category not found.")
+    # Both ends: the project the page is in, and the one its category is in
+    # (the same one, unless the client asks to move it somewhere else).
+    project_access.require_write(request, project_id=page["project_id"])
+    project_access.require_write(request, project_id=category["project_id"])
     title = body.title.strip()
     if not title:
         raise HTTPException(status_code=400, detail="Title is required.")
@@ -1676,7 +1688,8 @@ class GapDraftIn(BaseModel):
     "do not say comes back as a **TODO:** line. Nothing is saved; the editor opens it as a new unpublished page. "
     "409 `not_configured` without a chat model, 502 when the model fails.",
 )
-def admin_draft_from_gap(body: GapDraftIn):
+def admin_draft_from_gap(body: GapDraftIn, request: Request):
+    project_access.require_write(request, body.project_slug or None)
     language = body.language or site_languages.default_language()
     try:
         return gap_drafts.draft(body.query, language, body.project_slug)

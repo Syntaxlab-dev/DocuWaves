@@ -119,11 +119,14 @@ export function AdminApp() {
   // this is the half that stops someone reaching for a button that would
   // then fail.
   const frozen = Boolean(versions && viewing && viewing !== versions.writable);
-  const { canWrite, isAdmin } = usePermissions();
+  const { canWrite, isAdmin, canWriteProject, canWriteSomewhere } = usePermissions();
+  // Writes inside the open project follow its permission, which can differ
+  // from the account's role (permissions per project).
+  const canWriteHere = canWriteProject(selectedProject?.slug);
   // A frozen version and a read-only account are the same thing to every
   // panel below: browse it, don't change it. One flag rather than two, so
   // no panel can end up honouring one and not the other.
-  const readOnly = frozen || !canWrite;
+  const readOnly = frozen || !canWriteHere;
   // Docs-as-code: the pages and categories come from a code repository and
   // are changed there (backend services/docs_sync.py). Snippets, versions
   // and images are not the sync's, so only these panels follow it.
@@ -478,9 +481,9 @@ export function AdminApp() {
         {/* Said once, at the top, rather than as a disabled tooltip on every
             control that isn't there: a reader who cannot find the Save
             button should learn why from the page, not from hunting. */}
-        {!canWrite && (
+        {!canWriteHere && (
           <p className="mb-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2 text-sm text-[var(--muted)]">
-            {t("users.readOnlyNotice")}
+            {t(canWriteSomewhere ? "users.readOnlyProject" : "users.readOnlyNotice")}
           </p>
         )}
 
@@ -524,7 +527,7 @@ export function AdminApp() {
                     the card is not offered to a read-only account. The BAR
                     above it stays: which versions exist, and which one is
                     being looked at, is reading. */}
-                {showVersions && versions && canWrite && (
+                {showVersions && versions && canWriteHere && (
                   <VersionsCard
                     project={selectedProject}
                     versions={versions}

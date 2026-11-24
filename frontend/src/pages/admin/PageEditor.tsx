@@ -39,7 +39,6 @@ import {
   type PageTemplate,
   type ReviewState,
 } from "@/lib/api";
-import { usePermissions } from "@/lib/auth";
 import {
   clearDraft,
   draftKey,
@@ -241,11 +240,10 @@ export function PageEditor({
   // save on top of someone else's newer change is refused, not silent.
   const [revision, setRevision] = useState("");
   const [dirty, setDirty] = useState(false);
-  const { canWrite: accountCanWrite } = usePermissions();
   // Who else has this page open (services/editing_presence.py). Only an
   // account that may save announces itself; a frozen version or a
   // read-only account just sees who is there.
-  const presence = useEditingPresence(loadedId, dirty, accountCanWrite && !readOnly);
+  const presence = useEditingPresence(loadedId, dirty, !readOnly);
   /** Bumped to re-run the load below when nothing about WHICH page is open
    *  has changed but its content has -- restoring an older version writes a
    *  new one straight into the content repo, so the text in this editor is

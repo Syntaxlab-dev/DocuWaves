@@ -36,7 +36,7 @@ THE THREE THINGS THAT MUST NOT HAPPEN, and where each is stopped:
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from app.services import mfa_store, session_registry_store, users_store
+from app.services import mfa_store, project_access, projects_store, session_registry_store, users_store
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin"])
 
@@ -53,6 +53,12 @@ class RoleIn(BaseModel):
 
 class PasswordIn(BaseModel):
     password: str
+
+
+class ProjectRolesIn(BaseModel):
+    # {project slug: "viewer" | "editor"}; every exception the account has,
+    # replacing the ones it had.
+    projects: dict[str, str]
 
 
 def _me(request: Request) -> str:
@@ -89,11 +95,14 @@ def _require_valid_password(password: str) -> str:
     return password
 
 
-def _with_sessions(user: dict) -> dict:
+def _with_sessions(user: dict, project_roles: dict[str, dict[str, str]] | None = None) -> dict:
+    roles = project_roles if project_roles is not None else project_access.all_grants()
     return {
         **user,
         "sessions": len(session_registry_store.sessions_for(user["username"])),
         "mfa": mfa_store.enabled(user["username"]),
+        # Exceptions to the role, per project (services/project_access.py).
+        "projects": roles.get(user["username"], {}),
     }
 
 
@@ -105,9 +114,11 @@ def _with_sessions(user: dict) -> dict:
     "can leak it by forgetting to strip it.",
 )
 def list_users(request: Request):
+    project_roles = project_access.all_grants()
     return {
-        "users": [_with_sessions(user) for user in users_store.list_users()],
+        "users": [_with_sessions(user, project_roles) for user in users_store.list_users()],
         "roles": list(users_store.ROLES),
+        "project_roles": list(project_access.GRANTABLE),
         "me": _me(request),
         "min_password_length": users_store.MIN_PASSWORD_LENGTH,
     }
@@ -151,6 +162,35 @@ def set_role(username: str, body: RoleIn, request: Request):
     if users_store.rank(role) < users_store.rank(user["role"]):
         session_registry_store.revoke_for_user(username)
     return users_store.get_user(username)
+
+
+@router.put(
+    "/{username}/projects",
+    summary="Set an account's permissions per project",
+    description="Exceptions to the account's role, project by project: `editor` = may write in this project, "
+    "`viewer` = may only read it. Replaces every exception the account had; `{}` removes them all. Only for "
+    "viewer and editor accounts -- an admin may do everything everywhere, and a reader cannot open the admin "
+    "area at all. Takes effect on the account's next request; nobody is signed out.",
+)
+def set_project_roles(username: str, body: ProjectRolesIn):
+    user = _require_existing(username)
+    if body.projects and user["role"] not in (users_store.VIEWER, users_store.EDITOR):
+        raise HTTPException(
+            status_code=400,
+            detail="Permissions per project are for viewer and editor accounts.",
+        )
+    for slug, role in body.projects.items():
+        if role not in project_access.GRANTABLE:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A project permission must be one of: {', '.join(project_access.GRANTABLE)}.",
+            )
+        if projects_store.get_project_by_slug(slug) is None:
+            raise HTTPException(status_code=404, detail=f"No project '{slug}'.")
+    # An exception equal to the role says nothing; not stored, so the list
+    # an admin reads back is only the real differences.
+    differences = {slug: role for slug, role in body.projects.items() if role != user["role"]}
+    return {"username": username, "projects": project_access.set_grants(username, differences)}
 
 
 @router.put(

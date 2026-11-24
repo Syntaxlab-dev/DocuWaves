@@ -191,6 +191,15 @@ def create(project_slug: str, page_slug: str, language: str, version: str, days:
     return {"token": token, "url_path": url_path(token), "expires_at": expires_at}
 
 
+def get(link_id: int) -> dict | None:
+    """One link by id -- for deciding which project revoking it touches."""
+    with db.get_connection() as conn:
+        row = conn.execute(
+            f"SELECT {_COLUMNS} FROM preview_links WHERE id = {_placeholder()}", (link_id,)
+        ).fetchone()
+    return None if row is None else _row_to_dict(row)
+
+
 def revoke(link_id: int) -> bool:
     with db.get_connection() as conn:
         cursor = conn.execute(f"DELETE FROM preview_links WHERE id = {_placeholder()}", (link_id,))

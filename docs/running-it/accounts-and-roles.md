@@ -37,6 +37,33 @@ drafts and page history. Every other role can read private projects too. On
 an instance without private projects nobody needs it — public documentation
 needs no login.
 
+## Permissions per project
+
+A role holds for the whole instance, and sometimes that is too much or too
+little. Under **Accounts**, the folder button next to a **Read** or
+**Write** account sets exceptions to its role, project by project:
+
+- **A Read account that writes in one project.** An outside author, a
+  team that owns its own handbook: give the account **Write** in that
+  project, and it changes pages, categories, images, versions and snippets
+  there, and nowhere else.
+- **A Write account that is read only in one project.** The legal notices,
+  a frozen manual: give the account **Read** there, and it can still read
+  and review that project but not change it.
+
+What an exception changes is writing. It does not hide projects: a Read
+account with **Write** in one project still sees the drafts of the others,
+as any Read account does. Instance-wide changes follow the account's own
+role, whatever its exceptions say: creating a project, reordering the
+project list, the snippets of the whole site, and importing into a new
+project.
+
+Administrators have no exceptions (they may do everything, everywhere), and
+neither do Reader accounts (they cannot open the admin area at all). An
+exception takes effect on the account's next request; nobody is signed out.
+Renaming a project keeps its exceptions; deleting the project or the account
+removes them.
+
 ## How it is enforced
 
 In one place — the middleware in front of every API route — and by two rules
@@ -50,6 +77,12 @@ rather than a list of endpoints:
   branding, diagnostics, export.
 - **The reader rule is the admin prefix**: a Reader is refused everything in
   the admin area.
+- **Permissions per project follow the path.** For a write, the middleware
+  works out which project the address names (a page, a category, a project)
+  and applies the account's role *in that project*. The few writes that
+  name their project in the request body check it in the endpoint instead,
+  and a test fails when a new write is added without saying which kind it
+  is.
 
 The role is read from the database **on every request**, not from the
 session cookie. A role that is taken away is taken away now, for sessions

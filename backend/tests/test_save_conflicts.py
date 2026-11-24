@@ -87,7 +87,7 @@ class TestRoute:
     def test_a_conflict_is_a_409_page_changed(self, monkeypatch):
         monkeypatch.setattr(admin_content, "_require_content_repo", lambda: None)
         monkeypatch.setattr(admin_content.pages_store, "get_page", lambda page_id: dict(PAGE))
-        monkeypatch.setattr(admin_content.categories_store, "get_category", lambda cid: {"id": cid})
+        monkeypatch.setattr(admin_content.categories_store, "get_category", lambda cid: {"id": cid, "project_id": 1})
         monkeypatch.setattr(admin_content, "_author", lambda request: "alice")
 
         def refuse(*args, **kwargs):

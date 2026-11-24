@@ -378,6 +378,18 @@ _SQLITE_SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS mfa_recovery_username ON mfa_recovery_codes (username)",
+    # Permissions per project (services/project_access.py): exceptions to
+    # an account's role, keyed by project SLUG because ids belong to the
+    # content index, which is rebuilt. Real state, never dropped.
+    """
+    CREATE TABLE IF NOT EXISTS project_roles (
+        username TEXT NOT NULL,
+        project_slug TEXT NOT NULL,
+        role TEXT NOT NULL,
+        PRIMARY KEY (username, project_slug)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS project_roles_project ON project_roles (project_slug)",
 ]
 
 _POSTGRES_SCHEMA = [
@@ -609,6 +621,18 @@ _POSTGRES_SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS mfa_recovery_username ON mfa_recovery_codes (username)",
+    # Permissions per project (services/project_access.py): exceptions to
+    # an account's role, keyed by project SLUG because ids belong to the
+    # content index, which is rebuilt. Real state, never dropped.
+    """
+    CREATE TABLE IF NOT EXISTS project_roles (
+        username TEXT NOT NULL,
+        project_slug TEXT NOT NULL,
+        role TEXT NOT NULL,
+        PRIMARY KEY (username, project_slug)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS project_roles_project ON project_roles (project_slug)",
 ]
 
 
@@ -622,7 +646,7 @@ _REQUIRED_COLUMNS = {
 }
 
 # Only the content index is ever rebuilt. `auth`, `sessions`, `api_tokens`,
-# `page_feedback`, `preview_links` and the `mfa_*` tables are real state that exists nowhere else
+# `page_feedback`, `preview_links`, `project_roles` and the `mfa_*` tables are real state that exists nowhere else
 # (the admin's password hash, live logins, the credentials handed to an AI
 # assistant, readers' votes, the links people were sent) -- none of them is
 # in this list and none is ever dropped. That is the whole difference between

@@ -47,12 +47,29 @@ export function useAuth() {
  * Both default to false while the status is still loading, so nothing
  * flashes into view and then disappears.
  */
-export function usePermissions(): { role: Role | null; canWrite: boolean; isAdmin: boolean } {
+export function usePermissions(): {
+  role: Role | null;
+  canWrite: boolean;
+  isAdmin: boolean;
+  canWriteProject: (slug: string | null | undefined) => boolean;
+  canWriteSomewhere: boolean;
+} {
   const { status } = useAuth();
   const role = status?.role ?? null;
+  const exceptions = status?.project_roles ?? {};
+  const canWrite = role === "editor" || role === "admin";
   return {
     role,
-    canWrite: role === "editor" || role === "admin",
+    // Instance-wide writes: creating a project, the site's snippets, import.
+    canWrite,
     isAdmin: role === "admin",
+    // Writes inside one project: the account's role, unless the project is
+    // an exception to it (permissions per project). Admins have none.
+    canWriteProject: (slug) => {
+      if (role === "admin") return true;
+      const exception = slug ? exceptions[slug] : undefined;
+      return exception ? exception === "editor" : canWrite;
+    },
+    canWriteSomewhere: canWrite || Object.values(exceptions).includes("editor"),
   };
 }
