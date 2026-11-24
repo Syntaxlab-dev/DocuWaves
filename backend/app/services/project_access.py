@@ -205,6 +205,7 @@ WRITE_ROUTES: list[tuple[str, re.Pattern, str]] = [
         ("POST", "/content-repo/sync", "instance"),
         ("POST", "/resolve-markdown", "body"),
         ("PUT", "/variables", "body"),
+        ("PUT", "/glossary", "body"),
         ("PUT", "/snippets/[^/]+", "body"),
         ("DELETE", "/snippets/[^/]+", "query"),
         ("POST", "/projects", "instance"),

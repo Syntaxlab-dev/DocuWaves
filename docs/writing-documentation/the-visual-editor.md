@@ -51,7 +51,7 @@ Images are uploaded into the project like any other
   language, and saved as GitHub's `> [!WARNING]`.
 - **Variables** (`{{port}}`) and **snippets** appear as chips. They stay
   exactly what they are in the file; what they stand for is managed under
-  **Snippets & variables**.
+  **Snippets, variables & glossary**.
 - **Formulas** — `$…$` in a sentence, `$$…$$` on their own — are shown
   rendered. Double-click one to edit its LaTeX.
 - **Diagrams** — ` ```mermaid ` blocks — keep their source editable,

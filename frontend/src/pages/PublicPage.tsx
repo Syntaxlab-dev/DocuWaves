@@ -17,6 +17,7 @@ import { useProjectNav, type NavStatus } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { languageName, useContentLang } from "@/lib/lang";
 import { useDocPath, useReportProjectVersion } from "@/lib/version";
+import { useGlossary } from "@/lib/glossary";
 import { useDocumentTitle } from "@/lib/site";
 
 /** Below this, a contents list is just the page's own outline restated --
@@ -36,6 +37,7 @@ export function PublicPage() {
   const { lang } = useContentLang();
   const docPath = useDocPath();
   const { nav, status: navStatus } = useProjectNav(projectSlug, lang, version);
+  const glossary = useGlossary(projectSlug, lang, version);
   const [data, setData] = useState<{
     project: Project;
     category: Category;
@@ -161,6 +163,7 @@ export function PublicPage() {
         categorySlug={data.category.slug}
         versionDir={data.page.version}
         lang={data.page.fallback ? data.page.language || undefined : undefined}
+        glossary={glossary}
       />
       {/* One quiet line under the text. The date comes from the content
           repo's own log, not from the page's `updated_at` column -- that one

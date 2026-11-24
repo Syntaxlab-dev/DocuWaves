@@ -50,7 +50,7 @@ editor's preview, so a renamed file does not silently empty a page.
 
 ## Managing them in the admin area
 
-**Snippets & variables**, next to **Versions** above a project, edits them
+**Snippets, variables & glossary**, next to **Versions** above a project, edits them
 for the version you are looking at — or, with the switch at the top, for the
 whole site. Every save is a commit, like any other edit. Variables are
 checked before they are written (a value YAML would read as `true`, a name

@@ -86,7 +86,7 @@ _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 # the rest would collide with a fixed segment of a reading URL
 # (/p/<project>/<version>/c/<category>, .../pages/<page>) or with the assets
 # folder that sits inside every version directory.
-_RESERVED_IDS = {CURRENT_ID, "assets", "c", "pages", "changes", "feed.xml", "print"}
+_RESERVED_IDS = {CURRENT_ID, "assets", "c", "pages", "changes", "feed.xml", "print", "glossary"}
 
 _MAX_ID_LENGTH = 40
 _MAX_LABEL_LENGTH = 60
@@ -394,10 +394,10 @@ def rejection_reason(project_slug: str, version_id: str, label: str, raw: str = 
 
 
 # DocuWaves' own files that belong to ONE version rather than the project:
-# a frozen 2.0 keeps the snippets and variable values it was released with
+# a frozen 2.0 keeps the snippets, variable values and glossary it was released with
 # (see snippets.py). Spelled out here rather than imported, because this
 # module sits below snippets.py.
-VERSIONED_OWN_FILES = {"_snippets", "_variables.yml", "_sync.yml"}
+VERSIONED_OWN_FILES = {"_snippets", "_variables.yml", "_glossary.yml", "_sync.yml"}
 
 
 def _content_entries(project_slug: str) -> list[Path]:

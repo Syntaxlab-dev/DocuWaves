@@ -32,6 +32,7 @@ from app.services import (
     content_assets,
     doc_chat,
     content_versions,
+    glossary,
     page_feedback_store,
     page_redirects,
     pages_store,
@@ -249,6 +250,21 @@ def public_get_book(
         if pages:
             chapters.append({"name": c["name"], "slug": c["slug"], "icon": c.get("icon", ""), "pages": pages})
     return {"project": project, "versions": _versions_payload(project_slug, resolved), "categories": chapters}
+
+
+@router.get(
+    "/projects/{project_slug}/glossary",
+    summary="A project's glossary: its terms and the site's, sorted",
+    description="What the tooltips on its pages and the glossary page show (services/glossary.py), in the "
+    "reader's language, for one version.",
+)
+def public_glossary(
+    request: Request, project_slug: str, lang: str | None = _LANG_QUERY, version: str | None = _VERSION_QUERY
+):
+    language = _language(lang)
+    _visible_project(project_slug, language, request)
+    resolved = _version(project_slug, version)
+    return {"terms": glossary.terms(project_slug, resolved, language)}
 
 
 _EXPORTS = {

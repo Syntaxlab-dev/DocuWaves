@@ -13,6 +13,7 @@ import { PublicCategory } from "@/pages/PublicCategory";
 import { PublicPage } from "@/pages/PublicPage";
 import { SearchResults } from "@/pages/SearchResults";
 import { ChangesPage } from "@/pages/ChangesPage";
+import { GlossaryPage } from "@/pages/GlossaryPage";
 import { PublicLogin } from "@/pages/PublicLogin";
 import { PreviewPage } from "@/pages/PreviewPage";
 import { AdminGate } from "@/pages/AdminGate";
@@ -51,6 +52,8 @@ const readingRoutes = [
   // Above p/:projectSlug/:version in effect: a literal segment outranks a
   // parameter, and "changes" is a reserved version id (content_versions.py).
   { path: "p/:projectSlug/changes", element: <ChangesPage /> },
+  // "glossary" is a reserved version id too.
+  { path: "p/:projectSlug/glossary", element: <GlossaryPage /> },
   { path: "p/:projectSlug/print", element: (
       <Suspense fallback={null}>
         <PrintBookPage />

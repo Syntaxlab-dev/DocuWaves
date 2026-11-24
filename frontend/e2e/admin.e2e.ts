@@ -98,6 +98,29 @@ test("search finds it", async ({ page }) => {
   await expect(hit.locator("mark").first()).toBeVisible();
 });
 
+test("a glossary term explains itself on the page", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  const status = await page.evaluate(async () => {
+    const r = await fetch("/api/admin/glossary", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project: "handbook", version: "", text: "Plug: The connector on the cable.\n" }),
+    });
+    return r.status;
+  });
+  expect(status).toBe(200);
+  await page.goto("/p/handbook/pages/installing-the-widget");
+  const term = page.locator(".glossary-term", { hasText: "plug" });
+  await expect(term).toHaveCount(1);
+  await term.hover();
+  await expect(page.locator(".glossary-tip")).toContainText("The connector on the cable.");
+  await page.goto("/p/handbook/glossary");
+  await expect(page.getByRole("heading", { name: "Glossary" })).toBeVisible();
+  await expect(page.getByText("The connector on the cable.")).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 async function openPageInEditor(page: Page, title: string) {
   await signIn(page);
   await page.getByRole("button", { name: "Handbook" }).click();

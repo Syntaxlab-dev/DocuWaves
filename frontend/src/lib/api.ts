@@ -1449,6 +1449,16 @@ export const api = {
     const query = params.toString();
     return request<Book>(`/api/public/projects/${encodeURIComponent(projectSlug)}/book${query ? `?${query}` : ""}`);
   },
+  publicGlossary: (projectSlug: string, lang?: string, version?: string) =>
+    request<{ terms: { term: string; definition: string }[] }>(
+      `/api/public/projects/${encodeURIComponent(projectSlug)}/glossary${contentQuery(lang, version)}`,
+    ),
+  adminGetGlossary: (project: string, version: string) =>
+    request<{ text: string; frozen: boolean }>(
+      `/api/admin/glossary?project=${encodeURIComponent(project)}&version=${encodeURIComponent(version)}`,
+    ),
+  adminWriteGlossary: (data: { project: string; version: string; text: string }) =>
+    request<{ ok: boolean }>("/api/admin/glossary", { method: "PUT", body: JSON.stringify(data) }),
   /** A download link, not a fetch: the browser saves the file itself. */
   publicProjectExportUrl: (projectSlug: string, kind: "epub" | "markdown", lang?: string, version?: string) => {
     const params = new URLSearchParams();
