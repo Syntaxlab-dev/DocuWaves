@@ -30,8 +30,18 @@ cd website && python3 -m http.server 8000
 
 ## Publishing
 
-Copy the contents of this folder to the web root of docuwaves.app, for
-example:
+A push to `main` that changes `website/` publishes it:
+[`.github/workflows/website.yml`](../.github/workflows/website.yml) checks
+that every page parses and every local link exists, copies the folder to the
+web root over SSH with `rsync --delete`, and then checks that the live pages
+answer. It can also be started by hand from the Actions tab.
+
+It needs the repository secrets `WEBSITE_SSH_HOST`, `WEBSITE_SSH_USER`,
+`WEBSITE_SSH_KEY` and `WEBSITE_PATH` (and optionally
+`WEBSITE_SSH_KNOWN_HOSTS`); the workflow file says what goes in each. Until
+they are set, the job skips the copy and says so.
+
+By hand, the same copy is:
 
 ```bash
 rsync -av --delete --exclude README.md website/ user@server:/path/to/docuwaves.app/

@@ -1,0 +1,97 @@
+# The landing page in website/ is https://docuwaves.app -- static files,
+# copied to the web server's document root over SSH whenever website/
+# changes on main (or by hand from the Actions tab).
+#
+# Needs four repository secrets. Without them the job says so and stops,
+# rather than failing every push:
+#
+#   WEBSITE_SSH_HOST         the server, e.g. docuwaves.app
+#   WEBSITE_SSH_USER         the account that owns the document root
+#   WEBSITE_SSH_KEY          a private key for that account (a deploy key used
+#                            for nothing else; its public half goes into that
+#                            account's ~/.ssh/authorized_keys)
+#   WEBSITE_PATH             the document root, e.g. /var/www/.../public_html
+#
+# and optionally WEBSITE_SSH_KNOWN_HOSTS (the output of `ssh-keyscan <host>`)
+# to pin the server's key. Without it the key is fetched on first contact.
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths: ["website/**", ".github/workflows/website.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: website-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      # The same checks a person would make before copying by hand: every
+      # page parses, every local link and image it uses exists.
+      - name: Check the pages
+        run: |
+          python3 - <<'PY'
+          import html.parser, pathlib, re, sys
+          root = pathlib.Path("website")
+          bad = []
+          for page in root.rglob("*.html"):
+              text = page.read_text(encoding="utf-8")
+              html.parser.HTMLParser().feed(text)
+              for ref in re.findall(r'(?:href|src|srcset)="(/[^"#?]*)"', text):
+                  target = root / ref.lstrip("/")
+                  if ref.endswith("/"):
+                      target = target / "index.html"
+                  if not target.exists():
+                      bad.append(f"{page}: {ref}")
+          for line in bad:
+              print(f"::error::missing {line}")
+          sys.exit(1 if bad else 0)
+          PY
+
+      - name: Copy to the server
+        env:
+          HOST: ${{ secrets.WEBSITE_SSH_HOST }}
+          USER: ${{ secrets.WEBSITE_SSH_USER }}
+          KEY: ${{ secrets.WEBSITE_SSH_KEY }}
+          DEST: ${{ secrets.WEBSITE_PATH }}
+          KNOWN_HOSTS: ${{ secrets.WEBSITE_SSH_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ] || [ -z "$DEST" ]; then
+            echo "::notice::WEBSITE_SSH_HOST, WEBSITE_SSH_USER, WEBSITE_SSH_KEY or WEBSITE_PATH is not set -- nothing deployed."
+            exit 0
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/website && chmod 600 ~/.ssh/website
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          # --delete keeps the server identical to website/, except for what
+          # the server owns itself: the README here, and anything the panel
+          # or Let's Encrypt keeps in the document root.
+          rsync -rlptvz --delete \
+            --exclude README.md \
+            --exclude '.well-known/' \
+            --exclude '.htaccess' \
+            -e "ssh -i ~/.ssh/website -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            website/ "$USER@$HOST:$DEST/"
+
+      - name: Check the live site
+        env:
+          HOST: ${{ secrets.WEBSITE_SSH_HOST }}
+        run: |
+          if [ -z "$HOST" ]; then exit 0; fi
+          for path in / /de/ /robots.txt /sitemap.xml; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://docuwaves.app$path")
+            echo "$path -> $code"
+            [ "$code" = "200" ] || { echo "::error::https://docuwaves.app$path answered $code"; exit 1; }
+          done
