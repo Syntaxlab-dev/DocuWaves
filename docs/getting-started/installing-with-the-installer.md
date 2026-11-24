@@ -73,6 +73,7 @@ curl -fsSL https://get.docuwaves.app | sudo sh -s -- --domain docs.example.com -
 | `--channel NAME` | Which images updates follow: `stable` (default), `latest`, or a version such as `1.2` |
 | `--dir PATH` | Install somewhere other than `/opt/docuwaves` |
 | `--no-backup-timer` | No nightly backup |
+| `--offsite` | Also copy every backup, encrypted, to S3 or SFTP; asks for the target. See [offsite](/p/docuwaves/pages/the-docuwaves-command#offsite) |
 | `--yes` | Ask nothing. Anything not given is left at its default: no domain, no remote |
 
 The token and the key are written to `.env` and nowhere else. They are never printed.

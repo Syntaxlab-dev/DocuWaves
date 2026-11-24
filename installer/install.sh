@@ -25,6 +25,8 @@
 #   --channel NAME       stable (default), latest, or a version like 1.2
 #   --dir PATH           install somewhere other than /opt/docuwaves
 #   --no-backup-timer    no daily backup
+#   --offsite            also copy every backup, encrypted, to S3 or SFTP
+#                        (asks for the target; later: docuwaves offsite setup)
 #   --yes                ask nothing; take the defaults for anything not given
 #   --image REF          a different image altogether (for testing)
 set -eu
@@ -40,6 +42,7 @@ REPO_URL=""
 REPO_KEY_FILE=""
 REPO_TOKEN="${DOCUWAVES_REPO_TOKEN:-}"
 BACKUP_TIMER=1
+OFFSITE=0
 YES=0
 REGISTRY_IMAGE=ghcr.io/syntaxlab-dev/docuwaves
 CLI_IN_IMAGE=/usr/share/docuwaves/docuwaves
@@ -102,6 +105,7 @@ while [ $# -gt 0 ]; do
     --dir) need_value "$1" "${2:-}"; DIR=$2; shift ;;
     --image) need_value "$1" "${2:-}"; IMAGE=$2; shift ;;
     --no-backup-timer) BACKUP_TIMER=0 ;;
+    --offsite) OFFSITE=1 ;;
     --yes | -y) YES=1 ;;
     -h | --help) sed -n '2,/^set -eu/p' "$0" 2>/dev/null | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
     *) die "Unknown option: $1 (see --help)" ;;
@@ -497,8 +501,17 @@ ${GREEN}${BOLD}DocuWaves is installed.${RESET}
 
   Files        $DIR
   Manage       docuwaves status | update | backup | logs | help
+  Off-site     docuwaves offsite setup   ${DIM}(backups to S3 or SFTP as well, encrypted)${RESET}
   Docs         https://docs.docuwaves.app/p/docuwaves/pages/installing-with-the-installer
 EOF
+if [ "$OFFSITE" = 1 ]; then
+  say ""
+  if [ -r /dev/tty ]; then
+    docuwaves offsite setup || warn "Off-site copies are not set up yet; run: docuwaves offsite setup"
+  else
+    warn "--offsite needs a terminal to ask for the target; run later: docuwaves offsite setup"
+  fi
+fi
 if [ -n "$DOMAIN" ]; then
   say ""
   say "${DIM}The HTTPS certificate is fetched on the first visit; that can take a few seconds.${RESET}"
