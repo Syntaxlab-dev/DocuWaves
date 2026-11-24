@@ -1,7 +1,7 @@
 ---
 order: 2
 published: true
-title: Printing and PDF
+title: Printing, PDF and EPUB
 ---
 
 Print any page from the browser, or save it as PDF from the same dialog —
@@ -22,6 +22,25 @@ print dialog. The contents and all links stay clickable in the PDF, and
 The browser does the PDF on purpose: nothing to install or run on the
 server, no fonts to ship, and diagrams, formulas and code come out exactly as
 the site renders them, because it is the site's own rendering.
+
+## EPUB and Markdown
+
+Next to **PDF / print**, a project page offers two downloads of the same
+content — every published page of the version you are reading, in your
+language, in the sidebar's order:
+
+- **EPUB** — an e-book for an e-reader, a tablet or reading offline: a table
+  of contents per category, the pages with their images, callouts and
+  tables, and links between pages that work inside the book.
+- **Markdown (zip)** — each page as a Markdown file with its title, the
+  images next to them and an `index.md` listing everything, for another
+  tool. Links between pages point at the files.
+
+Snippets and variables are filled in, as on the site. Diagrams and formulas
+stay as their source text: drawing them takes the site's JavaScript. A
+private project is only offered to someone signed in who may read it. For a
+copy of the whole instance with its history, use the export under
+**Diagnostics** instead.
 
 ## What the printed page looks like
 
@@ -52,9 +71,6 @@ just as well, and printing a page phones nobody.
 ## Practical notes
 
 - **Print from the reading page**, not the editor's preview tab.
-- **A whole category or project at once is not supported.** Print the pages
-  you need. Stitching a book together is a job for a tool built for it, and
-  your content is Markdown in a repository, which is what such tools take.
 - **Images print** at whatever resolution they were uploaded at.
 - **Mermaid diagrams print** as drawn, since they are rendered into the page
   rather than loaded as pictures.

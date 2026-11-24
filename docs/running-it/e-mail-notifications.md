@@ -76,4 +76,4 @@ across a restart.
 
 For a team channel rather than personal mail, use
 [webhooks](/p/docuwaves/pages/webhooks): the same events, sent to Discord,
-Slack or any JSON endpoint.
+Slack, Microsoft Teams, Matrix or any JSON endpoint.

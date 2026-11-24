@@ -1476,6 +1476,14 @@ export const api = {
     const query = params.toString();
     return request<Book>(`/api/public/projects/${encodeURIComponent(projectSlug)}/book${query ? `?${query}` : ""}`);
   },
+  /** A download link, not a fetch: the browser saves the file itself. */
+  publicProjectExportUrl: (projectSlug: string, kind: "epub" | "markdown", lang?: string, version?: string) => {
+    const params = new URLSearchParams();
+    if (lang) params.set("lang", lang);
+    if (version) params.set("version", version);
+    const query = params.toString();
+    return `/api/public/projects/${encodeURIComponent(projectSlug)}/export/${kind}${query ? `?${query}` : ""}`;
+  },
   changelog: (lang?: string, project?: string) => {
     const params = new URLSearchParams();
     if (lang) params.set("lang", lang);
