@@ -12,6 +12,7 @@ import { AdminLogCard } from "@/components/AdminLogCard";
 import { TwoFactorCard } from "@/components/TwoFactorCard";
 import { NotificationsCard } from "@/components/NotificationsCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
+import { ReplaceCard } from "@/components/ReplaceCard";
 import { ImportCard } from "@/components/ImportCard";
 import { SyncBanner } from "@/components/SyncBanner";
 import { UiLanguageToggle } from "@/components/UiLanguageToggle";
@@ -117,6 +118,7 @@ export function AdminApp() {
   const [viewing, setViewing] = useState("");
   const [showVersions, setShowVersions] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
+  const [showReplace, setShowReplace] = useState(false);
   // Read-only: a frozen version is a snapshot of a release. Every control
   // that writes is hidden while one is being viewed, and the API refuses
   // the write anyway (see the backend's content_versions.ensure_writable) --
@@ -528,6 +530,7 @@ export function AdminApp() {
                   open={showVersions}
                   onToggle={() => setShowVersions((v) => !v)}
                   onToggleSnippets={() => setShowSnippets((v) => !v)}
+                  onToggleReplace={contentReadOnly ? undefined : () => setShowReplace((v) => !v)}
                 />
 
                 {/* Freezing a release and deleting one are both writes, so
@@ -552,6 +555,18 @@ export function AdminApp() {
                     version={viewing}
                     readOnly={readOnly}
                     onClose={() => setShowSnippets(false)}
+                  />
+                )}
+
+                {showReplace && !contentReadOnly && (
+                  <ReplaceCard
+                    projectId={selectedProject.id}
+                    version={viewing}
+                    onClose={() => setShowReplace(false)}
+                    onChanged={() => {
+                      if (selectedCategory) loadPages(selectedCategory.id);
+                      refreshReviews();
+                    }}
                   />
                 )}
 

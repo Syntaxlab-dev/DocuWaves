@@ -59,6 +59,7 @@ from app.services import (
     pages_store,
     preview_links_store,
     projects_store,
+    search_replace,
     site_branding,
     site_languages,
     snippets,
@@ -936,6 +937,66 @@ def admin_bulk_pages(body: BulkIn, request: Request):
     except git_content_repo.GitContentError as exc:
         raise _git_error_response(exc) from exc
     return {"done": done, "skipped": skipped}
+
+
+# ---- Search and replace across a project (services/search_replace.py) ----
+
+
+class ReplaceSearchIn(BaseModel):
+    find: str
+    replace: str = ""
+    case_sensitive: bool = False
+    whole_word: bool = False
+    # Empty = every language. The version defaults to the one the editor writes to.
+    language: str = ""
+    version: str | None = None
+
+
+class ReplaceApplyIn(ReplaceSearchIn):
+    # Page id -> the revision the preview showed for it.
+    pages: dict[int, str] = Field(min_length=1, max_length=_BULK_MAX)
+
+
+def _replace_context(project_id: int, body: ReplaceSearchIn):
+    project = projects_store.get_project(project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    version = _admin_version(project["slug"], body.version)
+    try:
+        pattern = search_replace.compile_pattern(body.find, body.case_sensitive, body.whole_word)
+    except search_replace.SearchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return project, version, pattern
+
+
+@router.post(
+    "/projects/{project_id}/replace/preview",
+    summary="Find text in every page of a project, before replacing it",
+    description="Plain text, not a regular expression; only page bodies are searched. Lists each page with a "
+    "match, how many, a few lines around them, and the page's `revision` -- pass that back to apply, so a page "
+    "saved in between is skipped instead of overwritten.",
+)
+def admin_replace_preview(project_id: int, body: ReplaceSearchIn):
+    project, version, pattern = _replace_context(project_id, body)
+    return search_replace.preview(project, version, pattern, body.language or None)
+
+
+@router.post(
+    "/projects/{project_id}/replace",
+    summary="Replace text in the pages of a project, as one commit",
+    description="`pages` maps each page id to the revision its preview showed. Pages whose text changed since "
+    "are skipped as `changed`. In a project that requires approval, a live page gets a proposal instead of a "
+    "new live text.",
+)
+def admin_replace_apply(project_id: int, body: ReplaceApplyIn, request: Request):
+    _require_content_repo()
+    project, version, pattern = _replace_context(project_id, body)
+    try:
+        return search_replace.apply(project, version, pattern, body.find, body.replace, body.pages, _author(request))
+    except search_replace.SearchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
 
 
 # ---- Scheduled publishing (services/scheduled_publish.py) ----

@@ -401,6 +401,34 @@ export interface AuthStatus {
 }
 
 /** What a bulk action on pages does (backend routers/admin_content.py). */
+/** Search and replace across a project (backend services/search_replace.py). */
+export type ReplaceQuery = {
+  find: string;
+  replace: string;
+  case_sensitive: boolean;
+  whole_word: boolean;
+  version?: string;
+};
+export type ReplaceMatchPage = {
+  id: number;
+  title: string;
+  slug: string;
+  language: string;
+  category: string;
+  published: boolean;
+  proposal: boolean;
+  becomes_proposal: boolean;
+  revision: string;
+  count: number;
+  snippets: { before: string; match: string; after: string }[];
+};
+export type ReplacePreview = { pages: ReplaceMatchPage[]; total: number };
+export type ReplaceResult = {
+  done: { id: number; count: number; proposal: boolean }[];
+  skipped: { id: number; reason: string }[];
+  replacements: number;
+};
+
 export type BulkAction = "publish" | "unpublish" | "move" | "delete";
 
 /** A draft's scheduled publication (backend services/scheduled_publish.py). */
@@ -1121,6 +1149,16 @@ export const api = {
     request<{ done: number[]; skipped: { id: number; reason: string }[] }>("/api/admin/pages/bulk", {
       method: "POST",
       body: JSON.stringify({ action, page_ids: pageIds, category_id: categoryId ?? null }),
+    }),
+  adminReplacePreview: (projectId: number, query: ReplaceQuery) =>
+    request<ReplacePreview>(`/api/admin/projects/${projectId}/replace/preview`, {
+      method: "POST",
+      body: JSON.stringify(query),
+    }),
+  adminReplace: (projectId: number, query: ReplaceQuery, pages: Record<number, string>) =>
+    request<ReplaceResult>(`/api/admin/projects/${projectId}/replace`, {
+      method: "POST",
+      body: JSON.stringify({ ...query, pages }),
     }),
   adminPageSchedule: (pageId: number) =>
     request<{ schedule: PageSchedule | null }>(`/api/admin/pages/${pageId}/schedule`),

@@ -159,6 +159,23 @@ test("pages are published together from the list", async ({ page, request }) => 
   expect(errors).toEqual([]);
 });
 
+test("text is replaced across the project", async ({ page, request }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("button", { name: "Handbook" }).click();
+  await page.getByRole("button", { name: "Search and replace" }).click();
+  await page.getByRole("textbox", { name: "Find" }).fill("light turns green");
+  await page.getByRole("textbox", { name: "Replace with" }).fill("lamp turns blue");
+  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await expect(page.getByText("1 matches on 1 pages.")).toBeVisible();
+  await page.getByRole("button", { name: "Replace in 1 pages" }).click();
+  await expect(page.getByText("Replaced 1 occurrences on 1 pages.")).toBeVisible();
+  await expect
+    .poll(async () => (await (await request.get("/api/public/projects/handbook/pages/setting-up-the-widget")).json()).page?.markdown_content)
+    .toContain("The lamp turns blue.");
+  expect(errors).toEqual([]);
+});
+
 test("every admin panel opens without an error", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);
