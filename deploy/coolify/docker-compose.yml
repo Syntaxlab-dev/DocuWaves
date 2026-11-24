@@ -1,0 +1,25 @@
+# DocuWaves for Coolify: add a "Docker Compose" resource and paste this file.
+# Coolify fills SERVICE_FQDN_DOCUWAVES_8000 with the domain you assign and
+# routes it to port 8000. Everything else is optional; see
+# docs/running-it/deploy-templates.md.
+services:
+  docuwaves:
+    image: ghcr.io/syntaxlab-dev/docuwaves:stable
+    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_DOCUWAVES_8000
+      - PUBLIC_BASE_URL=${SERVICE_FQDN_DOCUWAVES}
+      - CONTENT_REPO_URL=${CONTENT_REPO_URL:-}
+      - CONTENT_REPO_TOKEN=${CONTENT_REPO_TOKEN:-}
+    volumes:
+      # The content repository, the index and the session secret. Without a
+      # remote, the only copy of your documentation.
+      - docuwaves-data:/data
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  docuwaves-data:

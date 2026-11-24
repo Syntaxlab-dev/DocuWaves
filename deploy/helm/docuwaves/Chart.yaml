@@ -1,0 +1,10 @@
+apiVersion: v2
+name: docuwaves
+description: Self-hosted documentation with a browser editor; content lives as Markdown in Git.
+type: application
+version: 0.1.0
+appVersion: "stable"
+home: https://docuwaves.app
+sources:
+  - https://github.com/Syntaxlab-dev/DocuWaves
+license: MIT

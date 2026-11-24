@@ -1,0 +1,52 @@
+# DocuWaves keeps its content repository, SQLite index and session secret on
+# one volume, so it runs as ONE replica with a ReadWriteOnce volume and the
+# Recreate strategy: two pods writing the same Git working copy would
+# corrupt it.
+
+image:
+  repository: ghcr.io/syntaxlab-dev/docuwaves
+  # stable = the newest release. Pin a version (e.g. "1.2") for predictable upgrades.
+  tag: stable
+  pullPolicy: IfNotPresent
+
+# Plain settings, see docs: Environment variables. Example:
+#   PUBLIC_BASE_URL: https://docs.example.com
+#   CONTENT_REPO_URL: https://github.com/your-org/your-docs-content.git
+env: {}
+
+# Name of an existing Secret whose keys become environment variables, for
+# CONTENT_REPO_TOKEN, SMTP_PASSWORD, OIDC_CLIENT_SECRET and the like.
+existingSecret: ""
+
+persistence:
+  enabled: true
+  size: 2Gi
+  # Empty = the cluster's default StorageClass.
+  storageClass: ""
+  # Use a PVC that already exists instead of creating one.
+  existingClaim: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: docs.example.com
+  tls:
+    enabled: false
+    # Secret holding the certificate, e.g. made by cert-manager.
+    secretName: docuwaves-tls
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 192Mi
+  limits:
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

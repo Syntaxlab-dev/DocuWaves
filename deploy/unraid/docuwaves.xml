@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>DocuWaves</Name>
+  <Repository>ghcr.io/syntaxlab-dev/docuwaves:stable</Repository>
+  <Registry>https://github.com/Syntaxlab-dev/DocuWaves/pkgs/container/docuwaves</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Syntaxlab-dev/DocuWaves/discussions</Support>
+  <Project>https://docuwaves.app</Project>
+  <Overview>Self-hosted documentation with a browser editor. Every page is a Markdown file in a Git repository you own; the database is only an index. Several projects, versions, languages, search, approval before publishing, and an MCP endpoint for AI assistants.</Overview>
+  <Category>Productivity: Tools:</Category>
+  <WebUI>http://[IP]:[PORT:8000]/</WebUI>
+  <Icon>https://raw.githubusercontent.com/Syntaxlab-dev/DocuWaves/main/website/favicon.svg</Icon>
+  <Config Name="Web UI port" Target="8000" Default="8091" Mode="tcp" Description="DocuWaves listens on 8000 inside the container." Type="Port" Display="always" Required="true" Mask="false">8091</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/docuwaves" Mode="rw" Description="Content repository, index and session secret. Without a Git remote this is the only copy of your documentation: back it up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/docuwaves</Config>
+  <Config Name="Public address" Target="PUBLIC_BASE_URL" Default="" Mode="" Description="The address readers use, e.g. https://docs.example.com. Leave empty while trying it out." Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="Content repository URL" Target="CONTENT_REPO_URL" Default="" Mode="" Description="Optional: an empty Git repository to push the content to." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="Content repository token" Target="CONTENT_REPO_TOKEN" Default="" Mode="" Description="Access token for an https:// repository URL." Type="Variable" Display="advanced" Required="false" Mask="true"/>
+</Container>

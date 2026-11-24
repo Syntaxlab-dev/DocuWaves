@@ -1,0 +1,10 @@
+DocuWaves is starting. Open it and create the first administrator account:
+{{- if .Values.ingress.enabled }}
+  http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else }}
+  kubectl port-forward svc/{{ include "docuwaves.fullname" . }} 8091:{{ .Values.service.port }}
+  then http://localhost:8091
+{{- end }}
+
+Without CONTENT_REPO_URL, the persistent volume is the only copy of your
+documentation. Back it up, or configure a remote.

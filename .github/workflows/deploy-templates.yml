@@ -1,0 +1,40 @@
+name: Deploy templates
+
+# The files under deploy/ are used by copying them somewhere else, where a
+# mistake shows up as somebody's failed install. Check that each one at
+# least parses and renders.
+
+on:
+  pull_request:
+    paths: ["deploy/**", ".github/workflows/deploy-templates.yml"]
+  push:
+    branches: [main]
+    paths: ["deploy/**", ".github/workflows/deploy-templates.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Helm chart
+        run: |
+          helm lint deploy/helm/docuwaves
+          helm template docs deploy/helm/docuwaves > /dev/null
+          helm template docs deploy/helm/docuwaves \
+            --set ingress.enabled=true --set ingress.tls.enabled=true \
+            --set existingSecret=docuwaves-secrets --set env.PUBLIC_BASE_URL=https://docs.example.com \
+            | tee /dev/stderr | grep -q "replicas: 1"
+
+      - name: Unraid template
+        run: python3 -c "import xml.etree.ElementTree as ET; ET.parse('deploy/unraid/docuwaves.xml')"
+
+      - name: Coolify compose file
+        run: SERVICE_FQDN_DOCUWAVES=https://docs.example.com docker compose -f deploy/coolify/docker-compose.yml config > /dev/null
