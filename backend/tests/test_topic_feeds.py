@@ -8,6 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.routers import feeds
+from app.services import seo
 
 from app.services import (
     changelog,
@@ -107,7 +108,12 @@ def test_a_private_project_has_no_category_or_page_feed(world, monkeypatch):
 
 
 def test_pages_and_categories_announce_their_own_feed(world):
-    html = world.get("/p/docs/pages/tokens").text
+    # The server-rendered head, built directly: the HTML route needs a
+    # frontend build, which the backend's CI job does not have.
+    def head(path: str) -> str:
+        return seo.render_head(seo.build_meta(seo.parse_route(path), "http://testserver"))
+
+    html = head("/p/docs/pages/tokens")
     assert 'href="http://testserver/p/docs/pages/tokens/feed.xml"' in html
     assert 'href="http://testserver/feed.xml"' in html
-    assert 'href="http://testserver/p/docs/c/api/feed.xml"' in world.get("/p/docs/c/api").text
+    assert 'href="http://testserver/p/docs/c/api/feed.xml"' in head("/p/docs/c/api")
