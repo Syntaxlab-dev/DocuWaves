@@ -53,6 +53,8 @@ import {
   type PageDraft,
 } from "@/lib/drafts";
 import { useI18n } from "@/lib/i18n";
+import { editable } from "@/lib/imageEdit";
+import { ImageEditor } from "@/components/ImageEditor";
 import { languageName } from "@/lib/lang";
 import { useSite } from "@/lib/site";
 import { type EditorTarget } from "./PagesPanel";
@@ -282,6 +284,26 @@ export function PageEditor({
   /** Bumped after an upload so the image panel below re-lists the project's
    *  assets: a file pasted into the textarea belongs in its thumbnails too. */
   const [assetsKey, setAssetsKey] = useState(0);
+  // The screenshot editor, while it is open: the file in it and how to hand
+  // the result back to whoever is waiting (see editImage).
+  const [editing, setEditing] = useState<{ file: File; done: (result: File | null) => void } | null>(null);
+
+  /** One image through the screenshot editor (components/ImageEditor.tsx):
+   *  the file to upload, possibly edited, or null when the author cancelled.
+   *  Anything a canvas can't re-encode faithfully (SVG, GIF) passes straight
+   *  through. */
+  function editImage(file: File): Promise<File | null> {
+    if (!editable(file.type, file.name)) return Promise.resolve(file);
+    return new Promise((resolve) =>
+      setEditing({
+        file,
+        done: (result) => {
+          setEditing(null);
+          resolve(result);
+        },
+      }),
+    );
+  }
   /** The four page skeletons, for the language being written, or null until
    *  they have been asked for. Kept WITH the language they were fetched in:
    *  switching tabs has to fetch them again (a German page must not be
@@ -535,14 +557,16 @@ export function PageEditor({
 
   /** One image from the visual editor (pasted, dropped or picked): the same
    *  upload as everywhere else, answering the Markdown path to it. */
-  async function uploadForVisual(file: File): Promise<string | null> {
+  async function uploadForVisual(file: File, edit = false): Promise<string | null> {
     const named =
       !file.name || /^image\.\w+$/i.test(file.name)
         ? new File([file], pastedImageName(file, new Date()), { type: file.type })
         : file;
+    const chosen = edit ? await editImage(named) : named;
+    if (!chosen) return null;
     setUploading({ done: 0, total: 1 });
     try {
-      const asset = await api.adminUploadAsset(projectSlug, named, version || undefined);
+      const asset = await api.adminUploadAsset(projectSlug, chosen, version || undefined);
       setAssetsKey((key) => key + 1);
       toast.success(t("admin.imageUploaded"));
       return asset.markdown_path;
@@ -859,7 +883,15 @@ export function PageEditor({
    * the batch, because it would only repeat itself once per file.
    */
   async function uploadImages(files: File[], at: { from: number; to: number }) {
-    if (readOnly || files.length === 0 || uploading) return;
+    if (readOnly || files.length === 0 || uploading || editing) return;
+    // One screenshot: crop, mark or blur it first (Enter keeps it as it is).
+    // Several at once go in unchanged -- an editor per file would be a queue
+    // of dialogs nobody asked for.
+    if (files.length === 1) {
+      const chosen = await editImage(files[0]);
+      if (!chosen) return;
+      files = [chosen];
+    }
     setTab("edit");
     let from = at.from;
     let to = at.to;
@@ -972,6 +1004,7 @@ export function PageEditor({
 
   return (
     <div>
+      {editing && <ImageEditor file={editing.file} onDone={editing.done} />}
       {multilingual && (
         <div className="mb-3 flex flex-wrap items-center gap-1" aria-label={t("admin.pageLanguages")}>
           {site.languages.map((code) => {

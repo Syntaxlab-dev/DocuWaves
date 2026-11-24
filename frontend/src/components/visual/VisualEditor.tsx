@@ -87,7 +87,7 @@ interface Props {
   value: string;
   readOnly: boolean;
   onChange: (markdown: string) => void;
-  uploadImage: (file: File) => Promise<string | null>;
+  uploadImage: (file: File, edit?: boolean) => Promise<string | null>;
   resolveImage: (src: string) => string;
   /** Ctrl/⌘+S and the like, handled by the page editor. */
   onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void;

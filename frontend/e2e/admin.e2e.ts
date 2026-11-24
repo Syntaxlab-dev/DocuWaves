@@ -298,3 +298,46 @@ test("a read-only account gets Write in one project", async ({ page, browser }) 
   expect((await refused.json()).detail).toMatch(/single projects only/);
   await context.close();
 });
+
+test("a screenshot is pixelated in the image editor", async ({ page }) => {
+  const errors = watchErrors(page);
+  await openPageInEditor(page, "Setting up the widget");
+  // A real PNG, drawn in the browser: half white, half black.
+  const dataUrl = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 240;
+    c.height = 120;
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, 240, 120);
+    ctx.fillStyle = "#000";
+    ctx.fillRect(120, 0, 120, 120);
+    return c.toDataURL("image/png");
+  });
+  await page.locator('input[type="file"][accept*=".png"]').setInputFiles({
+    name: "secret-shot.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(dataUrl.split(",")[1], "base64"),
+  });
+  await expect(page.getByTitle("secret-shot.png")).toBeVisible();
+
+  await page.getByTitle("secret-shot.png").locator("..").getByRole("button", { name: "Edit" }).click();
+  const dialog = page.getByRole("dialog", { name: "Edit image" });
+  await dialog.getByRole("radio", { name: "Pixelate" }).click();
+  const canvas = dialog.getByLabel("The image being edited", { exact: false });
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.3, box.y + box.height * 0.2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.7, box.y + box.height * 0.8, { steps: 5 });
+  await page.mouse.up();
+  await dialog.getByRole("radio", { name: "Crop" }).click();
+  await page.mouse.move(box.x + 2, box.y + 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height - 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(dialog.getByText(/^1\d\d × 1\d\d px/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Save as a copy and insert" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByTitle("secret-shot-edited.png")).toBeVisible();
+  expect(errors).toEqual([]);
+});

@@ -39,6 +39,34 @@ pasted-2026-09-02-143205.png
 
 That reads as a date, sorts chronologically in `assets/`, and keeps two screenshots taken minutes apart apart — unlike `image.png`, `image-2.png`, `image-3.png`. Dropped and uploaded files keep their own names, slugified, with a `-2` suffix if the name is taken. Nothing is ever silently overwritten.
 
+## Crop, mark up and blur a screenshot
+
+When you paste or drop a **single** screenshot, it opens in a small image
+editor before it is uploaded. Press **Enter** right away and it goes in
+unchanged, exactly as before. Or, first:
+
+- **Crop**: drag the part to keep. The rest is dimmed, and the size in
+  pixels is shown at the bottom.
+- **Box** and **Arrow**: drag to point at what matters, in one of five
+  colours.
+- **Pixelate**: drag over an e-mail address, a token or a customer's
+  name. The area is replaced by coarse blocks, and the uploaded file holds
+  only those blocks, never the original pixels. (Pixelate rather than a
+  soft blur on purpose: a light blur can sometimes be reversed.)
+- **Undo** (or Ctrl/⌘+Z) takes back the last step. **Esc** cancels and
+  uploads nothing.
+
+**Insert edited** uploads the result as `<name>-edited.png`.
+
+An image that is already uploaded has **Edit** next to it in the images
+panel. The edited version is saved as a **copy** and inserted, and the
+original stays as it is, because other pages may show it.
+
+PNG, JPEG and WebP can be edited; a JPEG stays a JPEG. SVG and GIF images
+always go in unchanged, and so do several images dropped at once. All of
+this happens in your browser: the image is only uploaded at the end, the
+ordinary way.
+
 ## The rules
 
 Enforced on upload **and** when serving, so a file committed by hand is held to the same standard as one uploaded:

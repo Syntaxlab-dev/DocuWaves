@@ -50,7 +50,9 @@ export interface VisualOptions {
   /** Called with the new Markdown after every change. */
   onChange?: (markdown: string) => void;
   /** Uploads an image and answers the Markdown path to it (`../assets/x.png`). */
-  uploadImage?: (file: File) => Promise<string | null>;
+  /** `edit`: one image pasted or dropped on its own, which the page editor
+   *  first offers to crop, mark up or blur (components/ImageEditor.tsx). */
+  uploadImage?: (file: File, edit?: boolean) => Promise<string | null>;
   /** Turns a Markdown image path into an address the browser can load. */
   resolveImage?: (src: string) => string;
   /** Where the cursor is, for the toolbar: inside a table, inside a callout. */
@@ -369,9 +371,9 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
           enableHtmlFileUploader: false,
           uploader: async (files: FileList, schema: Schema) => {
             const nodes: ProseNode[] = [];
-            for (const file of Array.from(files)) {
-              if (!file.type.startsWith("image/")) continue;
-              const path = await uploadImage(file);
+            const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+            for (const file of images) {
+              const path = await uploadImage(file, images.length === 1);
               const node = path ? schema.nodes.image.createAndFill({ src: path, alt: "" }) : null;
               if (node) nodes.push(node);
             }

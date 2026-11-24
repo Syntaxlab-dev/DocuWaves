@@ -1,5 +1,7 @@
 // The panels beside the page editor: review notes, preview links, history and images.
 // Split out of pages/AdminApp.tsx, which keeps the layout and state.
+import { ImageEditor } from "@/components/ImageEditor";
+import { editable } from "@/lib/imageEdit";
 import {
   useEffect,
   useRef,
@@ -519,7 +521,39 @@ export function ImagesPanel({
   const { t } = useI18n();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [editing, setEditing] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** An uploaded image into the screenshot editor. The result is saved as a
+   *  NEW file ("<name>-edited.png") and inserted: the original stays as it
+   *  is, because other pages may show it. */
+  async function onEdit(asset: Asset) {
+    try {
+      const response = await fetch(asset.url, { credentials: "same-origin" });
+      if (!response.ok) throw new Error(String(response.status));
+      const blob = await response.blob();
+      setEditing(new File([blob], asset.filename, { type: blob.type }));
+    } catch {
+      toast.error(t("common.error"));
+    }
+  }
+
+  async function onEdited(result: File | null) {
+    const original = editing;
+    setEditing(null);
+    if (!result || result === original) return;
+    setUploading(true);
+    try {
+      const asset = await api.adminUploadAsset(projectSlug, result, version || undefined);
+      onInsert(asset);
+      toast.success(t("admin.imageUploaded"));
+      loadAssets();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function loadAssets() {
     api
@@ -559,6 +593,7 @@ export function ImagesPanel({
 
   return (
     <div className="mt-3 rounded-lg border border-[var(--border)] p-3">
+      {editing && <ImageEditor file={editing} onDone={onEdited} confirmLabel={t("imageEditor.saveCopy")} />}
       <div className="flex items-center gap-2">
         <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.images")}</h3>
         <Button
@@ -601,6 +636,11 @@ export function ImagesPanel({
               <button type="button" className="text-[var(--accent)]" onClick={() => onInsert(a)}>
                 {t("admin.imageInsert")}
               </button>
+              {editable("", a.filename) && (
+                <button type="button" className="text-[var(--accent)]" disabled={uploading} onClick={() => void onEdit(a)}>
+                  {t("imageEditor.edit")}
+                </button>
+              )}
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(a.filename)}>
                 <Trash2 className="h-3 w-3" />
               </Button>
