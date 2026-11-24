@@ -85,6 +85,21 @@ This is also how you move an instance to another machine, and how you find out w
 
 ## Updating
 
+### Knowing when there is an update
+
+When a newer release of DocuWaves is out, admins see a short note at the
+top of the admin area, with a link to what changed. **Hide for this
+release** puts it away until the next one.
+
+To know, DocuWaves asks GitHub's public API for the latest release, at most
+once a day. That request carries nothing about your instance: no address,
+no counts, not even the version you run. Only release builds compare
+themselves (an image tagged `latest` or a checkout run by hand has no
+release number), and a server without internet access simply never shows
+the note. `UPDATE_CHECK=off` turns the request off entirely.
+
+### Running the update
+
 ```bash
 git pull
 docker compose up -d --build

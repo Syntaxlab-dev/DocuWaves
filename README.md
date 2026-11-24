@@ -1951,6 +1951,7 @@ API), but within that it is real write access to what your readers see.
 | `WEBHOOK_EVENTS` | `published` | Which of `published`, `updated`, `unpublished`, `review_requested`, `review_decided` to send |
 | `WEBHOOK_SECRET` | *(empty)* | Signs JSON deliveries with HMAC-SHA256 |
 | `SEARCH_GAPS` | `on` | The anonymous tally of searches that found nothing (Insights); `off` writes nothing |
+| `UPDATE_CHECK` | `on` | Ask GitHub once a day whether a newer release exists and tell admins; `off` sends nothing |
 | `CHAT_API_BASE`, `CHAT_MODEL`, `CHAT_API_KEY` | *(empty — chat off)* | An OpenAI-compatible endpoint for the documentation chat — see "Asking the documentation a question" |
 | `CHAT_MAX_CONCURRENT` | `4` | How many chat questions may wait on the model at once |
 | `CLIENT_IP_HEADER` | *(empty)* | The header with the reader's real address behind more than one proxy (e.g. `CF-Connecting-IP`) |

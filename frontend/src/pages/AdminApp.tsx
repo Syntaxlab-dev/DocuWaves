@@ -50,6 +50,7 @@ import type { VisualEditorHandle } from "@/components/visual/VisualEditor";
 import { MarkdownCheatSheet } from "@/components/MarkdownCheatSheet";
 import { AdminInsightsCard } from "@/components/AdminInsightsCard";
 import { AdminDiagnosticsCard } from "@/components/AdminDiagnosticsCard";
+import { UpdateNotice } from "@/components/UpdateNotice";
 import { AdminUsersCard } from "@/components/AdminUsersCard";
 import { TwoFactorCard } from "@/components/TwoFactorCard";
 import { SnippetsCard } from "@/components/SnippetsCard";
@@ -592,6 +593,7 @@ export function AdminApp() {
       </header>
 
       <div className="mx-auto max-w-6xl px-4 py-6">
+        {isAdmin && <UpdateNotice />}
         {showAccount && (
           <>
             <AccountCard onClose={() => setShowAccount(false)} />

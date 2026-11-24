@@ -77,6 +77,12 @@ See [Webhooks](/p/docuwaves/pages/webhooks).
 |---|---|---|
 | `SEARCH_GAPS` | `on` | The anonymous tally of searches that found nothing, under **Insights**. `off` writes nothing. See [Reader feedback](/p/docuwaves/pages/reader-feedback-and-link-checking#what-readers-searched-for-and-did-not-find) |
 
+## Updates
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `UPDATE_CHECK` | `on` | Ask GitHub once a day whether a newer release exists, and tell admins. `off` sends nothing. See [Backups and updates](/p/docuwaves/pages/backups-and-updates#knowing-when-there-is-an-update) |
+
 ## Behind several proxies
 
 | Variable | Default | Purpose |

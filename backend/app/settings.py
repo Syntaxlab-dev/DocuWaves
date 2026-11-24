@@ -117,6 +117,10 @@ class Settings:
     # tallied for the admin's "Insights". On unless switched off.
     search_gaps_enabled: bool = os.environ.get("SEARCH_GAPS", "on").strip().lower() not in ("off", "0", "false", "no")
 
+    # Once a day, ask GitHub whether a newer release exists, and tell admins
+    # (services/update_check.py). One anonymous request; off sends nothing.
+    update_check_enabled: bool = os.environ.get("UPDATE_CHECK", "on").strip().lower() not in ("off", "0", "false", "no")
+
     # Which header carries the reader's real address, when there is more
     # than one proxy in front of DocuWaves (e.g. CF-Connecting-IP behind
     # Cloudflare). Blank = the rightmost X-Forwarded-For entry, which is

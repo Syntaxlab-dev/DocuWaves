@@ -32,6 +32,7 @@ from starlette.concurrency import run_in_threadpool
 from app.services import (
     backup,
     diagnostics,
+    update_check,
     editing_presence,
     link_check,
     docs_sync,
@@ -1570,6 +1571,17 @@ def _store_site_asset(filename: str, data: bytes, author: str) -> dict:
 def admin_diagnostics():
     return diagnostics.report()
 
+
+
+@router.get(
+    "/update-check",
+    summary="Is there a newer DocuWaves?",
+    description="Compares this instance's release with the latest release on GitHub, asked at most once a day. "
+    "`newer` is true when an update exists. Builds without a release number (`latest`, `dev`) and instances "
+    "with `UPDATE_CHECK=off` never report one.",
+)
+def admin_update_check():
+    return update_check.status()
 
 # ---- Export ----
 

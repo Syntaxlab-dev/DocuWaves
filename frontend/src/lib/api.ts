@@ -499,6 +499,15 @@ export interface SiteBranding {
  *  count, a size, a path or a boolean -- deliberately no token values, no
  *  password hash, no remote URL (it carries the push token) and no
  *  environment dump, because this is a page operators screenshot. */
+/** Whether a newer DocuWaves release exists (backend services/update_check.py). */
+export interface UpdateCheck {
+  enabled: boolean;
+  current: string;
+  latest: string | null;
+  url: string | null;
+  newer: boolean;
+}
+
 export interface Diagnostics {
   instance: {
     /** "1.0.0", "latest" (a build of main) or "dev" (a checkout run by hand). */
@@ -1138,6 +1147,7 @@ export const api = {
     }),
 
   adminDiagnostics: () => request<Diagnostics>("/api/admin/diagnostics"),
+  adminUpdateCheck: () => request<UpdateCheck>("/api/admin/update-check"),
   adminExportSummary: () => request<ExportSummary>("/api/admin/export/summary"),
   /** The export is a plain browser download rather than a fetch: the archive
    *  is as big as the documentation is, and pulling one into a Blob just to
