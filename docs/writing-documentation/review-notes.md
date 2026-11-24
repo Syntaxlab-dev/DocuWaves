@@ -58,6 +58,26 @@ about the English one.
 
 ## What it is not
 
+## Review due
+
+A note only ever gets older. A project can say how old is too old: set
+**Review again every … days** in the project's settings, which writes
+
+```yaml
+# content/<project-slug>/_project.yml
+review_every: 180
+```
+
+From then on, **Insights → Review due** lists every published page of that
+project whose note is older than 180 days, and every published page that
+has no note at all, never-reviewed ones first, then the most overdue. Since
+editing a page drops its note, a page that changed since it was last checked
+shows up straight away.
+
+Drafts are not listed, because nobody reads them yet, and neither are
+[frozen versions](/p/docuwaves/pages/freezing-a-version), because a release's
+documentation stays as it shipped. Set it to 0 to switch it off.
+
 **It is a note, not a signature.** It establishes nothing about identity: it
 says what somebody typed into a box while signed in as some account. It has
 no legal or regulatory weight, it is not an approval gate — a page can be

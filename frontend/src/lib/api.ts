@@ -12,6 +12,9 @@ export interface Project {
   /** Nothing goes live without a second person's approval (backend
    *  services/page_review.py). */
   review_required?: boolean;
+  /** Published pages are due for a review this many days after their last
+   *  review note; 0 = off (backend services/review_due.py). */
+  review_every_days?: number;
   /** Docs-as-code: the pages come from this code repository and are
    *  read-only here (backend services/docs_sync.py); null = edited here. */
   source?: ProjectSource | null;
@@ -662,7 +665,24 @@ export interface ProjectInput {
   /** Required to make a project private while the content repo is public. */
   acknowledge_public_repo?: boolean;
   review_required?: boolean;
+  review_every_days?: number;
   source?: ProjectSource | null;
+}
+
+/** A published page whose review note is too old, or missing. */
+export interface ReviewDuePage {
+  page_id: number;
+  title: string;
+  slug: string;
+  language: string;
+  reviewed_by: string;
+  reviewed_at: string;
+  /** null = never reviewed. */
+  days_overdue: number | null;
+  project_slug: string;
+  project_name: string;
+  category_name: string;
+  review_every_days: number;
 }
 
 export interface CategoryInput {
@@ -1018,6 +1038,7 @@ export const api = {
       `/api/admin/import?${new URLSearchParams({ ...target, filename: file.name }).toString()}`,
       file,
     ),
+  adminReviewDue: () => request<{ pages: ReviewDuePage[]; count: number }>("/api/admin/review-due"),
   adminSearchGaps: () => request<{ enabled: boolean; gaps: SearchGap[] }>("/api/admin/search-gaps"),
   adminForgetSearchGap: (id: number) =>
     request<{ cleared: number }>(`/api/admin/search-gaps/${id}`, { method: "DELETE" }),

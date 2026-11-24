@@ -48,6 +48,7 @@ Text fields are truncated at 200 characters. See [Branding this instance](/p/doc
 | `order` | integer | `0` | Lower sorts first |
 | `visibility` | string | *(public)* | `private` — and only that exact word — makes it a [private project](/p/docuwaves/pages/private-projects) |
 | `review` | string | *(off)* | `required` — and only that word — [requires approval](/p/docuwaves/pages/approval-before-publishing) before anything goes live |
+| `review_every` | number | *(off)* | Days after which a published page's [review note](/p/docuwaves/pages/review-notes) counts as stale; such pages, and pages with no note, are listed as *Review due* |
 | `source` | mapping | *(none)* | `{repo, branch, path}`: the pages come from a code repository ([docs-as-code](/p/docuwaves/pages/docs-as-code)) and are read-only here. Written by the first sync |
 
 The directory name is the slug, and the slug is the URL. `image` is the only field here that is type-checked and dropped when it is not a string — the others are only ever printed, while this one is handed to the filesystem resolver.
