@@ -8,6 +8,7 @@ import type { Element, ElementContent } from "hast";
 import { CopyButton } from "@/components/CopyButton";
 import { GlossaryTerm } from "@/components/GlossaryTerm";
 import { MermaidDiagram } from "@/components/MermaidDiagram";
+import { OpenApiReference } from "@/components/OpenApiReference";
 import { Tabs } from "@/components/Tabs";
 import { remarkBlocks } from "@/lib/blocks";
 import { remarkCallouts, type CalloutKind } from "@/lib/callouts";
@@ -70,7 +71,7 @@ const lazyRehype = {
   highlight: {
     plugin: null as Pluggable | null,
     loading: null as Promise<Pluggable> | null,
-    load: () => import("rehype-highlight").then((module): Pluggable => [module.default, { plainText: ["mermaid"] }]),
+    load: () => import("rehype-highlight").then((module): Pluggable => [module.default, { plainText: ["mermaid", "openapi"] }]),
   },
 };
 
@@ -231,8 +232,11 @@ export function MarkdownView({
           pre({ node, children, ...props }) {
             // A ```mermaid block is a picture, not code -- everything else
             // stays the fenced block it always was.
-            const diagram = mermaidSource(node);
+            const diagram = fencedSource(node, "mermaid");
             if (diagram !== null) return <MermaidDiagram code={diagram} />;
+            // A ```openapi block is an API reference, see OpenApiReference.
+            const spec = fencedSource(node, "openapi");
+            if (spec !== null) return <OpenApiReference source={spec} />;
             const { title, language } = codeInfo(node);
             return (
               <CodeBlock title={title} language={language} {...props}>
@@ -370,7 +374,8 @@ function CodeBlock({
 }
 
 /**
- * The source of a ```mermaid fenced block, or null for every other `<pre>`.
+ * The source of a fenced block in `language` (```mermaid, ```openapi), or
+ * null for every other `<pre>`.
  *
  * Read off the hast node rather than out of the rendered React children: by
  * the time `pre` is called those are React elements, and digging the text
@@ -378,11 +383,11 @@ function CodeBlock({
  * The hast node is the Markdown as it was parsed, which is exactly the string
  * mermaid has to be handed -- fence indentation, blank lines and all.
  */
-function mermaidSource(node?: Element): string | null {
+function fencedSource(node: Element | undefined, language: string): string | null {
   const code = node?.children.find((child) => child.type === "element");
   if (code?.type !== "element" || code.tagName !== "code") return null;
   const className = code.properties?.className;
-  if (!Array.isArray(className) || !className.includes("language-mermaid")) return null;
+  if (!Array.isArray(className) || !className.includes(`language-${language}`)) return null;
   return nodeText(code);
 }
 
