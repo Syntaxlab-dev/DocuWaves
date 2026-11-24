@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DocuWaves — self-hosted documentation that lives in Git</title>
-<meta name="description" content="A self-hosted documentation site whose content is Markdown files in a Git repository. Every save is a commit. An AI assistant can write through an MCP endpoint, attributed to its token. Open source, MIT.">
+<meta name="description" content="A self-hosted documentation site whose content is Markdown files in a Git repository. Every save is a commit. Visual editor, roles and approvals, imports from Confluence and Notion, and an MCP endpoint for AI assistants. Open source, MIT.">
 <link rel="canonical" href="https://docuwaves.app/">
 
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -343,16 +343,16 @@ h2{font-size:clamp(1.75rem,3.6vw,2.5rem);max-width:20ch;font-weight:700}
 
       <div class="term" id="install">
         <div class="term-head" id="install-label">
-          <span>Install</span>
+          <span>Install on a Linux server</span>
         </div>
-<pre><code id="install-cmd"><span class="k">git</span> clone https://github.com/Syntaxlab-dev/DocuWaves.git
-<span class="k">cd</span> DocuWaves
-<span class="k">docker</span> compose up -d --build</code></pre>
+<pre><code id="install-cmd"><span class="k">curl</span> -fsSL https://get.docuwaves.app | <span class="k">sudo</span> sh</code></pre>
       </div>
       <p class="term-note">
-        Then open <code>http://&lt;your-server&gt;:8091</code> and pick an admin username. There is no
-        further configuration: with no Git remote set, DocuWaves creates its own repository inside the
-        data volume and commits to it.
+        Asks for a domain, sets up DocuWaves behind Caddy with a Let's Encrypt certificate, adds nightly
+        backups and the <code>docuwaves</code> command, and prints a one-time setup code for the first
+        account. Debian, Ubuntu, Rocky and Alma; amd64 and arm64.
+        <a href="https://docs.docuwaves.app/p/docuwaves/pages/installing-with-the-installer">Read the
+        script first</a> or <a href="#compose">use Docker Compose yourself</a>.
       </p>
 
       <figure class="hero-shot">
@@ -471,6 +471,82 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
     </div>
   </section>
 
+  <!-- ============ TEAMS ============ -->
+  <section aria-labelledby="team-h">
+    <div class="wrap">
+      <p class="sec-label">Working together</p>
+      <h2 id="team-h">More than one person, without a permissions maze</h2>
+      <p class="sec-lede prose">
+        Four roles, an optional approval step, and a way to show a draft to someone who has no
+        account. Each of them is a small, plain rule rather than a matrix to configure.
+      </p>
+      <ul class="points points-wide">
+        <li>
+          <b>Accounts with four roles</b>
+          <span><strong>Reader</strong> for private projects, <strong>Read</strong> for the reviewer who
+          may see drafts and history but change nothing, <strong>Write</strong> for the documentation,
+          <strong>Manage</strong> for the instance itself. Password or OIDC single sign-on.</span>
+        </li>
+        <li>
+          <b>Approval before publishing, per project</b>
+          <span>One line in a project's settings and nothing in it goes live until a second person
+          approves. Without that line a project works exactly as before.</span>
+        </li>
+        <li>
+          <b>Preview links for drafts</b>
+          <span>Send one unpublished page to someone without an account, through a link that expires
+          and can be withdrawn.</span>
+        </li>
+        <li>
+          <b>Private projects</b>
+          <span>A project only signed-in readers can open, next to public ones in the same
+          instance.</span>
+        </li>
+        <li>
+          <b>Who else is editing</b>
+          <span>The editor shows who else has the page open, and a save that would overwrite somebody
+          else's newer one is stopped and shown, not merged silently.</span>
+        </li>
+        <li>
+          <b>Webhooks to Discord, Slack or any URL</b>
+          <span>Announce published pages and pages waiting for approval where the team already
+          reads.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ BRINGING DOCS IN ============ -->
+  <section aria-labelledby="in-h">
+    <div class="wrap">
+      <p class="sec-label">Bringing docs in</p>
+      <h2 id="in-h">Start from what you already have</h2>
+      <p class="sec-lede prose">
+        Moving to DocuWaves is an import, not a rewrite. And documentation that already lives next to
+        the code can stay there.
+      </p>
+      <ul class="points points-wide">
+        <li>
+          <b>A ZIP of Markdown</b>
+          <span>Exports from MkDocs, GitBook, Docusaurus and Obsidian are recognised, or simply a folder
+          of <code>.md</code> files. A preview says what would happen before anything is written; links
+          are rewritten and images copied.</span>
+        </li>
+        <li>
+          <b>Confluence and Notion</b>
+          <span>A Confluence HTML space export or a Notion "Markdown &amp; CSV" export becomes a project
+          with its categories, pages and images.</span>
+        </li>
+        <li>
+          <b>Docs-as-code from your CI</b>
+          <span>Keep a <code>docs/</code> folder in the code repository and let one CI step send it on
+          every push. A release tag freezes it as a version. DocuWaves' own documentation is published
+          exactly that way.</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
   <!-- ============ NO ACCOUNT ============ -->
   <section aria-labelledby="local-h">
     <div class="wrap">
@@ -521,6 +597,7 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
           <li>No telemetry</li>
           <li>No CDN at runtime</li>
           <li>No AI provider account</li>
+          <li>amd64 and arm64</li>
         </ul>
       </div>
     </div>
@@ -532,8 +609,10 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
       <p class="sec-label">The everyday things</p>
       <h2 id="rest-h">The rest of it, briefly</h2>
       <ul class="grid">
-        <li><b>GitHub-flavored Markdown</b><span>Tables, task lists and fenced code with syntax
-          highlighting, written in a plain editor with a live preview a tab away.</span></li>
+        <li><b>Visual or Markdown editing</b><span>Write visually with a toolbar, or in Markdown with a
+          live preview. Either way the file is Markdown, and switching loses nothing.</span></li>
+        <li><b>Callouts, tabs and snippets</b><span>Coloured notes, tab groups, reusable snippets and
+          <code>{{variables}}</code>, all as plain text that still reads well on GitHub.</span></li>
         <li><b>Diagrams as text</b><span>A fenced <code>mermaid</code> block is drawn as a real
           diagram — in the preview, on the published page, and in GitHub's own file view.</span></li>
         <li><b>Images by paste or drag</b><span>Paste a screenshot into the editor or drop files onto
@@ -542,7 +621,14 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
         <li><b>Unsaved work survives</b><span>Editor text is kept in the browser and offered back when
           you return — never applied silently, and never uploaded.</span></li>
         <li><b>Full-text search</b><span>Across every published page in every project, in the language
-          and version the reader is currently in.</span></li>
+          and version the reader is currently in, and forgiving of typos. What readers searched for and
+          did not find is listed for you.</span></li>
+        <li><b>PDF and print</b><span>A whole project or one chapter as a printable manual with a cover
+          and table of contents, and every single page prints cleanly too.</span></li>
+        <li><b>Changelog and RSS</b><span>A "What's new" page and feeds, built from the repository's
+          history, so readers can follow changes without being told about them.</span></li>
+        <li><b>Ask the documentation, optionally</b><span>A question box that answers only from your
+          published pages, with sources. Off by default; works with a local model such as Ollama.</span></li>
         <li><b>Several projects, one instance</b><span>One deployment serves the docs for every tool
           you maintain, each with its own categories and pages, shown as tiles.</span></li>
         <li><b>Multiple languages, optionally</b><span>A page can exist in several languages under one
@@ -553,8 +639,10 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
           with nothing published stays off the public site entirely.</span></li>
         <li><b>Branding per instance</b><span>Name, logo, favicon, accent colour and footer come from a
           <code>_site.yml</code> in the content repository — versioned and reviewable like a page.</span></li>
-        <li><b>Password login or OIDC SSO</b><span>One admin account, signing in with a password or
-          through any standard OIDC provider — Authentik, Keycloak, Authelia, Zitadel.</span></li>
+        <li><b>Password login or OIDC SSO</b><span>Sign in with a password or through any standard OIDC
+          provider — Authentik, Keycloak, Authelia, Zitadel.</span></li>
+        <li><b>Backups and diagnostics</b><span>A full export in one click, nightly backups with the
+          installer, and a diagnostics page that says what is configured and what is not.</span></li>
         <li><b>Real HTML for crawlers</b><span>Every public URL is answered with its own title,
           description, Open Graph tags, canonical and structured data, plus
           <code>/sitemap.xml</code> and <code>/robots.txt</code>.</span></li>
@@ -569,13 +657,16 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
       <p class="sec-lede">Docker with the Compose plugin is the only requirement. Nothing else to
         create, register or configure first.</p>
 
-      <div class="term">
-        <div class="term-head"><span>Install</span></div>
+      <div class="term" id="compose">
+        <div class="term-head"><span>Install with Docker Compose</span></div>
 <pre><code><span class="k">git</span> clone https://github.com/Syntaxlab-dev/DocuWaves.git
 <span class="k">cd</span> DocuWaves
+<span class="k">cp</span> .env.example .env
 <span class="k">docker</span> compose up -d --build
 <span class="c"># then open http://&lt;your-server&gt;:8091</span></code></pre>
       </div>
+      <p class="term-note">Every setting in <code>.env</code> has a working default. Prefer not to build?
+        Use the published image <code>ghcr.io/syntaxlab-dev/docuwaves:stable</code> instead.</p>
 
       <div class="cta">
         <a class="btn btn-primary" href="https://docs.docuwaves.app">Read the documentation</a>
@@ -603,6 +694,7 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
           <ul>
             <li><a href="https://docs.docuwaves.app">Documentation</a></li>
             <li><a href="https://github.com/Syntaxlab-dev/DocuWaves">Source on GitHub</a></li>
+            <li><a href="https://github.com/Syntaxlab-dev/DocuWaves/releases">Releases</a></li>
             <li><a href="https://github.com/Syntaxlab-dev/DocuWaves/blob/main/LICENSE">MIT licence</a></li>
           </ul>
         </div>
@@ -610,6 +702,7 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
           <h3>Read first</h3>
           <ul>
             <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/scope-and-limitations">Scope and limitations</a></li>
+            <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/installing-with-the-installer">Installing with the installer</a></li>
             <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/installing-with-docker">Installing with Docker</a></li>
             <li><a href="https://docs.docuwaves.app/p/docuwaves/pages/the-mcp-endpoint">The MCP endpoint</a></li>
           </ul>
@@ -642,7 +735,7 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
   btn.type = 'button';
   btn.className = 'copy';
   btn.textContent = 'Copy';
-  btn.setAttribute('aria-label', 'Copy the install commands');
+  btn.setAttribute('aria-label', 'Copy the install command');
 
   var live = document.createElement('span');
   live.setAttribute('aria-live', 'polite');
@@ -652,7 +745,7 @@ git revert &lt;sha&gt;                <span style="color:var(--muted)"># undo on
   btn.addEventListener('click', function () {
     navigator.clipboard.writeText(pre.innerText.trim()).then(function () {
       btn.textContent = 'Copied';
-      live.textContent = 'Install commands copied to clipboard';
+      live.textContent = 'Install command copied to clipboard';
       clearTimeout(timer);
       timer = setTimeout(function () {
         btn.textContent = 'Copy';
