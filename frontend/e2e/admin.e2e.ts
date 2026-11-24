@@ -96,6 +96,14 @@ test("search finds it", async ({ page }) => {
   const hit = page.getByRole("link", { name: /Installing the widget/ });
   await expect(hit).toHaveAttribute("href", "/p/handbook/pages/installing-the-widget");
   await expect(hit.locator("mark").first()).toBeVisible();
+
+  // Narrowed to the project, and widened again in one click.
+  await page.goto("/search?q=green+light&project=handbook");
+  await expect(page.getByLabel("Project")).toHaveValue("handbook");
+  await expect(page.getByRole("link", { name: /Installing the widget/ })).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page).toHaveURL(/\/search\?q=green\+light$/);
+  await expect(page.getByRole("link", { name: /Installing the widget/ })).toBeVisible();
 });
 
 async function openPageInEditor(page: Page, title: string) {
