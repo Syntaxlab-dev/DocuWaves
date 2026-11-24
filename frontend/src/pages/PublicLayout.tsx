@@ -1,6 +1,6 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { Link, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Languages, LogIn, LogOut, Moon, Search, Sun } from "lucide-react";
+import { Languages, LayoutDashboard, LogIn, LogOut, Moon, Search, Sun } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { UiLanguageToggle } from "@/components/UiLanguageToggle";
 import { Button } from "@/components/ui/button";
@@ -228,17 +228,31 @@ function AccountControl() {
         window.location.reload();
       }
     }
+    // Authors land on the public site after signing in, or follow a link
+    // to it from the admin area: the way back is offered right here. A
+    // reader account has no admin area to go to.
+    const author = status.role !== null && status.role !== "reader";
     return (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={signOut}
-        title={t("auth.signedInAs").replace("{name}", status.username ?? "")}
-        aria-label={t("auth.signOut")}
-      >
-        <LogOut className="h-4 w-4" />
-        <span className="hidden md:inline">{t("auth.signOut")}</span>
-      </Button>
+      <>
+        {author && (
+          <Button variant="ghost" size="sm" asChild>
+            <a href="/admin" aria-label={t("auth.toAdmin")}>
+              <LayoutDashboard className="h-4 w-4" />
+              <span className="hidden md:inline">{t("auth.toAdmin")}</span>
+            </a>
+          </Button>
+        )}
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={signOut}
+          title={t("auth.signedInAs").replace("{name}", status.username ?? "")}
+          aria-label={t("auth.signOut")}
+        >
+          <LogOut className="h-4 w-4" />
+          <span className="hidden md:inline">{t("auth.signOut")}</span>
+        </Button>
+      </>
     );
   }
   if (!site.sign_in || location.pathname.endsWith("/login")) return null;
