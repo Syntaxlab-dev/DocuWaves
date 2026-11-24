@@ -69,7 +69,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from app.services import api_tokens_store, project_access, session_registry_store, users_store
+from app.services import admin_log, api_tokens_store, project_access, session_registry_store, users_store
 from app.services.same_origin import is_same_origin
 
 _EXEMPT_PREFIXES = ("/api/auth/", "/api/public/")
@@ -102,12 +102,14 @@ _REVIEW_DECISION_RE = re.compile(r"^/api/admin/pages/\d+/review/(approve|request
 #   diagnostics  -- paths, disk, counts; harmless to an admin, not an
 #                   editor's business
 #   export       -- the entire instance in one downloadable file
+#   log          -- what the administrators did (services/admin_log.py)
 _ADMIN_ONLY_PREFIXES = (
     "/api/admin/users",
     "/api/admin/tokens",
     "/api/admin/site",
     "/api/admin/diagnostics",
     "/api/admin/export",
+    "/api/admin/log",
 )
 
 
@@ -156,7 +158,18 @@ class AuthGuardMiddleware(BaseHTTPMiddleware):
         refusal = await run_in_threadpool(self._refusal, request, path)
         if refusal is not None:
             return refusal
-        return await call_next(request)
+        response = await call_next(request)
+        # The admin log's safety net (services/admin_log.py): a successful
+        # change to the instance that its endpoint did not write down is
+        # written down here, as method and path.
+        if (
+            path.startswith(_ADMIN_ONLY_PREFIXES)
+            and request.method not in _READ_METHODS
+            and response.status_code < 400
+            and not getattr(request.state, "admin_logged", False)
+        ):
+            await run_in_threadpool(admin_log.record, request, f"{request.method} {path}")
+        return response
 
     def _refusal(self, request: Request, path: str) -> Response | None:
         """The response that refuses this request, or None to let it through."""
