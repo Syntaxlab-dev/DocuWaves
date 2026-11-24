@@ -50,19 +50,19 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 
 ## v1.3: reach
 
-| Item | Effort |
-|---|---|
-| A live demo instance that resets every night | M |
-| A comparison page: DocuWaves and BookStack, Wiki.js, Docusaurus, Outline | S |
-| Import straight from a Git repository URL (MkDocs, Docusaurus) | M |
-| Import from BookStack, Wiki.js and MediaWiki | M |
-| Export as a static website (HTML zip) | M |
-| A documentation preview for pull requests, for docs-as-code | M |
-| AI writing help in the editor: rephrase, shorten, summarise | M |
-| Translation drafts for a second language, always as a draft | M |
-| More MCP tools: page history, request approval, create a preview link | S |
-| Official support and a guide for rootless Podman | S |
-| Deploy templates for Coolify, Unraid, Proxmox LXC and Kubernetes (Helm) | M |
+| | Item | Effort |
+|---|---|---|
+| ✅ | A live demo instance that resets every night | M |
+| ✅ | A comparison page: DocuWaves and BookStack, Wiki.js, Docusaurus, Outline | S |
+| ✅ | Import straight from a Git repository URL (MkDocs, Docusaurus) | M |
+| ✅ | Import from BookStack, Wiki.js and MediaWiki | M |
+| ✅ | Export as a static website (HTML zip) | M |
+| ✅ | A documentation preview for pull requests, for docs-as-code | M |
+| ✅ | AI writing help in the editor: rephrase, shorten, summarise | M |
+| ✅ | Translation drafts for a second language, always as a draft | M |
+| ✅ | More MCP tools: page history, request approval, create a preview link | S |
+| ✅ | Official support and a guide for rootless Podman | S |
+| ✅ | Deploy templates for Coolify, Unraid, Proxmox LXC and Kubernetes (Helm) | M |
 
 ## v2.0: bigger pieces
 
