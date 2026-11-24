@@ -146,9 +146,12 @@ export function PrintBook() {
             <h2 className="text-xl font-semibold">{t("book.contents")}</h2>
             <ol className="mt-4 space-y-3">
               {book.categories.map((c) => (
-                <li key={c.slug}>
-                  {!category && <p className="font-medium">{c.name}</p>}
-                  <ol className={category ? "space-y-1" : "mt-1 space-y-1 pl-4"}>
+                // A subsection sits indented under its section. Printing
+                // one section, its own name is the title already, but its
+                // subsections still need theirs.
+                <li key={c.slug} style={c.depth ? { marginLeft: `${c.depth}rem` } : undefined}>
+                  {(!category || !!c.depth) && <p className="font-medium">{c.name}</p>}
+                  <ol className={category && !c.depth ? "space-y-1" : "mt-1 space-y-1 pl-4"}>
                     {c.pages.map((p) => (
                       <li key={p.slug}>
                         <a href={`#${anchor(c.slug, p.slug)}`} className="hover:text-[var(--accent)]">
@@ -166,7 +169,9 @@ export function PrintBook() {
         {book.categories.map((c) =>
           c.pages.map((p) => (
             <article key={`${c.slug}/${p.slug}`} id={anchor(c.slug, p.slug)} className="book-page">
-              {!category && <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{c.name}</p>}
+              {(!category || !!c.depth) && (
+                <p className="text-xs uppercase tracking-wide text-[var(--muted)]">{c.name}</p>
+              )}
               <h1 className="mt-1 text-2xl font-semibold">{p.title}</h1>
               <MarkdownView
                 content={p.markdown_content}

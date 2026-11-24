@@ -53,6 +53,7 @@ import {
   type PageDraft,
 } from "@/lib/drafts";
 import { useI18n } from "@/lib/i18n";
+import { categoryTree } from "@/lib/categoryTree";
 import { editable } from "@/lib/imageEdit";
 import { ImageEditor } from "@/components/ImageEditor";
 import { languageName } from "@/lib/lang";
@@ -1073,9 +1074,9 @@ export function PageEditor({
           onChange={(e) => setTargetCategoryId(Number(e.target.value))}
           className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
         >
-          {categories.map((c) => (
+          {categoryTree(categories).map(({ category: c, depth }) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {`${"\u00a0\u00a0".repeat(depth)}${c.name}`}
             </option>
           ))}
         </select>

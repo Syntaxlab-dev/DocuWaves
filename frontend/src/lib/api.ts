@@ -58,6 +58,9 @@ export interface Category {
    *  inside this category's own documentation version. */
   image: string;
   image_url: string | null;
+  /** The slug of the category this one is nested under, "" at the top
+   *  level (`parent:` in `_category.yml`). */
+  parent?: string;
 }
 
 export interface PageSummary {
@@ -111,6 +114,9 @@ export interface VersionInfo {
  *  with it (it hides it). */
 export interface NavCategory extends Category {
   pages: NavPage[];
+  /** How far it is nested, 0 at the top. The nav lists categories in
+   *  reading order, each followed by the ones under it. */
+  depth?: number;
   /** Which documentation versions this category slug exists in. Present
    *  only for a versioned project -- it is what lets the version switcher
    *  stay on this category when the target version has it, and fall back to
@@ -833,6 +839,9 @@ export interface CategoryInput {
    *  uses. */
   image?: string;
   name_i18n?: LocalizedText;
+  /** The slug to nest under, "" for the top level. Left out on an update,
+   *  the category keeps the one it has. */
+  parent?: string;
 }
 
 /** One of the four skeletons a new page can start from. The Markdown comes
@@ -896,6 +905,9 @@ export interface Book {
     name: string;
     slug: string;
     icon: string;
+    /** Nesting depth, 0 for the top -- counted from the printed category
+     *  when only one is printed. */
+    depth?: number;
     pages: {
       title: string;
       slug: string;

@@ -34,7 +34,7 @@ from app.services import (
 # the category rather than something every caller has to pass in (three
 # read functions, each with its own callers in two routers and the MCP
 # tools, would all have to grow a project_slug argument otherwise).
-_COLUMNS = "c.id, c.project_id, c.name, c.name_i18n, c.slug, c.icon, c.sort_order, c.version, c.image, p.slug"
+_COLUMNS = "c.id, c.project_id, c.name, c.name_i18n, c.slug, c.icon, c.sort_order, c.version, c.image, p.slug, c.parent"
 _FROM = "FROM categories c JOIN projects p ON p.id = c.project_id"
 
 
@@ -65,7 +65,84 @@ def _row_to_dict(row, language: str = "") -> dict:
         # has to resolve inside its OWN version's assets/, so v2.0's tile
         # keeps showing v2.0's image (see content_assets.category_cover_url).
         "image_url": content_assets.category_cover_url(row[9], row[7], row[4], row[8]),
+        # The slug of the category this one sits under, '' at the top level.
+        # Already checked by the sync (content_sync._valid_parents), so it
+        # always names a category of the same version and never loops.
+        "parent": row[10],
     }
+
+
+def tree_order(categories: list[dict]) -> list[dict]:
+    """The categories in reading order -- each one followed by everything
+    under it -- with a `depth` (0 at the top) on every entry. `categories`
+    is one version's list in sort order, as list_categories() returns it;
+    siblings keep that order. What the book, the static export and every
+    "next page" walk read, so a nested project reads the way its sidebar
+    looks."""
+    children: dict[str, list[dict]] = {}
+    for category in categories:
+        children.setdefault(category.get("parent", ""), []).append(category)
+    ordered: list[dict] = []
+
+    def walk(parent: str, depth: int) -> None:
+        for category in children.get(parent, []):
+            ordered.append({**category, "depth": depth})
+            walk(category["slug"], depth + 1)
+
+    walk("", 0)
+    return ordered
+
+
+def descendants(categories: list[dict], slug: str) -> list[dict]:
+    """Every category under `slug` (not `slug` itself), in reading order."""
+    ordered = tree_order(categories)
+    start = next((i for i, c in enumerate(ordered) if c["slug"] == slug), None)
+    if start is None:
+        return []
+    depth = ordered[start]["depth"]
+    result = []
+    for category in ordered[start + 1:]:
+        if category["depth"] <= depth:
+            break
+        result.append(category)
+    return result
+
+
+def ancestors(categories: list[dict], slug: str) -> list[dict]:
+    """The categories above `slug`, outermost first -- a breadcrumb."""
+    by_slug = {c["slug"]: c for c in categories}
+    chain: list[dict] = []
+    cursor = by_slug.get(slug, {}).get("parent", "")
+    while cursor and cursor in by_slug and len(chain) < content_sync.MAX_CATEGORY_DEPTH:
+        chain.insert(0, by_slug[cursor])
+        cursor = by_slug[cursor].get("parent", "")
+    return chain
+
+
+class InvalidParent(ValueError):
+    """The parent asked for cannot hold this category."""
+
+
+def _check_parent(categories: list[dict], slug: str | None, parent: str) -> None:
+    """`slug` None for a category that does not exist yet. Refused here,
+    with a reason, rather than written and then silently dropped by the
+    sync: the editor asked for something specific."""
+    if not parent:
+        return
+    by_slug = {c["slug"]: c for c in categories}
+    if parent not in by_slug:
+        raise InvalidParent("That parent category does not exist in this version.")
+    if slug is not None and (parent == slug or parent in {c["slug"] for c in descendants(categories, slug)}):
+        raise InvalidParent("A category cannot sit inside itself or inside one of its own subcategories.")
+    depth = 1 + len(ancestors(categories, parent)) + 1
+    below = 0
+    if slug is not None:
+        sub = descendants(categories, slug)
+        if sub:
+            base = next(c["depth"] for c in tree_order(categories) if c["slug"] == slug)
+            below = max(c["depth"] for c in sub) - base
+    if depth + below > content_sync.MAX_CATEGORY_DEPTH:
+        raise InvalidParent(f"Categories nest at most {content_sync.MAX_CATEGORY_DEPTH} levels deep.")
 
 
 def list_categories(project_id: int, language: str = "", version: str = "") -> list[dict]:
@@ -156,6 +233,7 @@ def create_category(
     name_i18n: dict[str, str] | None = None,
     order: int | None = None,
     image: str = "",
+    parent: str = "",
 ) -> dict | None:
     """Always creates in the project's WRITABLE version -- '' while the
     project is unversioned, `current` once it is. There is deliberately no
@@ -175,9 +253,12 @@ def create_category(
     if project is None:
         return None
     version = content_versions.writable_version(project["slug"])
+    _check_parent(list_categories(project_id, "", version), None, parent)
     if order is None:
         order = _next_order(project_id, version)
-    paths = content_files.write_category(project["slug"], slug, name, icon, image, order, name_i18n, version)
+    paths = content_files.write_category(
+        project["slug"], slug, name, icon, image, order, name_i18n, version, parent
+    )
     git_content_repo.commit_and_push(paths, f"Add category: {name} ({project['name']})", author)
     content_sync.full_sync()
     return get_category_by_slug(project_id, slug, "", version)
@@ -191,18 +272,35 @@ def update_category(
     author: str,
     name_i18n: dict[str, str] | None = None,
     image: str = "",
+    parent: str | None = None,
 ) -> dict | None:
+    """`parent` None keeps the one it has -- the MCP tools and older
+    callers never send it, and must not flatten a nested category."""
     current = get_category(category_id)
     if current is None:
         return None
     project = projects_store.get_project(current["project_id"])
     version = current["version"]
     content_versions.ensure_editable(project["slug"], version)
+    siblings = list_categories(current["project_id"], "", version)
+    if parent is None:
+        parent = current["parent"]
+    _check_parent(siblings, current["slug"], parent)
+    order = current["sort_order"]
+    if parent != current["parent"]:
+        # Moved under another category: it goes to the end of its new
+        # siblings rather than keeping a number that meant something among
+        # the old ones.
+        order = max((c["sort_order"] for c in siblings if c["parent"] == parent), default=-1) + 1
     paths: list[str] = []
     if slug != current["slug"]:
         paths += content_files.rename_category(project["slug"], current["slug"], slug, version)
+        # The subcategories name this one by its slug, so they follow it.
+        for child in siblings:
+            if child["parent"] == current["slug"]:
+                paths += _rewrite(project["slug"], child, version, parent=slug)
     paths += content_files.write_category(
-        project["slug"], slug, name, icon, image, current["sort_order"], name_i18n, version
+        project["slug"], slug, name, icon, image, order, name_i18n, version, parent
     )
     git_content_repo.commit_and_push(paths, f"Update category: {name} ({project['name']})", author)
     content_sync.full_sync()
@@ -216,7 +314,9 @@ def reorder_category(project_id: int, category_id: int, direction: int, author: 
     project = projects_store.get_project(project_id)
     version = current["version"]
     content_versions.ensure_editable(project["slug"], version)
-    categories = list_categories(project_id, "", version)
+    # Among its siblings only: moving a subcategory up must not swap it
+    # with some unrelated category that happens to sit above it in the list.
+    categories = [c for c in list_categories(project_id, "", version) if c["parent"] == current["parent"]]
     index = next((i for i, c in enumerate(categories) if c["id"] == category_id), None)
     if index is None:
         return
@@ -224,15 +324,8 @@ def reorder_category(project_id: int, category_id: int, direction: int, author: 
     if not (0 <= swap_index < len(categories)):
         return
     a, b = categories[index], categories[swap_index]
-    # name_i18n and image passed back through: this rewrites the whole
-    # `_category.yml`, so dropping either would flatten a translated name --
-    # or silently delete a cover -- on every reorder.
-    paths = content_files.write_category(
-        project["slug"], a["slug"], a["name"], a["icon"], a["image"], b["sort_order"], a["name_i18n"], version
-    )
-    paths += content_files.write_category(
-        project["slug"], b["slug"], b["name"], b["icon"], b["image"], a["sort_order"], b["name_i18n"], version
-    )
+    paths = _rewrite(project["slug"], a, version, order=b["sort_order"])
+    paths += _rewrite(project["slug"], b, version, order=a["sort_order"])
     git_content_repo.commit_and_push(paths, f"Reorder categories: {a['name']} / {b['name']}", author)
     content_sync.full_sync()
 
@@ -244,6 +337,31 @@ def delete_category(category_id: int, author: str) -> None:
     project = projects_store.get_project(current["project_id"])
     content_versions.ensure_editable(project["slug"], current["version"])
     paths = content_files.delete_category(project["slug"], current["slug"], current["version"])
+    # Its subcategories are not deleted with it (they are directories of
+    # their own, with their own pages): they move up one level, into the
+    # place it held.
+    if paths:
+        for child in list_categories(current["project_id"], "", current["version"]):
+            if child["parent"] == current["slug"]:
+                paths += _rewrite(project["slug"], child, current["version"], parent=current["parent"])
     if paths:
         git_content_repo.commit_and_push(paths, f"Remove category: {current['name']} ({project['name']})", author)
         content_sync.full_sync()
+
+
+def _rewrite(project_slug: str, category: dict, version: str, *, order: int | None = None, parent: str | None = None) -> list[str]:
+    """Writes `category`'s `_category.yml` back with one thing changed.
+    name_i18n, image and parent are all passed through: this rewrites the
+    whole file, so dropping any of them would flatten a translated name,
+    delete a cover or un-nest a category as a side effect."""
+    return content_files.write_category(
+        project_slug,
+        category["slug"],
+        category["name"],
+        category["icon"],
+        category["image"],
+        category["sort_order"] if order is None else order,
+        category["name_i18n"],
+        version,
+        category["parent"] if parent is None else parent,
+    )

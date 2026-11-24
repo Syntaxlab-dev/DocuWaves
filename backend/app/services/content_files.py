@@ -369,6 +369,13 @@ def read_category(project_slug: str, slug: str, version: str = "") -> dict | Non
         # preview of the file as well.
         "image": _image_field(data),
         "order": int(data.get("order", 0)),
+        # The slug of the category this one sits under, in the same version
+        # -- '' for a top-level one. Directories stay flat on disk on
+        # purpose: nesting is a property of the category, so moving one
+        # under another is a one-line change to this file and never moves a
+        # page (whose URL has no category in it anyway). content_sync drops a
+        # parent that does not exist or would make a loop.
+        "parent": str(data.get("parent") or "").strip(),
     }
 
 
@@ -381,6 +388,7 @@ def write_category(
     order: int,
     name_i18n: dict[str, str] | None = None,
     version: str = "",
+    parent: str = "",
 ) -> list[str]:
     path = project_content_dir(project_slug, version) / slug / "_category.yml"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -392,6 +400,10 @@ def write_category(
     # treated differently from the ones around it.
     if image:
         data["image"] = image
+    # Omitted when empty too, so a top-level category's file stays exactly
+    # the file it always was.
+    if parent:
+        data["parent"] = parent
     data["order"] = order
     path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return [_rel(path)]

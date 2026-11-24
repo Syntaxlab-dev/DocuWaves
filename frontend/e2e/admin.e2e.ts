@@ -382,3 +382,34 @@ test("a reviewer comments on a passage", async ({ page }) => {
   await expect(page.getByText("done by admin")).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test("a category nests inside another", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("button", { name: "Handbook" }).click();
+  await page.getByRole("heading", { name: "Categories" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Wiring");
+  await page.getByLabel("Inside").selectOption({ label: "Getting started" });
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Wiring" }).click();
+  await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Mains connection");
+  await page.getByRole("button", { name: "Markdown" }).click();
+  await page.locator("textarea").first().fill("Use the supplied cable.\n");
+  await page.getByRole("button", { name: "Draft" }).click();
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "History" })).toBeEnabled();
+
+  // The project shows only its top level; the subsection is a tile inside.
+  await page.goto("/p/handbook");
+  // A tile counts what is under it, subsection included.
+  await expect(page.getByRole("link", { name: /^Getting started 2 Pages/ })).toBeVisible();
+  await expect(page.locator("main").getByRole("link", { name: /^Wiring \d/ })).toHaveCount(0);
+  await page.goto("/p/handbook/c/getting-started");
+  await page.locator("main").getByRole("link", { name: /^Wiring \d/ }).click();
+  await expect(page).toHaveURL(/\/p\/handbook\/c\/wiring$/);
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Getting started" })).toBeVisible();
+  await page.getByRole("link", { name: "Mains connection" }).first().click();
+  await expect(page.getByRole("heading", { name: "Mains connection" })).toBeVisible();
+  expect(errors).toEqual([]);
+});

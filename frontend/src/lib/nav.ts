@@ -55,14 +55,51 @@ export function useProjectNav(
   return { nav, status };
 }
 
-/** Categories worth showing: one with nothing published in it is a dead end
- *  for a reader, and the nav endpoint deliberately leaves that call here. */
+/** Published pages in a category and everything nested under it. */
+export function subtreePageCount(nav: ProjectNav, slug: string): number {
+  return nav.categories.reduce(
+    (total, c) => total + (c.slug === slug || categoryAncestors(nav, c.slug).some((a) => a.slug === slug) ? c.pages.length : 0),
+    0,
+  );
+}
+
+/** Categories worth showing: one with nothing published in it -- or under
+ *  it -- is a dead end for a reader, and the nav endpoint deliberately
+ *  leaves that call here. A section that holds only subsections stays: its
+ *  subsections are reached through it. In the nav's own order, which is
+ *  reading order (each category followed by the ones nested under it). */
 export function visibleCategories(nav: ProjectNav): NavCategory[] {
-  return nav.categories.filter((c) => c.pages.length > 0);
+  return nav.categories.filter((c) => subtreePageCount(nav, c.slug) > 0);
+}
+
+/** The visible categories at the top level -- the project's own tiles. */
+export function topCategories(nav: ProjectNav): NavCategory[] {
+  return visibleCategories(nav).filter((c) => !c.parent);
+}
+
+/** The visible categories directly under `slug`. */
+export function subcategories(nav: ProjectNav, slug: string): NavCategory[] {
+  return visibleCategories(nav).filter((c) => c.parent === slug);
+}
+
+/** The categories above `slug`, outermost first -- its breadcrumb. The
+ *  server has already ruled out loops; the bound is only so a malformed
+ *  response can never hang the page. */
+export function categoryAncestors(nav: ProjectNav, slug: string): NavCategory[] {
+  const bySlug = new Map(nav.categories.map((c) => [c.slug, c]));
+  const chain: NavCategory[] = [];
+  let cursor = bySlug.get(slug)?.parent;
+  while (cursor && bySlug.has(cursor) && chain.length < 8) {
+    const parent = bySlug.get(cursor)!;
+    chain.unshift(parent);
+    cursor = parent.parent;
+  }
+  return chain;
 }
 
 /** Reading order -- the sidebar's own order flattened across categories, so
- *  the last page of one category is followed by the first of the next. */
+ *  the last page of one category is followed by the first of the next (a
+ *  category's own pages come before its subcategories'). */
 export function readingOrder(nav: ProjectNav): { page: NavPage; category: NavCategory }[] {
   return visibleCategories(nav).flatMap((category) => category.pages.map((page) => ({ page, category })));
 }

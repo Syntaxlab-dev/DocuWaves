@@ -205,6 +205,7 @@ _SQLITE_SCHEMA = [
         icon TEXT NOT NULL DEFAULT '',
         image TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
+        parent TEXT NOT NULL DEFAULT '',
         UNIQUE(project_id, version, slug)
     )
     """,
@@ -527,6 +528,7 @@ _POSTGRES_SCHEMA = [
         icon TEXT NOT NULL DEFAULT '',
         image TEXT NOT NULL DEFAULT '',
         sort_order INTEGER NOT NULL DEFAULT 0,
+        parent TEXT NOT NULL DEFAULT '',
         UNIQUE(project_id, version, slug)
     )
     """,
@@ -705,7 +707,7 @@ _POSTGRES_SCHEMA = [
 # truth, and a stamp is one more thing that can disagree with it.
 _REQUIRED_COLUMNS = {
     "projects": {"name_i18n", "description_i18n", "image"},
-    "categories": {"name_i18n", "version", "image"},
+    "categories": {"name_i18n", "version", "image", "parent"},
     "pages": {"language", "version", "reviewed_by", "reviewed_at"},
 }
 

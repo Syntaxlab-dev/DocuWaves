@@ -68,6 +68,8 @@ image: ../assets/getting-started.png
 order: 0
 ```
 
+A category inside another one adds `parent: <slug of the outer category>`. The directories themselves stay side by side.
+
 A page — YAML frontmatter, then the Markdown body:
 
 ```markdown
