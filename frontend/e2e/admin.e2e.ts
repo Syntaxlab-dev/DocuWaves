@@ -468,7 +468,6 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   const crumbs = page.getByRole("navigation", { name: "Path" });
   await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
   // A breadcrumb steps up, and Back steps down again.
-  page.on("console", (m) => m.text().startsWith("DBG") && console.log(m.text()));
   await crumbs.getByRole("button", { name: "Handbook" }).click();
   await expect(page).toHaveURL(/\/admin\/content\/handbook$/);
   await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);

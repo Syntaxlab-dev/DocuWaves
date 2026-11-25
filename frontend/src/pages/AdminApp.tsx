@@ -116,7 +116,6 @@ export function AdminApp() {
     if (restore.current && restore.current.project) return; // still arriving
     const target = contentPath(selectedProject?.slug, selectedCategory?.slug, editing);
     const here = location.pathname.replace(/\/+$/, "") + location.search;
-    console.info("DBG write", here, "->", target, "restore", JSON.stringify(restore.current));
     if (target === here) return;
     written.current = target;
     navigate(target);
@@ -131,7 +130,6 @@ export function AdminApp() {
     if (!isContent) return;
     const here = location.pathname.replace(/\/+$/, "") + location.search;
     const target = contentPath(selectedProject?.slug, selectedCategory?.slug, editing);
-    console.info("DBG follow", here, "written", written.current, "target", target, "projects", projects.map((p) => `${p.id}:${p.slug}`).join(","), "sel", selectedProject?.id, "cats", categories.map((c) => c.slug).join(","));
     if (here === written.current || here === target || projects.length === 0) return;
     if (here === "/admin/content") {
       written.current = target;
