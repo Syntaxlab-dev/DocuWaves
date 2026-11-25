@@ -111,3 +111,18 @@ class TestApi:
         c.post("/api/auth/login", json={"username": "chef", "password": "chef-passwort-123"}, headers=ORIGIN)
         r = c.get("/api/admin/activity?limit=2")
         assert r.status_code == 200 and len(r.json()["entries"]) == 2
+
+
+class TestLastChangeInThePageList:
+    def test_each_page_names_its_last_commit(self, world):
+        c = TestClient(importlib.import_module("app.main").app)
+        c.post("/api/auth/login", json={"username": "chef", "password": "chef-passwort-123"}, headers=ORIGIN)
+        category = activity.recent()[1]["pages"][0]["category_id"]
+        pages = c.get(f"/api/admin/categories/{category}/pages").json()["pages"]
+        start = next(p for p in pages if p["slug"] == "start")
+        # Kim's edit of the live file, not Sam's proposal next to it.
+        assert start["last_change"]["author"] == "Kim"
+        assert start["last_change"]["date"].startswith("20")
+
+    def test_a_file_git_never_saw_has_none(self, world):
+        assert git_content_repo.last_change_map().get("content/docs/guide/nope.md") is None

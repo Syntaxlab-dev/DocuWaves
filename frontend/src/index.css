@@ -558,3 +558,15 @@ body {
   .openapi-method, .openapi-status { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
 
+
+/* Row actions (edit, delete) that only appear on the row being pointed at
+   or focused, so a long list reads as content rather than as a wall of
+   buttons. Only where a pointer can hover: on touch they always show. */
+@media (hover: hover) {
+  .group:not(:hover):not(:focus-within) .hover-reveal {
+    opacity: 0;
+  }
+}
+.hover-reveal {
+  transition: opacity 120ms ease;
+}

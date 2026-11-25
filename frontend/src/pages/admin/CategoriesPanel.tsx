@@ -190,7 +190,7 @@ export function CategoriesPanel({
           return (
           <div key={c.id} style={depth ? { marginLeft: `${depth * 0.75}rem` } : undefined}>
             <div
-              className={`flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+              className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
                 selected?.id === c.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
               }`}
             >
@@ -199,7 +199,7 @@ export function CategoriesPanel({
                 {c.name}
               </button>
               {!readOnly && (
-                <>
+                <span className="hover-reveal flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -227,7 +227,7 @@ export function CategoriesPanel({
                   <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
-                </>
+                </span>
               )}
             </div>
             {editingId === c.id && !readOnly && (

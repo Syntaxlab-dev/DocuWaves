@@ -165,7 +165,7 @@ export function VersionsCard({
         ) : (
           <div className="flex flex-col divide-y divide-[var(--border)] rounded-lg border border-[var(--border)]">
             {versions.versions.map((v) => (
-              <div key={v.id} className="flex items-center gap-2 px-3 py-2 text-sm">
+              <div key={v.id} className="group flex items-center gap-2 px-3 py-2 text-sm">
                 <Lock className="h-3.5 w-3.5 text-[var(--muted)]" aria-hidden="true" />
                 <span className="font-medium">{v.label}</span>
                 <span className="font-mono text-xs text-[var(--muted)]">{v.id}</span>
@@ -177,7 +177,7 @@ export function VersionsCard({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="ml-auto h-6 w-6"
+                  className="hover-reveal ml-auto h-6 w-6"
                   aria-label={t("admin.delete")}
                   onClick={() => onDelete(v.id, v.label)}
                 >

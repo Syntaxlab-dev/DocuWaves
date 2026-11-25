@@ -620,7 +620,20 @@ class PageIn(BaseModel):
     "whole job here is showing which languages a page does and does not exist in yet.",
 )
 def admin_list_pages(category_id: int):
-    return {"pages": pages_store.list_all_pages(category_id)}
+    pages = pages_store.list_all_pages(category_id)
+    category = categories_store.get_category(category_id)
+    project = projects_store.get_project(category["project_id"]) if category else None
+    # Who touched each file last and when, from the content repo: one walk of
+    # the history for the whole list (git_content_repo.last_change_map).
+    changes = git_content_repo.last_change_map() if project else {}
+    for page in pages:
+        path = (
+            content_files.page_repo_path(project["slug"], category["slug"], page["slug"], page["language"], page["version"])
+            if project
+            else ""
+        )
+        page["last_change"] = changes.get(path)
+    return {"pages": pages}
 
 
 # ---- Who is editing what (services/editing_presence.py) ----

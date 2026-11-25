@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { api, ApiError, type BulkAction, type Category, type Page } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
+import { relativeTime } from "@/lib/time";
 import { languageName } from "@/lib/lang";
 import { useSite } from "@/lib/site";
 
@@ -207,7 +208,7 @@ export function PagesPanel({
           // the version that always exists.
           const primary = group.variants.get(site.default_language) ?? [...group.variants.values()][0];
           return (
-            <div key={group.slug} className="flex items-center gap-2 px-3 py-2 text-sm">
+            <div key={group.slug} className="group flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--surface-2)]">
               {!readOnly && (
                 <input
                   type="checkbox"
@@ -219,9 +220,24 @@ export function PagesPanel({
               <button
                 type="button"
                 onClick={() => onEdit({ kind: "page", slug: group.slug, language: primary.language })}
-                className="flex-1 text-left"
+                className="min-w-0 flex-1 text-left"
               >
-                {group.title}
+                <span className="block truncate">{group.title}</span>
+                {(() => {
+                  // The newest change across the page's languages.
+                  const last = [...group.variants.values()]
+                    .map((v) => v.last_change)
+                    .filter((c): c is { date: string; author: string } => !!c)
+                    .sort((a, b) => b.date.localeCompare(a.date))[0];
+                  if (!last) return null;
+                  return (
+                    <span className="block truncate text-xs text-[var(--muted)]" title={new Date(last.date).toLocaleString(uiLang)}>
+                      {t("admin.lastChange")
+                        .replace("{when}", relativeTime(last.date, uiLang))
+                        .replace("{who}", last.author)}
+                    </span>
+                  );
+                })()}
               </button>
               {(() => {
                 // Others only: your own open editor is not news to you.
@@ -290,16 +306,14 @@ export function PagesPanel({
                   draft label it always was; with languages the state is per
                   translation and lives on the codes above instead. */}
               {!multilingual && primary && (
-                <span className={`text-xs ${primary.published ? "text-[var(--accent)]" : "text-[var(--muted)]"}`}>
-                  {primary.published ? t("admin.published") : t("admin.draft")}
-                </span>
+                <StatusChip published={primary.published} />
               )}
 
               {!readOnly && (
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
+                  className="hover-reveal h-6 w-6"
                   aria-label={t("admin.delete")}
                   onClick={() => onDelete(primary.id)}
                 >
@@ -311,5 +325,22 @@ export function PagesPanel({
         })}
       </div>
     </div>
+  );
+}
+
+/** Published or draft as a small pill: green dot for live, grey for draft. */
+export function StatusChip({ published }: { published: boolean }) {
+  const { t } = useI18n();
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 text-[11px] font-medium leading-5 ${
+        published
+          ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+          : "bg-[var(--surface-2)] text-[var(--muted)]"
+      }`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${published ? "bg-emerald-500" : "bg-[var(--muted)]"}`} aria-hidden="true" />
+      {published ? t("admin.published") : t("admin.draft")}
+    </span>
   );
 }

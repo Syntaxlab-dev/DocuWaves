@@ -169,6 +169,9 @@ export interface Page extends PageSummary {
   reviewed_at: string;
   created_at: string;
   updated_at: string;
+  /** The newest commit touching this page's file: when and by whom. Only in
+   *  the admin page list, and null for a file the content repo never saw. */
+  last_change?: { date: string; author: string } | null;
   /** Fingerprint of title + body as the server has them. Sent back as
    *  `base_revision` on save, so a save on top of someone else's newer
    *  change is refused (409 `page_changed`) instead of silently winning. */

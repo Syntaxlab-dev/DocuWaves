@@ -987,6 +987,45 @@ def _last_modified_map(repo: git.Repo) -> dict[str, str]:
     return dates
 
 
+def last_change_map() -> dict[str, dict]:
+    """`{repo-relative path: {"date", "author"}}` for every file the history
+    has touched: the same one-walk trick as last_modified_map(), with the
+    author of that newest commit as well. The admin page lists show it next
+    to each page ("edited 2 days ago by anna"), for a whole category at once,
+    so per-file `git log` calls are out for the same reason as there."""
+    repo = _read_repo()
+    if repo is None:
+        return {}
+    return _cached(repo, ("last_change_map",), lambda: _last_change_map(repo))
+
+
+def _last_change_map(repo: git.Repo) -> dict[str, dict]:
+    try:
+        output = repo.git.execute(
+            [
+                "git",
+                "-c",
+                "core.quotePath=false",
+                "log",
+                f"--pretty=format:{_LOG_MARKER}%aI%x02%an",
+                "--name-only",
+                "--no-renames",
+            ],
+        )
+    except git.GitCommandError:
+        return {}
+
+    changes: dict[str, dict] = {}
+    current: dict | None = None
+    for line in output.splitlines():
+        if line.startswith(_LOG_MARKER):
+            date, _, author = line[1:].partition("\x02")
+            current = {"date": date.strip(), "author": author.strip()}
+        elif line and current:
+            changes.setdefault(line, current)
+    return changes
+
+
 # ---- What changed lately (the public changelog) ----
 
 # How far back the changelog looks. Enough for months of normal editing;
