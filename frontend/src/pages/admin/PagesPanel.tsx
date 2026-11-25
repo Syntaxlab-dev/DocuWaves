@@ -1,9 +1,11 @@
 // A category's pages, one row per page whatever languages it exists in.
 // Split out of pages/AdminApp.tsx, which keeps the layout and state.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, PencilLine, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReviewMark } from "@/components/ReviewWorkflow";
+import { askConfirm } from "@/components/ConfirmDialog";
+import { SkeletonLines } from "@/components/Skeleton";
 import { toast } from "sonner";
 import { api, ApiError, type BulkAction, type Category, type Page } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -52,14 +54,20 @@ export function groupPages(pages: Page[], defaultLanguage: string): PageGroup[] 
   return [...groups.values()];
 }
 
+/** How long "Undo" is offered after deleting a page. */
+const UNDO_MS = 6000;
+
 export function PagesPanel({
   pages,
+  loading = false,
   readOnly,
   categories = [],
   onEdit,
   onChanged,
 }: {
   pages: Page[];
+  /** The list is still being fetched: placeholders instead of rows. */
+  loading?: boolean;
   /** The project's categories in this version: where "move" can go. */
   categories?: Category[];
   /** A frozen version is being viewed: its pages open read-only, and there
@@ -117,7 +125,16 @@ export function PagesPanel({
       .filter((g) => selected.has(g.slug))
       .map((g) => (g.variants.get(site.default_language) ?? [...g.variants.values()][0]).id);
     if (ids.length === 0) return;
-    if (action === "delete" && !confirm(t("bulk.deleteConfirm").replace("{n}", String(ids.length)))) return;
+    if (
+      action === "delete" &&
+      !(await askConfirm({
+        title: t("bulk.deleteTitle").replace("{n}", String(ids.length)),
+        message: t("bulk.deleteConfirm").replace("{n}", String(ids.length)),
+        confirmLabel: t("admin.delete"),
+        danger: true,
+      }))
+    )
+      return;
     setBusy(true);
     try {
       const result = await api.adminBulkPages(action, ids, categoryTarget);
@@ -136,10 +153,57 @@ export function PagesPanel({
     }
   }
 
-  async function onDelete(id: number) {
-    if (!confirm(t("admin.deleteConfirm"))) return;
-    await api.adminDeletePage(id);
-    onChanged();
+  // Deleting a page asks nothing up front: the row goes at once and a toast
+  // offers "Undo" for a few seconds, and only then is the delete sent. A
+  // delete still waiting when the list goes away (another category opened)
+  // is sent right then; closing the tab inside the window keeps the page.
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const pendingDeletes = useRef(new Map<string, { timer: number; run: () => void }>());
+  useEffect(() => {
+    const pending = pendingDeletes.current;
+    return () => {
+      for (const { timer, run } of pending.values()) {
+        window.clearTimeout(timer);
+        run();
+      }
+    };
+  }, []);
+
+  function setDeletingSlug(slug: string, on: boolean) {
+    setDeleting((current) => {
+      const next = new Set(current);
+      if (on) next.add(slug);
+      else next.delete(slug);
+      return next;
+    });
+  }
+
+  function onDelete(group: PageGroup, id: number) {
+    const slug = group.slug;
+    const run = () => {
+      pendingDeletes.current.delete(slug);
+      api
+        .adminDeletePage(id)
+        .then(() => onChanged())
+        .catch((err) => {
+          setDeletingSlug(slug, false);
+          toast.error(err instanceof ApiError ? err.message : t("common.error"));
+        });
+    };
+    const timer = window.setTimeout(run, UNDO_MS);
+    pendingDeletes.current.set(slug, { timer, run });
+    setDeletingSlug(slug, true);
+    toast(t("admin.pageDeleted").replace("{title}", group.title), {
+      duration: UNDO_MS,
+      action: {
+        label: t("common.undo"),
+        onClick: () => {
+          window.clearTimeout(timer);
+          pendingDeletes.current.delete(slug);
+          setDeletingSlug(slug, false);
+        },
+      },
+    });
   }
 
   return (
@@ -203,7 +267,19 @@ export function PagesPanel({
             {t("bulk.selectAll")}
           </label>
         )}
-        {groups.map((group) => {
+        {loading && <div className="px-3 py-2"><SkeletonLines rows={4} label={t("common.loading")} /></div>}
+        {!loading && groups.length === 0 && (
+          <div className="px-4 py-8 text-center text-sm text-[var(--muted)]">
+            <p>{t("admin.noPages")}</p>
+            {!readOnly && (
+              <Button size="sm" variant="outline" className="mt-3" onClick={() => onEdit({ kind: "new" })}>
+                <Plus className="h-3.5 w-3.5" />
+                {t("admin.newPage")}
+              </Button>
+            )}
+          </div>
+        )}
+        {!loading && groups.filter((group) => !deleting.has(group.slug)).map((group) => {
           // Opening the row itself lands on the default language, which is
           // the version that always exists.
           const primary = group.variants.get(site.default_language) ?? [...group.variants.values()][0];
@@ -315,7 +391,7 @@ export function PagesPanel({
                   size="icon"
                   className="hover-reveal h-6 w-6"
                   aria-label={t("admin.delete")}
-                  onClick={() => onDelete(primary.id)}
+                  onClick={() => onDelete(group, primary.id)}
                 >
                   <Trash2 className="h-3 w-3" />
                 </Button>

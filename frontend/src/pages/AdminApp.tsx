@@ -57,6 +57,9 @@ export function AdminApp() {
   // Every language variant as its own row (the admin list endpoint does not
   // collapse them) -- PagesPanel groups them by slug for display.
   const [pages, setPages] = useState<Page[]>([]);
+  /** Which category `pages` belongs to: until it matches the selected one,
+   *  the list shows placeholders instead of the previous category's pages. */
+  const [pagesFor, setPagesFor] = useState<number | null>(null);
   const [editing, setEditing] = useState<EditorTarget | null>(null);
   // The admin's areas (Branding, Accounts, Insights, ...): ONE at a time,
   // shown in place of the content, each at its own address under /admin/
@@ -273,7 +276,10 @@ export function AdminApp() {
   }, [selectedProject, versions, viewing]);
 
   function loadPages(categoryId: number) {
-    api.adminListPages(categoryId).then((r) => setPages(r.pages));
+    api.adminListPages(categoryId).then((r) => {
+      setPages(r.pages);
+      setPagesFor(categoryId);
+    });
   }
   useEffect(() => {
     if (selectedCategory) loadPages(selectedCategory.id);
@@ -524,6 +530,7 @@ export function AdminApp() {
                     {selectedCategory && editing === null && (
                       <PagesPanel
                         pages={pages}
+                        loading={pagesFor !== selectedCategory.id}
                         readOnly={contentReadOnly}
                         categories={categories}
                         onEdit={setEditing}

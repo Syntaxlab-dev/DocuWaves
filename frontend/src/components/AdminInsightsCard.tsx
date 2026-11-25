@@ -7,6 +7,7 @@ import { api, ApiError, type FeedbackComment, type FeedbackSummary, type ReviewD
 import { formatIsoDate } from "@/lib/dates";
 import { useI18n } from "@/lib/i18n";
 import { usePermissions } from "@/lib/auth";
+import { askConfirm } from "@/components/ConfirmDialog";
 
 type Broken = {
   project_slug: string;
@@ -77,7 +78,7 @@ export function AdminInsightsCard({
   }
 
   async function forgetGap(id: number | null) {
-    if (id === null && !confirm(t("gaps.clearConfirm"))) return;
+    if (id === null && !(await askConfirm({ title: t("gaps.clearConfirm"), danger: true }))) return;
     try {
       await (id === null ? api.adminClearSearchGaps() : api.adminForgetSearchGap(id));
       await load();

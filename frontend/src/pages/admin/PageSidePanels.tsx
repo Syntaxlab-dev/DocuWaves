@@ -36,6 +36,8 @@ import { useI18n } from "@/lib/i18n";
 import { formatIsoDate } from "@/lib/dates";
 import { languageName } from "@/lib/lang";
 import { useSite } from "@/lib/site";
+import { askConfirm } from "@/components/ConfirmDialog";
+import { SkeletonLines } from "@/components/Skeleton";
 
 /**
  * "Reviewed by X on Y", or the button that makes it say that.
@@ -362,7 +364,7 @@ export function HistoryPanel({
   }
 
   async function onRestore(version: PageVersion) {
-    if (!confirm(t("admin.historyRestoreConfirm").replace("{sha}", version.sha))) return;
+    if (!(await askConfirm({ title: t("admin.historyRestoreConfirm").replace("{sha}", version.sha) }))) return;
     setRestoring(true);
     try {
       await api.adminRestorePage(pageId, version.sha);
@@ -376,7 +378,7 @@ export function HistoryPanel({
   }
 
   if (failed) return <p className="text-sm text-[var(--muted)]">{t("common.error")}</p>;
-  if (!history) return <p className="text-sm text-[var(--muted)]">{t("common.loading")}</p>;
+  if (!history) return <SkeletonLines rows={3} label={t("common.loading")} />;
 
   return (
     <div className="flex flex-col gap-3">
@@ -582,7 +584,7 @@ export function ImagesPanel({
   }
 
   async function onDelete(filename: string) {
-    if (!confirm(t("admin.imageDeleteConfirm"))) return;
+    if (!(await askConfirm({ title: t("admin.imageDeleteConfirm"), confirmLabel: t("admin.delete"), danger: true }))) return;
     try {
       await api.adminDeleteAsset(projectSlug, filename);
       loadAssets();

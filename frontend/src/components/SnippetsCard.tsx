@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { askConfirm } from "@/components/ConfirmDialog";
 
 type Scope = "project" | "site";
 /** Which snippet the editor holds: an existing file, or a new one. */
@@ -138,7 +139,7 @@ export function SnippetsCard({
 
   async function deleteSnippet() {
     if (selection?.kind !== "existing") return;
-    if (!confirm(t("snippets.deleteConfirm").replace("{name}", selection.name))) return;
+    if (!(await askConfirm({ title: t("snippets.deleteConfirm").replace("{name}", selection.name), confirmLabel: t("admin.delete"), danger: true }))) return;
     const ok = await run(
       () => api.adminDeleteSnippet(selection.name, { ...target, language: selection.language }),
       "snippets.deleted",

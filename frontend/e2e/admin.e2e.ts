@@ -27,6 +27,7 @@ async function signIn(page: Page) {
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
   // The admin opens on the overview; the content has its own address.
   await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Projects and pages" }).click();
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toHaveCount(0);
 }
 
 test.describe.configure({ mode: "serial" });
@@ -427,5 +428,54 @@ test("the admin opens on an overview that leads to the work", async ({ page }) =
   await page.getByRole("heading", { name: "Recently edited" }).locator("../..").getByRole("button").first().click();
   await expect(page).toHaveURL(/\/admin\/content$/);
   await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("deleting asks in the app, and a page can be brought back", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("button", { name: "Handbook" }).click();
+  await page.getByRole("heading", { name: "Categories" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Scratch");
+  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Scratch" }).click();
+  await expect(page.getByText("This category has no pages yet.")).toBeVisible();
+  await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Temporary");
+  await page.getByRole("button", { name: "Markdown" }).click();
+  await page.locator("textarea").first().fill("Gone soon.\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByRole("button", { name: "History" })).toBeEnabled();
+
+  // A page goes at once, with a few seconds to take it back.
+  await page.getByRole("button", { name: "Scratch" }).click();
+  const pages = page.getByRole("heading", { name: "Pages" }).locator("../..");
+  const row = pages.locator("div.group").filter({ hasText: "Temporary" });
+  await row.hover();
+  await row.getByRole("button", { name: "Delete" }).click();
+  await expect(row).toHaveCount(0);
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect(row).toHaveCount(1);
+  await row.hover();
+  await row.getByRole("button", { name: "Delete" }).click();
+  await expect(row).toHaveCount(0);
+  await page.waitForTimeout(6500);
+  await page.reload();
+  await page.getByRole("button", { name: "Handbook" }).click();
+  await page.getByRole("button", { name: "Scratch" }).click();
+  await expect(page.getByText("This category has no pages yet.")).toBeVisible();
+
+  // A category asks first, in a dialog of the app's own.
+  const category = page.locator("div.group").filter({ has: page.getByRole("button", { name: "Scratch" }) });
+  await category.hover();
+  await category.getByRole("button", { name: "Delete" }).click();
+  const dialog = page.getByRole("alertdialog", { name: 'Delete the category "Scratch"?' });
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Scratch" })).toBeVisible();
+  await category.hover();
+  await category.getByRole("button", { name: "Delete" }).click();
+  await dialog.getByRole("button", { name: "Delete" }).click();
+  await expect(page.getByRole("button", { name: "Scratch" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { api, ApiError, type Project, type ProjectRole, type Role, type User } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { formatIsoDate } from "@/lib/dates";
+import { askConfirm } from "@/components/ConfirmDialog";
 
 /**
  * The accounts that may open this admin area, and what each of them may do.
@@ -91,7 +92,7 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
     // Only for your own row, and only downwards: the request that follows
     // takes your own access away and signs you out, which is not something
     // to discover from the login screen.
-    if (user.username === me && !confirm(t("users.stepDownConfirm").replace("{role}", t(`users.role.${role}` as never)))) {
+    if (user.username === me && !(await askConfirm({ title: t("users.stepDownConfirm").replace("{role}", t(`users.role.${role}` as never)), danger: true }))) {
       await load();
       return;
     }
@@ -139,7 +140,7 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
   }
 
   async function onResetMfa(user: User) {
-    if (!confirm(t("users.mfaResetConfirm").replace("{name}", user.username))) return;
+    if (!(await askConfirm({ title: t("users.mfaResetConfirm").replace("{name}", user.username), danger: true }))) return;
     try {
       await api.adminResetUserMfa(user.username);
       toast.success(t("users.mfaReset").replace("{name}", user.username));
@@ -150,7 +151,7 @@ export function AdminUsersCard({ onClose, onSelfChanged }: { onClose: () => void
   }
 
   async function onDelete(user: User) {
-    if (!confirm(t("users.deleteConfirm").replace("{name}", user.username))) return;
+    if (!(await askConfirm({ title: t("users.deleteConfirm").replace("{name}", user.username), confirmLabel: t("admin.delete"), danger: true }))) return;
     try {
       await api.adminDeleteUser(user.username);
       toast.success(t("users.deleted").replace("{name}", user.username));

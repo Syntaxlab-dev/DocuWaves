@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Outlet, useParams } from "react-router-dom";
 import { Toaster } from "sonner";
+import { ConfirmHost } from "@/components/ConfirmDialog";
 import { AuthProvider } from "@/lib/auth";
 import { I18nProvider } from "@/lib/i18n";
 import { ContentLangProvider, useContentLang } from "@/lib/lang";
@@ -141,6 +142,7 @@ export default function App() {
         <AuthProvider>
           <BrowserRouter>
             <Toaster richColors position="top-right" />
+            <ConfirmHost />
             <LanguageRouting />
           </BrowserRouter>
         </AuthProvider>

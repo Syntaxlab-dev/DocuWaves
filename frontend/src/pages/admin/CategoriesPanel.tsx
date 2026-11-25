@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { api, ApiError, type Category } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
@@ -140,7 +141,14 @@ export function CategoriesPanel({
   const [editingId, setEditingId] = useState<number | null>(null);
 
   async function onDelete(id: number) {
-    if (!confirm(t("admin.deleteConfirm"))) return;
+    const name = categories.find((x) => x.id === id)?.name ?? "";
+    const ok = await askConfirm({
+      title: t("admin.deleteCategoryTitle").replace("{name}", name),
+      message: t("admin.deleteConfirm"),
+      confirmLabel: t("admin.delete"),
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.adminDeleteCategory(id);
       onChanged();
@@ -224,7 +232,7 @@ export function CategoriesPanel({
                   >
                     <ArrowDown className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(c.id)}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t("admin.delete")} onClick={() => onDelete(c.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </span>

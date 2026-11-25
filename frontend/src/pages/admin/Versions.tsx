@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError, type AdminVersions, type Project } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { normalizeVersionId } from "@/lib/version";
+import { askConfirm } from "@/components/ConfirmDialog";
 
 /**
  * Documentation versions for the selected project.
@@ -142,7 +143,7 @@ export function VersionsCard({
       .replace("{label}", versionLabel)
       .replace("{project}", project.slug)
       .replace("{id}", versionId);
-    if (!confirm(message)) return;
+    if (!(await askConfirm({ title: message, confirmLabel: t("admin.delete"), danger: true }))) return;
     try {
       await api.adminDeleteVersion(project.slug, versionId);
       toast.success(t("admin.versionDeleted"));

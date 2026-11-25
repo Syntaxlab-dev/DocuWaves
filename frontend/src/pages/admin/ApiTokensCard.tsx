@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError, type ApiToken, type Project } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { askConfirm } from "@/components/ConfirmDialog";
+import { SkeletonLines } from "@/components/Skeleton";
 
 /**
  * API tokens -- the credentials an operator hands to an AI assistant so it
@@ -69,7 +71,7 @@ export function ApiTokensCard({ projects, onClose }: { projects: Project[]; onCl
   }
 
   async function onRevoke(token: ApiToken) {
-    if (!confirm(t("admin.tokenRevokeConfirm").replace("{name}", token.name))) return;
+    if (!(await askConfirm({ title: t("admin.tokenRevokeConfirm").replace("{name}", token.name), danger: true }))) return;
     try {
       await api.adminRevokeToken(token.id);
       toast.success(t("admin.tokenRevoked"));
@@ -140,7 +142,7 @@ export function ApiTokensCard({ projects, onClose }: { projects: Project[]; onCl
         )}
 
         {tokens === null ? (
-          <p className="text-sm text-[var(--muted)]">{t("common.loading")}</p>
+          <SkeletonLines rows={2} label={t("common.loading")} />
         ) : tokens.length === 0 ? (
           <p className="text-sm text-[var(--muted)]">{t("admin.tokensEmpty")}</p>
         ) : (

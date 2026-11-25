@@ -18,6 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { askConfirm } from "@/components/ConfirmDialog";
 import { Input } from "@/components/ui/input";
 import { PrivateBadge } from "@/components/PrivateBadge";
 import { api, ApiError, type Asset, type Project } from "@/lib/api";
@@ -342,7 +343,14 @@ export function ProjectsPanel({
   const [editingId, setEditingId] = useState<number | null>(null);
 
   async function onDelete(id: number) {
-    if (!confirm(t("admin.deleteConfirm"))) return;
+    const name = projects.find((x) => x.id === id)?.name ?? "";
+    const ok = await askConfirm({
+      title: t("admin.deleteProjectTitle").replace("{name}", name),
+      message: t("admin.deleteConfirm"),
+      confirmLabel: t("admin.delete"),
+      danger: true,
+    });
+    if (!ok) return;
     try {
       await api.adminDeleteProject(id);
       onChanged();
@@ -419,7 +427,7 @@ export function ProjectsPanel({
                   >
                     <ArrowDown className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onDelete(p.id)}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t("admin.delete")} onClick={() => onDelete(p.id)}>
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </span>

@@ -21,6 +21,7 @@ import { logoForTheme, useSite } from "@/lib/site";
 import { accentVariables } from "@/lib/theme";
 import { PDF_DEFAULTS } from "@/lib/printBranding";
 import { toFieldValues, fromFieldValues, LocalizedInput } from "./shared";
+import { SkeletonLines } from "@/components/Skeleton";
 
 /** The instance's own identity: name, tagline, accent colour, logo/favicon
  *  and footer. Saving writes content/_site.yml (plus any uploaded image into
@@ -98,7 +99,7 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
         <p className="mb-4 text-sm text-[var(--muted)]">{t("admin.brandingIntro")}</p>
 
         {!draft ? (
-          <p className="text-sm text-[var(--muted)]">{t("common.loading")}</p>
+          <SkeletonLines rows={4} label={t("common.loading")} />
         ) : (
           <div className="flex flex-col gap-4">
             <BrandingPreview draft={draft} isDark={isDark} />

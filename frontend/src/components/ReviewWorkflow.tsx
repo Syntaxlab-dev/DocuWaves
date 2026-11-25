@@ -35,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DiffView } from "@/components/DiffView";
+import { askConfirm } from "@/components/ConfirmDialog";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 
@@ -228,8 +229,8 @@ export function ReviewPanel({
                 size="sm"
                 variant="ghost"
                 disabled={disabled}
-                onClick={() => {
-                  if (confirm(t("review.discardConfirm"))) {
+                onClick={async () => {
+                  if (await askConfirm({ title: t("review.discardConfirm"), danger: true })) {
                     void run(() => api.adminReviewDiscard(pageId), "review.discarded");
                   }
                 }}
