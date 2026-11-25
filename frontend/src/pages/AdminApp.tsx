@@ -143,6 +143,13 @@ export function AdminApp() {
       return;
     }
     const category = categories.find((c) => c.slug === want.category) ?? null;
+    if (want.category && !category && selectedProject && versions) {
+      // Not in the list this render holds (it may be reloading): ask for it
+      // again and let the answer pick the category up, as on arrival.
+      restore.current = want;
+      loadCategories(selectedProject.id, viewing);
+      return;
+    }
     setSelectedCategory(category);
     setEditing(
       category && want.page ? { kind: "page", slug: want.page, language: want.lang || site.default_language } : null,

@@ -473,6 +473,7 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);
   await page.goBack();
   await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
+  await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
   await expect(page.getByText("This category has no pages yet.")).toBeVisible();
 
   // A category asks first, in a dialog of the app's own.
