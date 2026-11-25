@@ -88,19 +88,19 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 
 ## v2.1: a tidier admin
 
-| | Item | Effort |
+| ✅ | Item | Effort |
 |---|---|---|
-| | A dashboard as the admin's start page: recently edited, open approvals, search gaps, reviews due, quick actions | M |
-| | Admin navigation as a grouped sidebar instead of eleven links in the header | M |
-| | Action icons (edit, move, delete) only on hover | S |
-| | Status chips in the page list (draft, live, approval open, scheduled), with last change and author | S |
-| | Empty states with a clear next step | S |
-| | Its own URL for every admin view, with breadcrumbs and a working Back button | M |
-| | In-app confirmation dialogs instead of browser pop-ups, with Undo after a delete | M |
-| | Skeleton loading states instead of empty areas | S |
-| | Images in the editor as a collapsible side panel instead of a list above the text | S |
-| | A status bar in the editor: word count, reading time, "saved a minute ago" | S |
-| | Drafts kept in the browser while writing and offered back after a crash | S |
+| ✅ | A dashboard as the admin's start page: recently edited, open approvals, search gaps, reviews due, quick actions | M |
+| ✅ | Admin navigation as a grouped sidebar instead of eleven links in the header | M |
+| ✅ | Action icons (edit, move, delete) only on hover | S |
+| ✅ | Status chips in the page list (draft, live, approval open, scheduled), with last change and author | S |
+| ✅ | Empty states with a clear next step | S |
+| ✅ | Its own URL for every admin view, with breadcrumbs and a working Back button | M |
+| ✅ | In-app confirmation dialogs instead of browser pop-ups, with Undo after a delete | M |
+| ✅ | Skeleton loading states instead of empty areas | S |
+| ✅ | Images in the editor as a collapsible side panel instead of a list above the text | S |
+| ✅ | A status bar in the editor: word count, reading time, "saved a minute ago" | S |
+| ✅ | Drafts kept in the browser while writing and offered back after a crash | S |
 
 ## v2.2: a better read
 

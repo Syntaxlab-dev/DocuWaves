@@ -140,7 +140,11 @@ export default function App() {
           per view. */}
       <SiteProvider>
         <AuthProvider>
-          <BrowserRouter>
+          {/* Plain state updates for navigation, not transitions: the admin
+              keeps its selection in the address, and a navigation held back
+              as a pending transition left the address and the view out of
+              step (Back showed the old view under the new URL). */}
+          <BrowserRouter useTransitions={false}>
             <Toaster richColors position="top-right" />
             <ConfirmHost />
             <LanguageRouting />

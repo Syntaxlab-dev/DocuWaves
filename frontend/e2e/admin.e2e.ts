@@ -426,7 +426,7 @@ test("the admin opens on an overview that leads to the work", async ({ page }) =
   await expect(page.getByRole("heading", { name: "Recently edited" })).toBeVisible();
   // A page edited earlier in this run opens straight in the editor.
   await page.getByRole("heading", { name: "Recently edited" }).locator("../..").getByRole("button").first().click();
-  await expect(page).toHaveURL(/\/admin\/content$/);
+  await expect(page).toHaveURL(/\/admin\/content\/handbook\/[^?]+\?page=/);
   await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
   expect(errors).toEqual([]);
 });
@@ -435,10 +435,11 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   const errors = watchErrors(page);
   await signIn(page);
   await page.getByRole("button", { name: "Handbook" }).click();
+  const cats = page.getByRole("heading", { name: "Categories" }).locator("../..");
   await page.getByRole("heading", { name: "Categories" }).locator("..").getByRole("button").click();
   await page.getByRole("textbox", { name: "Name" }).fill("Scratch");
   await page.getByRole("button", { name: "Save" }).click();
-  await page.getByRole("button", { name: "Scratch" }).click();
+  await cats.getByRole("button", { name: "Scratch" }).click();
   await expect(page.getByText("This category has no pages yet.")).toBeVisible();
   await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
   await page.getByRole("textbox", { name: "Title" }).fill("Temporary");
@@ -448,7 +449,7 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await expect(page.getByRole("button", { name: "History" })).toBeEnabled();
 
   // A page goes at once, with a few seconds to take it back.
-  await page.getByRole("button", { name: "Scratch" }).click();
+  await cats.getByRole("button", { name: "Scratch" }).click();
   const pages = page.getByRole("heading", { name: "Pages" }).locator("../..");
   const row = pages.locator("div.group").filter({ hasText: "Temporary" });
   await row.hover();
@@ -460,22 +461,31 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await row.getByRole("button", { name: "Delete" }).click();
   await expect(row).toHaveCount(0);
   await page.waitForTimeout(6500);
+  // The address keeps the selection: a reload lands in the same category.
+  await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
   await page.reload();
-  await page.getByRole("button", { name: "Handbook" }).click();
-  await page.getByRole("button", { name: "Scratch" }).click();
+  await expect(page.getByText("This category has no pages yet.")).toBeVisible();
+  const crumbs = page.getByRole("navigation", { name: "Path" });
+  await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
+  // A breadcrumb steps up, and Back steps down again.
+  await crumbs.getByRole("button", { name: "Handbook" }).click();
+  await expect(page).toHaveURL(/\/admin\/content\/handbook$/);
+  await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
   await expect(page.getByText("This category has no pages yet.")).toBeVisible();
 
   // A category asks first, in a dialog of the app's own.
-  const category = page.locator("div.group").filter({ has: page.getByRole("button", { name: "Scratch" }) });
+  const category = cats.locator("div.group").filter({ has: page.getByRole("button", { name: "Scratch" }) });
   await category.hover();
   await category.getByRole("button", { name: "Delete" }).click();
   const dialog = page.getByRole("alertdialog", { name: 'Delete the category "Scratch"?' });
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Scratch" })).toBeVisible();
+  await expect(cats.getByRole("button", { name: "Scratch" })).toBeVisible();
   await category.hover();
   await category.getByRole("button", { name: "Delete" }).click();
   await dialog.getByRole("button", { name: "Delete" }).click();
-  await expect(page.getByRole("button", { name: "Scratch" })).toHaveCount(0);
+  await expect(cats.getByRole("button", { name: "Scratch" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
