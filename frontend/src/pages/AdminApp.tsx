@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { contentPath, parseContentPath } from "@/pages/admin/contentPath";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useNavigationType } from "react-router-dom";
 import { toast } from "sonner";
 import { ChevronRight, Moon, Sun, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -102,22 +102,20 @@ export function AdminApp() {
   // link sent to a colleague opens the same place:
   //   /admin/content/<project>/<category>?page=<slug>&lang=<code>
   // Read once on arrival (`restore`, consumed as the lists load), and
-  // written back, replacing the history entry, whenever the selection moves.
+  // written back whenever the selection moves, one history entry per step,
+  // so Back and Forward walk through what was opened.
   const restore = useRef(isContent ? parseContentPath(location.pathname, location.search) : null);
   // The selected project's documentation versions, and which one is shown
   // (explained where they are loaded, below).
   const [versions, setVersions] = useState<AdminVersions | null>(null);
   const [viewing, setViewing] = useState("");
-  /** The address this component itself last wrote, so the listener below
-   *  can tell its own moves from Back, Forward or a typed URL. */
-  const written = useRef("");
+  const navigationType = useNavigationType();
   useEffect(() => {
     if (!isContent) return;
     if (restore.current && restore.current.project) return; // still arriving
     const target = contentPath(selectedProject?.slug, selectedCategory?.slug, editing);
     const here = location.pathname.replace(/\/+$/, "") + location.search;
     if (target === here) return;
-    written.current = target;
     navigate(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isContent, selectedProject, selectedCategory, editing]);
@@ -130,12 +128,16 @@ export function AdminApp() {
     if (!isContent) return;
     const here = location.pathname.replace(/\/+$/, "") + location.search;
     const target = contentPath(selectedProject?.slug, selectedCategory?.slug, editing);
-    if (here === written.current || here === target || projects.length === 0) return;
+    if (here === target || projects.length === 0) return;
     if (here === "/admin/content") {
-      written.current = target;
       navigate(target, { replace: true });
       return;
     }
+    // Only Back and Forward. A move this component made itself is a PUSH,
+    // and several can be in flight at once (a save turns "new page" into the
+    // page's own address): reacting to an older one of those would undo
+    // the newer selection.
+    if (navigationType !== "POP") return;
     const want = parseContentPath(location.pathname, location.search);
     const project = want && projects.find((p) => p.slug === want.project);
     if (!want || !project) return;
