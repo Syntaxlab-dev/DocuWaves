@@ -257,9 +257,9 @@ test("text is replaced across the project", async ({ page, request }) => {
 test("every admin panel opens without an error", async ({ page }) => {
   const errors = watchErrors(page);
   await signIn(page);
-  const nav = page.getByRole("banner").getByRole("navigation");
+  const nav = page.getByRole("navigation", { name: "Admin" });
   for (const name of ["Branding", "Accounts", "Approvals", "Activity", "Insights", "API tokens", "Diagnostics", "Log", "Import", "Account"]) {
-    await nav.getByRole("button", { name, exact: true }).click();
+    await nav.getByRole("link", { name, exact: true }).click();
     // Every panel opens with a card title; seeing one means it rendered.
     await expect(page.locator("main, body").getByRole("heading", { level: 3 }).first()).toBeVisible();
     await page.waitForLoadState("networkidle");
@@ -274,7 +274,7 @@ test("a read-only account gets Write in one project", async ({ page, browser }) 
     data: { username: "petra", password: "petra-password-123", role: "viewer" },
   });
   expect(made.status()).toBe(201);
-  await page.getByRole("banner").getByRole("navigation").getByRole("button", { name: "Accounts", exact: true }).click();
+  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Accounts", exact: true }).click();
   await page.getByRole("button", { name: "Permissions per project" }).click();
   await page.getByRole("combobox", { name: "Permission in Handbook" }).selectOption("editor");
   await expect(page.getByText("1 project exception(s)")).toBeVisible();

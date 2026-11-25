@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Moon, Sun, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -40,8 +40,7 @@ import { ProjectsPanel } from "./admin/ProjectsPanel";
 import { CategoriesPanel } from "./admin/CategoriesPanel";
 import { type EditorTarget, PagesPanel } from "./admin/PagesPanel";
 import { PageEditor } from "./admin/PageEditor";
-
-type AdminPanel = "account" | "activity" | "log" | "branding" | "insights" | "tokens" | "diagnostics" | "users" | "reviews" | "import";
+import { AdminNav, panelFromPath } from "./admin/AdminNav";
 
 export function AdminApp() {
   const { t, lang, setLang } = useI18n();
@@ -59,49 +58,34 @@ export function AdminApp() {
   // collapse them) -- PagesPanel groups them by slug for display.
   const [pages, setPages] = useState<Page[]>([]);
   const [editing, setEditing] = useState<EditorTarget | null>(null);
-  // The header's areas (Branding, Accounts, Insights, ...): ONE at a time,
-  // shown in place of the projects. Opening another replaces it; its own
-  // menu item, × or Escape closes it. They used to be eight independent
-  // switches, and opening a few stacked them all above the projects.
-  const [panel, setPanel] = useState<AdminPanel | null>(null);
-  const panelSetter = (key: AdminPanel) => (value: boolean | ((open: boolean) => boolean)) =>
-    setPanel((current) => {
-      const open = current === key;
-      const next = typeof value === "function" ? value(open) : value;
-      if (next) return key;
-      return open ? null : current;
-    });
+  // The admin's areas (Branding, Accounts, Insights, ...): ONE at a time,
+  // shown in place of the content, each at its own address under /admin/
+  // (AdminNav). Closing one -- its ×, Escape -- goes back to /admin.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const panel = panelFromPath(location.pathname);
+  const closePanel = () => navigate("/admin");
   const showAccount = panel === "account";
-  const setShowAccount = panelSetter("account");
   const showBranding = panel === "branding";
-  const setShowBranding = panelSetter("branding");
   const showActivity = panel === "activity";
-  const setShowActivity = panelSetter("activity");
   const showLog = panel === "log";
-  const setShowLog = panelSetter("log");
   const showInsights = panel === "insights";
-  const setShowInsights = panelSetter("insights");
   const showTokens = panel === "tokens";
-  const setShowTokens = panelSetter("tokens");
   const showDiagnostics = panel === "diagnostics";
-  const setShowDiagnostics = panelSetter("diagnostics");
   const showUsers = panel === "users";
-  const setShowUsers = panelSetter("users");
-  // The approval queue (services/page_review.py): its count in the header,
+  // The approval queue (services/page_review.py): its count in the nav,
   // re-read after every save so it never claims work that was just done.
   const showReviews = panel === "reviews";
-  const setShowReviews = panelSetter("reviews");
   const showImport = panel === "import";
-  const setShowImport = panelSetter("import");
   useEffect(() => {
     if (!panel) return;
     window.scrollTo({ top: 0 });
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setPanel(null);
+      if (event.key === "Escape") navigate("/admin");
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [panel]);
+  }, [panel, navigate]);
   const [reviewCount, setReviewCount] = useState(0);
   const [reviewsKey, setReviewsKey] = useState(0);
   /** A queue entry being opened: the project, then the category, then the
@@ -183,7 +167,7 @@ export function AdminApp() {
   function startPageFromGap(title: string, projectSlug: string, body?: string) {
     const project = projects.find((p) => p.slug === projectSlug) ?? selectedProject;
     const nice = title.charAt(0).toUpperCase() + title.slice(1);
-    setShowInsights(false);
+    closePanel();
     setEditing(null);
     setSelectedCategory(null);
     if (project && project.id !== selectedProject?.id) setSelectedProject(project);
@@ -297,67 +281,36 @@ export function AdminApp() {
   }
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const reviewBadge =
-    reviewCount > 0 ? (
-      <span className="ml-1.5 rounded-full bg-[var(--accent)] px-1.5 text-[10px] font-semibold leading-4 text-[var(--accent-ink)]">
-        {reviewCount}
-      </span>
-    ) : null;
-  /** The header's panel toggles, in the order they are shown. Branding,
-   *  accounts, tokens and diagnostics are administrator territory -- the
-   *  middleware refuses the whole prefix for anyone else, so offering them
-   *  would be offering four ways to get a 403. One list for both layouts,
-   *  so the row and the menu can never offer different things. */
-  const headerItems: { key: string; label: string; onClick: () => void; badge?: ReactNode }[] = [
-    ...(isAdmin
-      ? [
-          { key: "branding", label: t("admin.branding"), onClick: () => setShowBranding((v) => !v) },
-          { key: "users", label: t("users.title"), onClick: () => setShowUsers((v) => !v) },
-        ]
-      : []),
-    { key: "reviews", label: t("review.queueButton"), onClick: () => setShowReviews((v) => !v), badge: reviewBadge },
-    { key: "activity", label: t("activity.title"), onClick: () => setShowActivity((v) => !v) },
-    { key: "insights", label: t("admin.insights"), onClick: () => setShowInsights((v) => !v) },
-    ...(isAdmin
-      ? [
-          { key: "tokens", label: t("admin.tokens"), onClick: () => setShowTokens((v) => !v) },
-          { key: "diagnostics", label: t("diag.title"), onClick: () => setShowDiagnostics((v) => !v) },
-          { key: "log", label: t("adminLog.title"), onClick: () => setShowLog((v) => !v) },
-        ]
-      : []),
-    // Importing writes a whole project, so only for accounts that may write.
-    ...(canWrite ? [{ key: "import", label: t("import.title"), onClick: () => setShowImport((v) => !v) }] : []),
-    { key: "account", label: t("admin.account"), onClick: () => setShowAccount((v) => !v) },
-  ];
+  // A new address closes the phone menu: whatever was picked is now showing.
+  useEffect(() => setMenuOpen(false), [location.pathname]);
+  const nav = <AdminNav isAdmin={isAdmin} canWrite={canWrite} reviewCount={reviewCount} />;
 
   return (
     <div className="min-h-screen">
-      <header className="border-b border-[var(--border)] bg-[var(--surface)]">
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="flex items-center gap-3 px-4 py-3">
-          {logoForTheme(site, isDark) && (
-            <img src={logoForTheme(site, isDark)!} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />
-          )}
-          <span className="truncate text-lg font-semibold">{site.name}</span>
-          <span className="hidden text-sm text-[var(--muted)] sm:inline">{t("nav.admin")}</span>
-
-          {/* Wide screens: everything in one row, as it always was. */}
-          <nav className="ml-auto hidden items-center gap-2 xl:flex">
-            <Link to="/" className="text-sm text-[var(--accent)]">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="lg:hidden"
+            aria-expanded={menuOpen}
+            aria-controls="admin-menu"
+            aria-label={menuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+          </Button>
+          <Link to="/admin" className="flex min-w-0 items-center gap-3">
+            {logoForTheme(site, isDark) && (
+              <img src={logoForTheme(site, isDark)!} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />
+            )}
+            <span className="truncate text-lg font-semibold">{site.name}</span>
+            <span className="hidden text-sm text-[var(--muted)] sm:inline">{t("nav.admin")}</span>
+          </Link>
+          <div className="ml-auto flex items-center gap-2">
+            <Link to="/" className="hidden text-sm text-[var(--accent)] sm:inline">
               {t("nav.public")}
             </Link>
-            {headerItems.map((item) => (
-              <Button
-                key={item.key}
-                variant="ghost"
-                size="sm"
-                onClick={item.onClick}
-                aria-pressed={panel === item.key}
-                className={panel === item.key ? "bg-[var(--surface-2)] text-[var(--accent)]" : undefined}
-              >
-                {item.label}
-                {item.badge}
-              </Button>
-            ))}
             <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
               {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </Button>
@@ -365,101 +318,57 @@ export function AdminApp() {
             <Button variant="outline" size="sm" onClick={onLogout}>
               {t("nav.logout")}
             </Button>
-          </nav>
-
-          {/* Narrower: the approvals stay in reach -- they are the one thing
-              in this row that can be waiting for somebody -- and everything
-              else folds into a menu below the bar. Eleven controls in one
-              row pushed the page sideways on a phone, and still overflowed
-              on a laptop. */}
-          <div className="ml-auto flex items-center gap-1 xl:hidden">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowReviews((v) => !v)}
-              aria-pressed={showReviews}
-              className={showReviews ? "bg-[var(--surface-2)] text-[var(--accent)]" : undefined}
-            >
-              {t("review.queueButton")}
-              {reviewBadge}
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-expanded={menuOpen}
-              aria-controls="admin-menu"
-              aria-label={menuOpen ? t("nav.closeMenu") : t("nav.openMenu")}
-              onClick={() => setMenuOpen((v) => !v)}
-            >
-              {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
           </div>
         </div>
-
-        {menuOpen && (
-          <nav id="admin-menu" className="border-t border-[var(--border)] px-4 py-3 xl:hidden">
-            <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
-              <Link
-                to="/"
-                className="rounded-md px-3 py-2 text-sm text-[var(--accent)] hover:bg-[var(--surface-2)]"
-              >
-                {t("nav.public")}
-              </Link>
-              {headerItems
-                .filter((item) => item.key !== "reviews")
-                .map((item) => (
-                  <button
-                    key={item.key}
-                    type="button"
-                    aria-pressed={panel === item.key}
-                    className={`rounded-md px-3 py-2 text-left text-sm hover:bg-[var(--surface-2)] ${
-                      panel === item.key ? "bg-[var(--surface-2)] font-medium text-[var(--accent)]" : ""
-                    }`}
-                    onClick={() => {
-                      item.onClick();
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-            </div>
-            <div className="mt-3 flex items-center gap-2 border-t border-[var(--border)] pt-3">
-              <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label={t(isDark ? "nav.toLightMode" : "nav.toDarkMode")}>
-                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-              </Button>
-              <UiLanguageToggle lang={lang} onChange={setLang} />
-              <Button variant="outline" size="sm" className="ml-auto" onClick={onLogout}>
-                {t("nav.logout")}
-              </Button>
-            </div>
-          </nav>
-        )}
       </header>
 
+      <div className="flex">
+        {/* Wide screens: the areas as a sidebar, always there. */}
+        <aside className="sticky top-[57px] hidden h-[calc(100vh-57px)] w-56 shrink-0 overflow-y-auto border-r border-[var(--border)] bg-[var(--surface)] lg:block">
+          {nav}
+        </aside>
+        {/* Narrower: the same list as a drawer over the page. */}
+        {menuOpen && (
+          <div className="fixed inset-0 top-[57px] z-20 lg:hidden">
+            <button
+              type="button"
+              aria-label={t("nav.closeMenu")}
+              className="absolute inset-0 bg-black/30"
+              onClick={() => setMenuOpen(false)}
+            />
+            <div id="admin-menu" className="relative h-full w-64 overflow-y-auto border-r border-[var(--border)] bg-[var(--surface)]">
+              <Link to="/" className="mx-3 mt-4 block rounded-md px-2 py-1.5 text-sm text-[var(--accent)] hover:bg-[var(--surface-2)]">
+                {t("nav.public")}
+              </Link>
+              {nav}
+            </div>
+          </div>
+        )}
+
+        <main className="min-w-0 flex-1">
       <div className="mx-auto max-w-6xl px-4 py-6">
         {isAdmin && <UpdateNotice />}
         {showAccount && (
           <>
-            <AccountCard onClose={() => setShowAccount(false)} />
+            <AccountCard onClose={closePanel} />
             <TwoFactorCard />
             <NotificationsCard />
           </>
         )}
-        {showBranding && <BrandingCard isDark={isDark} onClose={() => setShowBranding(false)} />}
-        {showTokens && <ApiTokensCard projects={projects} onClose={() => setShowTokens(false)} />}
-        {showActivity && <ActivityCard onClose={() => setShowActivity(false)} />}
-        {showLog && <AdminLogCard onClose={() => setShowLog(false)} />}
+        {showBranding && <BrandingCard isDark={isDark} onClose={closePanel} />}
+        {showTokens && <ApiTokensCard projects={projects} onClose={closePanel} />}
+        {showActivity && <ActivityCard onClose={closePanel} />}
+        {showLog && <AdminLogCard onClose={closePanel} />}
         {showInsights && (
-          <AdminInsightsCard onClose={() => setShowInsights(false)} onCreatePage={startPageFromGap} />
+          <AdminInsightsCard onClose={closePanel} onCreatePage={startPageFromGap} />
         )}
-        {showDiagnostics && <AdminDiagnosticsCard onClose={() => setShowDiagnostics(false)} />}
+        {showDiagnostics && <AdminDiagnosticsCard onClose={closePanel} />}
         {showImport && (
           <ImportCard
             projects={projects}
-            onClose={() => setShowImport(false)}
+            onClose={closePanel}
             onImported={(slug) => {
-              setShowImport(false);
+              closePanel();
               setEditing(null);
               setSelectedCategory(null);
               // Straight into the imported project: its drafts are the
@@ -474,14 +383,14 @@ export function AdminApp() {
         {showReviews && (
           <ReviewQueueCard
             refreshKey={reviewsKey}
-            onClose={() => setShowReviews(false)}
+            onClose={closePanel}
             onOpen={(entry) => {
-              setShowReviews(false);
+              closePanel();
               openReview(entry);
             }}
           />
         )}
-        {showUsers && <AdminUsersCard onClose={() => setShowUsers(false)} onSelfChanged={() => void refresh()} />}
+        {showUsers && <AdminUsersCard onClose={closePanel} onSelfChanged={() => void refresh()} />}
 
         {/* The projects, categories and editor: hidden -- not unmounted --
             while an area is open, so an open editor and its unsaved text are
@@ -636,6 +545,8 @@ export function AdminApp() {
           </div>
         </div>
         </div>
+      </div>
+        </main>
       </div>
     </div>
   );
