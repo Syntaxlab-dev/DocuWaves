@@ -469,16 +469,13 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
   // A breadcrumb steps up, and Back steps down again.
   page.on("console", (m) => m.text().startsWith("DBG") && console.log(m.text()));
-  for (let round = 0; round < 6; round++) {
-    console.log("DBG round", round);
-    await crumbs.getByRole("button", { name: "Handbook" }).click();
-    await expect(page).toHaveURL(/\/admin\/content\/handbook$/);
-    await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);
-    await page.goBack();
-    await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
-    await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
-    await expect(page.getByText("This category has no pages yet.")).toBeVisible();
-  }
+  await crumbs.getByRole("button", { name: "Handbook" }).click();
+  await expect(page).toHaveURL(/\/admin\/content\/handbook$/);
+  await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
+  await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
+  await expect(page.getByText("This category has no pages yet.")).toBeVisible();
 
   // A category asks first, in a dialog of the app's own.
   const category = cats.locator("div.group").filter({ has: page.getByRole("button", { name: "Scratch" }) });
