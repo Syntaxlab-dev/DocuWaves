@@ -104,6 +104,10 @@ export function AdminApp() {
   // Read once on arrival (`restore`, consumed as the lists load), and
   // written back, replacing the history entry, whenever the selection moves.
   const restore = useRef(isContent ? parseContentPath(location.pathname, location.search) : null);
+  // The selected project's documentation versions, and which one is shown
+  // (explained where they are loaded, below).
+  const [versions, setVersions] = useState<AdminVersions | null>(null);
+  const [viewing, setViewing] = useState("");
   /** The address this component itself last wrote, so the listener below
    *  can tell its own moves from Back, Forward or a typed URL. */
   const written = useRef("");
@@ -168,8 +172,6 @@ export function AdminApp() {
   // one the editor writes to, and the project directory itself while the
   // project has no versions at all, where every panel behaves exactly as it
   // did before versions existed.
-  const [versions, setVersions] = useState<AdminVersions | null>(null);
-  const [viewing, setViewing] = useState("");
   const [showVersions, setShowVersions] = useState(false);
   const [showSnippets, setShowSnippets] = useState(false);
   const [showReplace, setShowReplace] = useState(false);
