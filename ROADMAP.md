@@ -85,3 +85,68 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | ✅ | Webhook formats for Microsoft Teams and Matrix | S |
 | ✅ | Automatic off-site backups (S3 or SFTP) in the installer | M |
 | ✅ | A `/metrics` endpoint for Prometheus | S |
+
+## v2.1: a tidier admin
+
+| | Item | Effort |
+|---|---|---|
+| | A dashboard as the admin's start page: recently edited, open approvals, search gaps, reviews due, quick actions | M |
+| | Admin navigation as a grouped sidebar instead of eleven links in the header | M |
+| | Action icons (edit, move, delete) only on hover | S |
+| | Status chips in the page list (draft, live, approval open, scheduled), with last change and author | S |
+| | Empty states with a clear next step | S |
+| | Its own URL for every admin view, with breadcrumbs and a working Back button | M |
+| | In-app confirmation dialogs instead of browser pop-ups, with Undo after a delete | M |
+| | Skeleton loading states instead of empty areas | S |
+| | Images in the editor as a collapsible side panel instead of a list above the text | S |
+| | A status bar in the editor: word count, reading time, "saved a minute ago" | S |
+| | Drafts kept in the browser while writing and offered back after a crash | S |
+
+## v2.2: a better read
+
+| | Item | Effort |
+|---|---|---|
+| | Click an image to enlarge it (lightbox with zoom) | S |
+| | A reading-progress bar on long pages | S |
+| | A "back to top" button | S |
+| | Reader settings: text size and line width, remembered in the browser | S |
+| | Nicer tables: striped rows, sticky header, horizontal scrolling on phones | S |
+| | Previous/next as cards with category and a short excerpt | S |
+| | Image captions from the image title, optional frame and shadow | S |
+| | A home page header: large search field, tagline, optional cover image | M |
+| | Category tiles with a short description and their top three pages | S |
+| | "Recently updated" on the home page | S |
+| | A calmer sidebar with category icons instead of capitals | S |
+| | A friendlier 404 page with search and similar pages | S |
+| | Typography: a clear heading scale, more white space, a choice of reading font | M |
+| | A polished dark mode: contrast checked, bright screenshots dimmed slightly | S |
+| | Gentle transitions, off under "reduce motion" | S |
+| | Sign-in and setup pages in the instance's branding | S |
+| | Mobile navigation as a drawer with search | S |
+
+## v2.3: tools for power users
+
+| | Item | Effort |
+|---|---|---|
+| | Content as one tree (project, category, page) instead of three narrow columns | L |
+| | Drag and drop to sort and move | M |
+| | Page properties in a right-hand sidebar in the editor | M |
+| | A distraction-free full-screen writing mode | S |
+| | A slash menu to insert blocks | M |
+| | A floating formatting bar on text selection | M |
+| | Split view in Markdown mode: text left, live preview right | M |
+| | A keyboard-shortcut overview behind "?" | S |
+| | Code blocks with a file-name header, line numbers and highlighted lines | M |
+| | Link previews for internal links on hover | M |
+| | "Recently read" and bookmarks for readers, in their own browser | S |
+| | A filter field in the sidebar; expanded categories remembered | S |
+| | Quick search (Ctrl+K) shows recent pages and actions before typing | S |
+| | A project switcher in the header | S |
+| | An announcement bar, set in the admin, dismissible for readers | S |
+| | A footer with link columns and "Made with DocuWaves" (can be turned off) | S |
+| | More branding with a live preview: background tone, corner radius, header style | M |
+| | Ready-made themes to pick with one click | M |
+| | Custom CSS for those who want it | S |
+| | Icons from one consistent set for categories and projects, as an alternative to emoji | M |
+| | An accessibility pass: focus rings, WCAG AA contrast, skip link, labels, an automated axe check in CI | M |
+| | Admin and editor usable on tablets and phones | M |
