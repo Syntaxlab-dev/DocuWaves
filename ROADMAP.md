@@ -66,22 +66,22 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 
 ## v2.0: bigger pieces
 
-| Item | Effort |
-|---|---|
-| Nested categories | L |
-| Inline comments on passages, for reviews | L |
-| Suggested changes as a Git branch instead of a direct commit | L |
-| Optional semantic search (embeddings, local ones too) | L |
-| An API reference page from an OpenAPI file | L |
-| Search filters by project, version and language | M |
-| A glossary, with tooltips for its terms | M |
-| Offline reading as an installable web app (PWA) | M |
-| An embeddable search widget for other apps and sites | M |
-| An optional, anonymous comment with "Was this helpful?" | S |
-| PDF templates with your own branding (header, footer, logo) | M |
-| Crop, annotate and blur screenshots in the editor | M |
-| New blocks: steps, card grids, badges | M |
-| Export a project as EPUB or a Markdown zip | S |
-| Webhook formats for Microsoft Teams and Matrix | S |
-| Automatic off-site backups (S3 or SFTP) in the installer | M |
-| A `/metrics` endpoint for Prometheus | S |
+| | Item | Effort |
+|---|---|---|
+| ✅ | Nested categories | L |
+| ✅ | Inline comments on passages, for reviews | L |
+| ✅ | Suggested changes also as a Git branch (`REVIEW_BRANCHES`) | L |
+| ✅ | Optional semantic search (embeddings, local ones too) | L |
+| ✅ | An API reference page from an OpenAPI file | L |
+| ✅ | Search filters by project, version and language | M |
+| ✅ | A glossary, with tooltips for its terms | M |
+| ✅ | Offline reading as an installable web app (PWA) | M |
+| ✅ | An embeddable search widget for other apps and sites | M |
+| ✅ | An optional, anonymous comment with "Was this helpful?" | S |
+| ✅ | PDF templates with your own branding (header, footer, logo) | M |
+| ✅ | Crop, annotate and blur screenshots in the editor | M |
+| ✅ | New blocks: steps, card grids, badges | M |
+| ✅ | Export a project as EPUB or a Markdown zip | S |
+| ✅ | Webhook formats for Microsoft Teams and Matrix | S |
+| ✅ | Automatic off-site backups (S3 or SFTP) in the installer | M |
+| ✅ | A `/metrics` endpoint for Prometheus | S |
