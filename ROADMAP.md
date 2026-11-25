@@ -88,7 +88,7 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 
 ## v2.1: a tidier admin
 
-| ✅ | Item | Effort |
+| | Item | Effort |
 |---|---|---|
 | ✅ | A dashboard as the admin's start page: recently edited, open approvals, search gaps, reviews due, quick actions | M |
 | ✅ | Admin navigation as a grouped sidebar instead of eleven links in the header | M |
