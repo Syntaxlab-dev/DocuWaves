@@ -189,3 +189,55 @@ jobs:
           # Only ever runs to refresh the release's Debian userland: no cache (see above).
           no-cache: true
           pull: true
+
+  # Rolls docs.docuwaves.app (DocuWaves' own documentation, running :latest)
+  # forward as soon as a new :latest is published from main, so a merge is
+  # live there minutes later without anybody pressing Deploy in the panel.
+  #
+  # Repository secrets. Without the first three the job says so and stops:
+  #
+  #   DOCS_DEPLOY_SSH_HOST         the server
+  #   DOCS_DEPLOY_SSH_USER         the SSH account the key belongs to
+  #   DOCS_DEPLOY_SSH_KEY          a private key used for nothing else
+  #   DOCS_DEPLOY_SSH_KNOWN_HOSTS  optional, `ssh-keyscan <host>`, to pin the server's key
+  #
+  # Server side, the key is forced to the deploy script for that one site
+  # and nothing else -- whatever this job sends, the server runs only that:
+  #
+  #   command="/usr/local/sbin/docuwaves-autodeploy --nur <site user>",restrict ssh-ed25519 AAAA... github-actions docs-deploy
+  #
+  # The script pulls :latest, does nothing when the site already runs it,
+  # and otherwise backs the site's data up, redeploys it through the panel
+  # and checks it answers.
+  deploy-docs:
+    needs: build-and-push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.build-and-push.result == 'success'
+    runs-on: ubuntu-latest
+    permissions: {}
+    timeout-minutes: 20
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Deploy docs.docuwaves.app
+        env:
+          HOST: ${{ secrets.DOCS_DEPLOY_SSH_HOST }}
+          USER: ${{ secrets.DOCS_DEPLOY_SSH_USER }}
+          KEY: ${{ secrets.DOCS_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DOCS_DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$USER" ] || [ -z "$KEY" ]; then
+            echo "::notice::DOCS_DEPLOY_SSH_HOST, DOCS_DEPLOY_SSH_USER or DOCS_DEPLOY_SSH_KEY is not set -- nothing deployed."
+            exit 0
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          # The server decides what runs (the forced command above); the
+          # script's own log lines come back here, and its exit code fails
+          # the job when the site did not come back up.
+          ssh -i ~/.ssh/deploy -o BatchMode=yes -o ConnectTimeout=20 "$USER@$HOST" deploy
