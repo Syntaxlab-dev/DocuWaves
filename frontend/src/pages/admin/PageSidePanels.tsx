@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import {
   BadgeCheck,
+  ChevronRight,
   Copy,
   ImagePlus,
   Link2,
@@ -38,6 +39,7 @@ import { languageName } from "@/lib/lang";
 import { useSite } from "@/lib/site";
 import { askConfirm } from "@/components/ConfirmDialog";
 import { SkeletonLines } from "@/components/Skeleton";
+import { readStored, writeStored } from "@/lib/theme";
 
 /**
  * "Reviewed by X on Y", or the button that makes it say that.
@@ -502,6 +504,8 @@ export function formatCommitDate(iso: string, locale: string): string {
  *  image belongs to the PROJECT, not to the page being edited -- that's the
  *  on-disk convention (content/<project>/assets/), and it's what makes the
  *  `../assets/x.png` a page pastes work from any of its categories. */
+const IMAGES_OPEN_KEY = "docuwaves-images-open";
+
 export function ImagesPanel({
   projectSlug,
   version,
@@ -525,6 +529,17 @@ export function ImagesPanel({
   const [uploading, setUploading] = useState(false);
   const [editing, setEditing] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Folded by default, so the text gets the room; the choice is remembered
+  // in this browser. "Insert image" stays reachable either way, and a new
+  // upload (button, paste or drop) unfolds it to show where it went.
+  const [open, setOpenState] = useState(() => readStored(IMAGES_OPEN_KEY) === "1");
+  function setOpen(next: boolean) {
+    setOpenState(next);
+    writeStored(IMAGES_OPEN_KEY, next ? "1" : "0");
+  }
+  useEffect(() => {
+    if (reloadKey > 0) setOpenState(true);
+  }, [reloadKey]);
 
   /** An uploaded image into the screenshot editor. The result is saved as a
    *  NEW file ("<name>-edited.png") and inserted: the original stays as it
@@ -549,6 +564,7 @@ export function ImagesPanel({
       const asset = await api.adminUploadAsset(projectSlug, result, version || undefined);
       onInsert(asset);
       toast.success(t("admin.imageUploaded"));
+      setOpenState(true);
       loadAssets();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("common.error"));
@@ -575,6 +591,7 @@ export function ImagesPanel({
       const asset = await api.adminUploadAsset(projectSlug, file, version || undefined);
       onInsert(asset);
       toast.success(t("admin.imageUploaded"));
+      setOpenState(true);
       loadAssets();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("common.error"));
@@ -597,7 +614,18 @@ export function ImagesPanel({
     <div className="mt-3 rounded-lg border border-[var(--border)] p-3">
       {editing && <ImageEditor file={editing} onDone={onEdited} confirmLabel={t("imageEditor.saveCopy")} />}
       <div className="flex items-center gap-2">
-        <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("admin.images")}</h3>
+        <h3 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className="inline-flex items-center gap-1 uppercase hover:text-[var(--ink)]"
+          >
+            <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} aria-hidden="true" />
+            {t("admin.images")}
+            {assets.length > 0 && <span className="font-normal normal-case">({assets.length})</span>}
+          </button>
+        </h3>
         <Button
           variant="outline"
           size="sm"
@@ -620,9 +648,9 @@ export function ImagesPanel({
       {/* The button is not the only way in, and the other two are invisible
           until someone knows about them -- so this says so once, here, next
           to the thing it is an alternative to. */}
-      <p className="mt-1.5 text-xs text-[var(--muted)]">{t("admin.imagePasteHint")}</p>
+      {open && <p className="mt-1.5 text-xs text-[var(--muted)]">{t("admin.imagePasteHint")}</p>}
 
-      {assets.length === 0 ? (
+      {!open ? null : assets.length === 0 ? (
         <p className="mt-2 text-sm text-[var(--muted)]">{t("admin.imagesEmpty")}</p>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">

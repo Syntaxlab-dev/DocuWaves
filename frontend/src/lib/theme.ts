@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
  * happens before anything is rendered and the reader gets a blank page
  * rather than a site in the wrong colour scheme.
  */
-function readStored(key: string): string | null {
+export function readStored(key: string): string | null {
   try {
     return window.localStorage.getItem(key);
   } catch {
@@ -17,7 +17,7 @@ function readStored(key: string): string | null {
   }
 }
 
-function writeStored(key: string, value: string): void {
+export function writeStored(key: string, value: string): void {
   try {
     window.localStorage.setItem(key, value);
   } catch {

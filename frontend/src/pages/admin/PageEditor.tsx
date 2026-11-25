@@ -60,6 +60,8 @@ import { languageName } from "@/lib/lang";
 import { useSite } from "@/lib/site";
 import { type EditorTarget } from "./PagesPanel";
 import { ReviewNote, PreviewLinksPanel, HistoryPanel, ImagesPanel } from "./PageSidePanels";
+import { readingMinutes, wordCount } from "@/lib/textStats";
+import { relativeTime } from "@/lib/time";
 
 // The visual editor (components/visual/), loaded only when somebody writes
 // with it: ProseMirror is no business of the public site's bundle.
@@ -246,6 +248,8 @@ export function PageEditor({
   // save on top of someone else's newer change is refused, not silent.
   const [revision, setRevision] = useState("");
   const [dirty, setDirty] = useState(false);
+  /** When this editor last saved, for the status bar's "saved 2 min ago". */
+  const [savedAt, setSavedAt] = useState<number | null>(null);
   // Who else has this page open (services/editing_presence.py). Only an
   // account that may save announces itself; a frozen version or a
   // read-only account just sees who is there.
@@ -377,6 +381,7 @@ export function PageEditor({
     let current = true;
     setTab("edit");
     setDirty(false);
+    setSavedAt(null);
     if (!slug) {
       // Brand-new page: nothing to load, and no other language to offer
       // until it has been saved once and has a slug of its own.
@@ -707,6 +712,7 @@ export function PageEditor({
         setRevision(saved.revision);
       }
       setDirty(false);
+      setSavedAt(Date.now());
       // The text is in the content repo now, so the local copy of it has
       // nothing left to protect. Cleared under the key this render is using
       // -- for a page that was just created, that is still the `new:<id>`
@@ -1410,6 +1416,8 @@ export function PageEditor({
         )}
       </div>
 
+      {tab !== "history" && <StatusBar content={content} dirty={dirty} savedAt={savedAt} readOnly={readOnly} />}
+
       {/* Below the text rather than beside the publish toggle: making a link
           is something an author does once the draft is worth showing, which
           is after they have written it, not before. Nothing on a frozen
@@ -1429,6 +1437,47 @@ export function PageEditor({
           {readOnly ? t("common.back") : t("admin.cancel")}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** One quiet line under the text: how long it is, and whether it is safe.
+ *  Re-renders every 30 s so "saved just now" ages by itself. */
+function StatusBar({
+  content,
+  dirty,
+  savedAt,
+  readOnly,
+}: {
+  content: string;
+  dirty: boolean;
+  savedAt: number | null;
+  readOnly: boolean;
+}) {
+  const { t, lang } = useI18n();
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const handle = window.setInterval(() => tick((n) => n + 1), 30_000);
+    return () => window.clearInterval(handle);
+  }, []);
+  const words = wordCount(content);
+  let state = "";
+  if (!readOnly && dirty) state = draftsAvailable() ? t("editor.statusUnsavedKept") : t("editor.statusUnsaved");
+  else if (!readOnly && savedAt) state = t("editor.statusSaved").replace("{when}", relativeTime(new Date(savedAt).toISOString(), lang));
+  return (
+    <div
+      className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--muted)]"
+      data-testid="editor-status"
+    >
+      <span>{t("editor.statusWords").replace("{n}", words.toLocaleString(lang))}</span>
+      <span aria-hidden="true">·</span>
+      <span>{t("editor.statusReading").replace("{n}", String(readingMinutes(words)))}</span>
+      {state && (
+        <span role="status" className={`ml-auto inline-flex items-center gap-1.5 ${dirty ? "text-amber-700 dark:text-amber-400" : ""}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${dirty ? "bg-amber-500" : "bg-emerald-500"}`} aria-hidden="true" />
+          {state}
+        </span>
+      )}
     </div>
   );
 }
