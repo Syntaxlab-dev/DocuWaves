@@ -25,6 +25,8 @@ async function signIn(page: Page) {
   await page.getByLabel("Password").fill(ADMIN.password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("button", { name: "Log out" })).toBeVisible();
+  // The admin opens on the overview; the content has its own address.
+  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Projects and pages" }).click();
 }
 
 test.describe.configure({ mode: "serial" });
@@ -287,6 +289,7 @@ test("a read-only account gets Write in one project", async ({ page, browser }) 
   await petra.getByLabel("Username").fill("petra");
   await petra.getByLabel("Password").fill("petra-password-123");
   await petra.getByRole("button", { name: "Sign in" }).click();
+  await petra.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Projects and pages" }).click();
   await petra.getByText("Handbook", { exact: true }).click();
   await expect(petra.getByRole("heading", { name: "Categories" })).toBeVisible();
   await expect(petra.getByText("Your account can read this project but not change it.")).toHaveCount(0);
@@ -411,5 +414,18 @@ test("a category nests inside another", async ({ page }) => {
   await expect(page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Getting started" })).toBeVisible();
   await page.getByRole("link", { name: "Mains connection" }).first().click();
   await expect(page.getByRole("heading", { name: "Mains connection" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("the admin opens on an overview that leads to the work", async ({ page }) => {
+  const errors = watchErrors(page);
+  await signIn(page);
+  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Overview" }).click();
+  await expect(page.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recently edited" })).toBeVisible();
+  // A page edited earlier in this run opens straight in the editor.
+  await page.getByRole("heading", { name: "Recently edited" }).locator("../..").getByRole("button").first().click();
+  await expect(page).toHaveURL(/\/admin\/content$/);
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
   expect(errors).toEqual([]);
 });

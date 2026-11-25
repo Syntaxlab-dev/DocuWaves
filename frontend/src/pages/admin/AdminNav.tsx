@@ -7,6 +7,7 @@ import {
   Download,
   FileText,
   KeyRound,
+  LayoutDashboard,
   Palette,
   ScrollText,
   Stethoscope,
@@ -17,7 +18,8 @@ import { useI18n } from "@/lib/i18n";
 
 /** The admin's areas. Each has its own address under /admin/, so a link to
  *  one can be shared and the browser's Back button goes where you were. The
- *  content (projects, categories, the editor) is /admin itself. */
+ *  dashboard is /admin itself, the content (projects, categories, the
+ *  editor) /admin/content. */
 export const ADMIN_PANELS = [
   "reviews",
   "import",
@@ -37,7 +39,7 @@ export function panelFromPath(pathname: string): AdminPanel | null {
   return (ADMIN_PANELS as readonly string[]).includes(segment) ? (segment as AdminPanel) : null;
 }
 
-type Item = { to: string; label: string; icon: ComponentType<{ className?: string }>; badge?: number };
+type Item = { to: string; label: string; icon: ComponentType<{ className?: string }>; badge?: number; end?: boolean };
 
 /** Grouped instead of eleven buttons in one row: what you work on, who you
  *  work with, how the instance looks, and how it runs. Administrator areas
@@ -59,7 +61,8 @@ export function AdminNav({
     {
       label: t("adminNav.content"),
       items: [
-        { to: "/admin", label: t("adminNav.pages"), icon: FileText },
+        { to: "/admin", label: t("adminNav.overview"), icon: LayoutDashboard, end: true },
+        { to: "/admin/content", label: t("adminNav.pages"), icon: FileText },
         { to: "/admin/reviews", label: t("review.queueButton"), icon: CircleCheckBig, badge: reviewCount },
         ...(canWrite ? [{ to: "/admin/import", label: t("import.title"), icon: Download }] : []),
         { to: "/admin/insights", label: t("admin.insights"), icon: BarChart3 },
@@ -109,7 +112,7 @@ export function AdminNav({
                 <li key={item.to}>
                   <NavLink
                     to={item.to}
-                    end
+                    end={item.end ?? false}
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-sm transition-colors ${

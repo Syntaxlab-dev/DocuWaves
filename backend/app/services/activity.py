@@ -37,15 +37,16 @@ def _parse(path: str) -> dict | None:
     return {"project": parts[1], "version": version, "slug": slug, "language": language, "pending": pending}
 
 
-def _title(project_id: int, slug: str, version: str) -> str:
+def _page(project_id: int, slug: str, version: str) -> tuple[str, int]:
+    """(title, category id) of the page as it is now; ("", 0) when it is gone."""
     placeholder = "%s" if db.is_postgres() else "?"
     with db.get_connection() as conn:
         row = conn.execute(
-            f"SELECT title FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} "
+            f"SELECT title, category_id FROM pages WHERE project_id = {placeholder} AND slug = {placeholder} "
             f"AND version = {placeholder} ORDER BY language LIMIT 1",
             (project_id, slug, version),
         ).fetchone()
-    return row[0] if row else ""
+    return (row[0], row[1]) if row else ("", 0)
 
 
 def recent(limit: int = DEFAULT_LIMIT) -> list[dict]:
@@ -68,7 +69,7 @@ def recent(limit: int = DEFAULT_LIMIT) -> list[dict]:
             if parsed["project"] not in projects:
                 projects[parsed["project"]] = projects_store.get_project_by_slug(parsed["project"])
             project = projects[parsed["project"]]
-            title = _title(project["id"], parsed["slug"], parsed["version"]) if project else ""
+            title, category_id = _page(project["id"], parsed["slug"], parsed["version"]) if project else ("", 0)
             pages.append({
                 "project_slug": parsed["project"],
                 "project_name": project["name"] if project else parsed["project"],
@@ -78,6 +79,8 @@ def recent(limit: int = DEFAULT_LIMIT) -> list[dict]:
                 "pending": parsed["pending"],
                 # "" when the page is gone now (deleted, or renamed since).
                 "title": title,
+                # Where the editor finds it (0 when it is gone).
+                "category_id": category_id,
                 "status": change["status"],
             })
         entries.append({

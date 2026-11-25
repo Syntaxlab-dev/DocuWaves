@@ -82,6 +82,8 @@ class TestDue:
         assert [p["title"] for p in due] == ["Never", "Old"]
         assert due[0]["days_overdue"] is None
         assert due[1]["days_overdue"] == (TODAY - date(2026, 6, 1)).days - 90
+        # Enough for the admin's overview to open the page in the editor.
+        assert all(p["category_id"] > 0 for p in due)
 
     def test_a_recent_note_is_not_due_until_it_is(self, world):
         assert "Fresh" not in [p["title"] for p in review_due.due_pages(TODAY)]

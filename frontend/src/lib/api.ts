@@ -542,6 +542,8 @@ export interface ActivityEntry {
     pending: boolean;
     /** "" = no page has this slug any more. */
     title: string;
+    /** Where the editor finds the page now; 0 when it is gone. */
+    category_id: number;
     /** git's A / M / D. */
     status: string;
   }[];
@@ -844,6 +846,7 @@ export interface ReviewDuePage {
   project_slug: string;
   project_name: string;
   category_name: string;
+  category_id: number;
   review_every_days: number;
 }
 

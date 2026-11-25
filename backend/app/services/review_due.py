@@ -69,6 +69,7 @@ def due_pages(today: date | None = None) -> list[dict]:
                 "project_slug": project["slug"],
                 "project_name": project["name"],
                 "category_name": category["name"] if category else "",
+                "category_id": row[6],
                 "review_every_days": every,
             })
     # Never reviewed first, then the longest overdue.

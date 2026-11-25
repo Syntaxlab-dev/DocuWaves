@@ -87,8 +87,10 @@ class TestFeed:
         update = activity.recent()[1]
         assert update["pages"] == [{
             "project_slug": "docs", "project_name": "Docs", "version": "", "slug": "start", "language": "",
-            "pending": False, "title": "Start here", "status": "M",
+            "pending": False, "title": "Start here", "category_id": update["pages"][0]["category_id"], "status": "M",
         }]
+        # Where the editor finds it: the page's category, as indexed now.
+        assert update["pages"][0]["category_id"] > 0
 
     def test_a_proposal_is_marked(self, world):
         assert activity.recent()[0]["pages"][0]["pending"] is True

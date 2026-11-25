@@ -25,7 +25,6 @@ import {
   type ContentRepoStatus,
   type Page,
   type Project,
-  type ReviewQueueEntry,
 } from "@/lib/api";
 import { useAuth, usePermissions } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -41,6 +40,7 @@ import { CategoriesPanel } from "./admin/CategoriesPanel";
 import { type EditorTarget, PagesPanel } from "./admin/PagesPanel";
 import { PageEditor } from "./admin/PageEditor";
 import { AdminNav, panelFromPath } from "./admin/AdminNav";
+import { Dashboard, type OpenTarget } from "./admin/Dashboard";
 
 export function AdminApp() {
   const { t, lang, setLang } = useI18n();
@@ -64,7 +64,15 @@ export function AdminApp() {
   const location = useLocation();
   const navigate = useNavigate();
   const panel = panelFromPath(location.pathname);
+  // /admin is the dashboard, /admin/content the projects and the editor.
+  // The content stays mounted (hidden) everywhere else, so an open editor
+  // and its unsaved text survive a look at any other area.
+  const isContent = location.pathname.replace(/\/+$/, "").startsWith("/admin/content");
+  const showDashboard = panel === null && !isContent;
   const closePanel = () => navigate("/admin");
+  const toContent = () => {
+    if (!isContent) navigate("/admin/content");
+  };
   const showAccount = panel === "account";
   const showBranding = panel === "branding";
   const showActivity = panel === "activity";
@@ -90,7 +98,7 @@ export function AdminApp() {
   const [reviewsKey, setReviewsKey] = useState(0);
   /** A queue entry being opened: the project, then the category, then the
    *  editor -- each waits for the list it needs to have loaded. */
-  const [opening, setOpening] = useState<ReviewQueueEntry | null>(null);
+  const [opening, setOpening] = useState<OpenTarget | null>(null);
   const [repoStatus, setRepoStatus] = useState<ContentRepoStatus | null>(null);
   const [syncing, setSyncing] = useState(false);
   // The selected project's documentation versions, and which one the panels
@@ -131,9 +139,12 @@ export function AdminApp() {
   }, [reviewsKey]);
   const refreshReviews = () => setReviewsKey((k) => k + 1);
 
-  function openReview(entry: ReviewQueueEntry) {
+  /** A page opened from elsewhere (the approvals, the dashboard): its
+   *  project, then its category, then the editor. */
+  function openReview(entry: OpenTarget) {
     const project = projects.find((p) => p.slug === entry.project_slug);
     if (!project) return;
+    toContent();
     setOpening(entry);
     setEditing(null);
     if (selectedProject?.id === project.id) {
@@ -167,7 +178,7 @@ export function AdminApp() {
   function startPageFromGap(title: string, projectSlug: string, body?: string) {
     const project = projects.find((p) => p.slug === projectSlug) ?? selectedProject;
     const nice = title.charAt(0).toUpperCase() + title.slice(1);
-    closePanel();
+    toContent();
     setEditing(null);
     setSelectedCategory(null);
     if (project && project.id !== selectedProject?.id) setSelectedProject(project);
@@ -368,7 +379,7 @@ export function AdminApp() {
             projects={projects}
             onClose={closePanel}
             onImported={(slug) => {
-              closePanel();
+              toContent();
               setEditing(null);
               setSelectedCategory(null);
               // Straight into the imported project: its drafts are the
@@ -385,7 +396,6 @@ export function AdminApp() {
             refreshKey={reviewsKey}
             onClose={closePanel}
             onOpen={(entry) => {
-              closePanel();
               openReview(entry);
             }}
           />
@@ -395,7 +405,11 @@ export function AdminApp() {
         {/* The projects, categories and editor: hidden -- not unmounted --
             while an area is open, so an open editor and its unsaved text are
             exactly as they were when the area is closed again. */}
-        <div hidden={panel !== null}>
+        {showDashboard && (
+          <Dashboard projects={projects} canWrite={canWrite} reviewsKey={reviewsKey} onOpen={openReview} />
+        )}
+
+        <div hidden={!isContent}>
         {/* Said once, at the top, rather than as a disabled tooltip on every
             control that isn't there: a reader who cannot find the Save
             button should learn why from the page, not from hunting. */}
