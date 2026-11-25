@@ -18,6 +18,7 @@ One contract runs through the whole list: **blank means the default, and for a f
 | `CONTENT_REPO_BRANCH` | `main` | The branch to track |
 | `CONTENT_REPO_PATH` | `/data/content-repo` | Where the working clone lives inside the container |
 | `CONTENT_REPO_SYNC_INTERVAL_SECONDS` | `300` | How often the background job pulls and reindexes. There is also a **Sync now** button |
+| `REVIEW_BRANCHES` | off | `on`: every proposal waiting for approval is also kept as a branch `docuwaves/proposal/...` and pushed, so it can be reviewed as a pull request. See [Approval before publishing](/p/docuwaves/pages/approval-before-publishing) |
 
 Set exactly one of `CONTENT_REPO_TOKEN` and `CONTENT_REPO_SSH_KEY`, matching the URL's scheme. Which mechanism is used is decided by the URL, not by which variable you filled in.
 

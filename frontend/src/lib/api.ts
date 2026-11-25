@@ -230,6 +230,8 @@ export interface ReviewState {
   changed_by: string;
   /** Notes on passages of the text under review, oldest first. */
   comments?: ReviewComment[];
+  /** The Git branch mirroring the proposal (REVIEW_BRANCHES=on), else absent. */
+  branch?: string;
 }
 
 /** A note on one passage (backend page_review.add_comment). */

@@ -585,8 +585,16 @@ def commit_and_push(paths: list[str], message: str, author_name: str) -> None:
         with _odb_lock:  # commit reads the parent through the shared cat-file process
             repo.index.commit(message, author=_actor(author_name), committer=git.Actor("DocuWaves", "docuwaves@local"))
 
-        if _mode == REMOTE:
-            _push_with_retry(repo)
+        try:
+            if _mode == REMOTE:
+                _push_with_retry(repo)
+        finally:
+            # After the push, so a proposal branch never reaches the remote
+            # before the commit it builds on; and also when the push failed,
+            # because the commit (and so the proposal) exists either way.
+            from app.services import proposal_branches
+
+            proposal_branches.mirror(repo, paths, _actor(author_name), _env() if _mode == REMOTE else None)
 
 
 def _push_with_retry(repo: git.Repo) -> None:

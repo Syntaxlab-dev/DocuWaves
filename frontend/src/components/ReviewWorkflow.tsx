@@ -174,6 +174,11 @@ export function ReviewPanel({
         <div className="min-w-0 flex-1">
           <p>{headline}</p>
           {review.pending && <p className="text-xs opacity-80">{t("review.readersSeeLive")}</p>}
+          {review.pending && review.branch && (
+            <p className="text-xs opacity-80">
+              {t("review.alsoBranch")} <code className="break-all">{review.branch}</code>
+            </p>
+          )}
           {submitted && review.note && <p className="mt-1 whitespace-pre-wrap text-xs italic">„{review.note}“</p>}
           {changesRequested && review.comment && (
             <p className="mt-1 whitespace-pre-wrap text-xs italic">„{review.comment}“</p>

@@ -70,6 +70,13 @@ class Settings:
     # back up the volume and you have backed up the docs.
     content_repo_path: str = os.environ.get("CONTENT_REPO_PATH", "/data/content-repo")
     content_repo_sync_interval_seconds: int = int(os.environ.get("CONTENT_REPO_SYNC_INTERVAL_SECONDS", "300"))
+    # Every proposed change waiting for approval (a `_pending/` file, see
+    # services/page_review.py) ALSO kept as a Git branch
+    # `docuwaves/proposal/...` that changes the live page to the proposed
+    # text, pushed to the content repo's remote when there is one. Lets a
+    # team that already reviews in GitHub/GitLab open a pull request for it.
+    # Off by default: it adds a branch per proposal to somebody's remote.
+    review_branches: bool = os.environ.get("REVIEW_BRANCHES", "").strip().lower() in ("1", "true", "yes", "on")
 
     # The address readers actually use, e.g. https://docs.example.com. Only
     # needed to OVERRIDE what the app works out for itself: every absolute

@@ -99,3 +99,26 @@ In the content repository, like everything else: the review state is a few
 lines of front matter on the text under review (`review_comments:` holds the
 comments on passages), and a proposal is a file in `<category>/_pending/`. The queue survives a reindex, a restore from backup
 and a fresh clone.
+
+## Proposals as Git branches
+
+If your team already reviews in GitHub or GitLab, set `REVIEW_BRANCHES=on`.
+Every proposal is then **also** kept as a branch in the content repository,
+pushed to its remote when there is one:
+
+```
+docuwaves/proposal/<project>/<category>/<page>
+```
+
+(with the version and the language in the name where there are any). The
+branch is one commit on top of the current state that applies the proposal
+to the live page, so the host shows it as an ordinary diff and you can open
+a pull request for it. It moves along with every new edit and is deleted
+when the proposal is approved, discarded or folded into a draft. The editor
+names the branch under the proposal banner.
+
+The proposal in `_pending/` stays the record: approving in DocuWaves works
+exactly as before. Merging the branch on the host instead does the same to
+the text (it updates the page and removes the `_pending/` file), and the
+next sync picks it up. A branch that could not be written or pushed is
+logged and never fails the save.

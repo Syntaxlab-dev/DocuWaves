@@ -44,6 +44,7 @@ from app.services import (
     git_content_repo,
     pages_store,
     projects_store,
+    proposal_branches,
     webhooks,
 )
 
@@ -158,6 +159,11 @@ def editor_view(page: dict) -> dict:
         review = (live or {}).get("review", {})
     view["live_title"] = page["title"]
     view["review"] = _state(project, pending, review, view["markdown_content"])
+    branch = pending is not None and proposal_branches.branch_for(
+        project["slug"], category["slug"], page["slug"], page["language"], page["version"]
+    )
+    if branch:
+        view["review"]["branch"] = branch
     return view
 
 
