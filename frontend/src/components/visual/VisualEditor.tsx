@@ -28,6 +28,8 @@ import {
   Heading3,
   ImagePlus,
   Italic,
+  LayoutGrid,
+  ListChecks,
   Link2,
   List,
   ListOrdered,
@@ -289,6 +291,19 @@ const VisualEditor = forwardRef<VisualEditorHandle, Props>(function VisualEditor
         handleRef.current?.run(setCalloutCommand, kind);
       },
     })),
+    {
+      label: t("visual.steps"),
+      words: "steps procedure howto",
+      icon: ListChecks,
+      action: () => handleRef.current?.insertMarkdown("<!-- steps -->\n\n1. **First** step\n2. **Second** step\n"),
+    },
+    {
+      label: t("visual.cards"),
+      words: "cards grid overview",
+      icon: LayoutGrid,
+      action: () =>
+        handleRef.current?.insertMarkdown("<!-- cards -->\n\n- **[First card](./)** What it is about.\n- **[Second card](./)** What it is about.\n"),
+    },
     { label: t("visual.codeBlock"), words: "code block pre", icon: SquareCode, action: run(createCodeBlockCommand) },
     { label: t("visual.table"), words: "table grid", icon: Table, action: run(insertTableCommand, { row: 3, col: 3 }) },
     { label: t("visual.image"), words: "image picture img", icon: ImagePlus, action: () => fileInput.current?.click() },

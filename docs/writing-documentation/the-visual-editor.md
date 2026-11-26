@@ -39,7 +39,7 @@ a column left or right, delete the row or column, and align the column left,
 centred or right.
 
 **Type `/`** at the start of an empty line for a menu of blocks: headings,
-lists, quotes, the callout boxes, a code block, a table, an image, tabs, a
+lists, quotes, the callout boxes, steps, cards, a code block, a table, an image, tabs, a
 formula or a divider. Keep typing to narrow it down (`/h2`, `/note`,
 `/table` — the English names work in every interface language), pick with
 the arrow keys and Enter, or close it with Escape.
