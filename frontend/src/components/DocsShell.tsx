@@ -36,7 +36,7 @@ export function DocsShell({
             one per view: all three reading views sit in this frame, and a
             reader on a frozen version has to see it on every one of them,
             not only on a page. It renders nothing anywhere else. */}
-        <div className="mt-8 min-w-0 flex-1 lg:mt-0">
+        <div className="view-enter mt-8 min-w-0 flex-1 lg:mt-0">
           <OldVersionNotice />
           {children}
         </div>

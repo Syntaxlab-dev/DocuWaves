@@ -670,3 +670,31 @@ html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(
     transform: translateX(-100%);
   }
 }
+
+/* ---- Sign-in and setup screens (v2.2) ------------------------------------ */
+.auth-screen {
+  background:
+    radial-gradient(80% 60% at 50% 0%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%),
+    var(--bg);
+}
+
+/* ---- Gentle transitions (v2.2) -------------------------------------------
+   A new page's text settles in rather than snapping: a short fade when a
+   reading view mounts -- which it does once per page, after its content
+   has arrived, never on a scroll or a hash link. Opacity only: a transform
+   would make this the containing block of the fixed reading-progress bar
+   for as long as it runs.
+   Off under "reduce motion" through the global rule above. */
+.view-enter {
+  animation: view-enter 220ms ease-out;
+}
+@keyframes view-enter {
+  from {
+    opacity: 0;
+  }
+}
+@media print {
+  .view-enter {
+    animation: none;
+  }
+}

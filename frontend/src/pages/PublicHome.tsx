@@ -73,7 +73,7 @@ export function PublicHome() {
   const cover = showCategories ? soleProject?.image_url : null;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="view-enter mx-auto max-w-5xl px-4 py-8">
       {/* The first screen asks the one question most visitors arrived with
           -- "where is the bit about X?" -- with a field big enough to be
           the obvious first move, instead of a heading and a link. */}

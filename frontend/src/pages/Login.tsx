@@ -9,7 +9,8 @@ import { api, ApiError, type MfaMethod, type OidcStatus } from "@/lib/api";
 import { getAssertion, webauthnSupported } from "@/lib/webauthn";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { useSite } from "@/lib/site";
+import { logoForTheme, siteText, useSite } from "@/lib/site";
+import { useIsDarkTheme } from "@/lib/theme";
 
 export function Login({
   setupRequired,
@@ -27,9 +28,10 @@ export function Login({
   /** Inside the public layout rather than a screen of its own. */
   embedded?: boolean;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { refresh } = useAuth();
   const { site } = useSite();
+  const isDark = useIsDarkTheme();
   const navigate = useNavigate();
   // A demo instance fills in its own login: it is shown to everybody anyway.
   const demo = site.demo?.enabled && !setupRequired ? site.demo : null;
@@ -153,10 +155,21 @@ export function Login({
       className={
         embedded
           ? "flex items-center justify-center px-4 py-16"
-          : "flex min-h-screen items-center justify-center bg-[var(--bg)] px-4"
+          : "auth-screen flex min-h-screen flex-col items-center justify-center gap-6 px-4 py-10"
       }
     >
-      <Card className="w-full max-w-sm">
+      {/* On a screen of its own, the instance says whose it is: its logo
+          and name above the form, on the same soft accent wash as the home
+          page. Inside the public layout the header above already does. */}
+      {!embedded && (
+        <div className="flex flex-col items-center gap-3 text-center">
+          {logoForTheme(site, isDark) ? (
+            <img src={logoForTheme(site, isDark)!} alt="" className="h-12 w-auto max-w-[14rem] object-contain" />
+          ) : null}
+          <div className="text-xl font-semibold tracking-tight">{siteText(site, "name", lang)}</div>
+        </div>
+      )}
+      <Card className="w-full max-w-sm shadow-xl">
         <CardHeader>
           <CardTitle className="text-lg font-semibold text-[var(--ink)]">
             {setupRequired ? t("setup.title") : t("login.title")}
