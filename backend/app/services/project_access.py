@@ -218,6 +218,8 @@ WRITE_ROUTES: list[tuple[str, re.Pattern, str]] = [
         ("PUT", f"/categories/{_ID}", "category"),
         ("DELETE", f"/categories/{_ID}", "category"),
         ("POST", f"/categories/{_ID}/move", "category"),
+        ("POST", f"/categories/{_ID}/siblings/order", "category"),
+        ("POST", f"/categories/{_ID}/pages/order", "category"),
         ("POST", "/pages", "body"),
         ("POST", "/pages/bulk", "body"),
         ("PUT", f"/pages/{_ID}", "body"),

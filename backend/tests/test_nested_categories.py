@@ -210,12 +210,12 @@ def test_drag_and_drop_orders_siblings_in_one_go(world):
     c = admin(app)
     cats = by_slug()
     ids = [cats[s]["id"] for s in ("reference", "guide", "server")]
-    assert c.post("/api/admin/categories/order", json={"category_ids": ids}, headers=ORIGIN).status_code == 200
+    assert c.post(f"/api/admin/categories/{ids[0]}/siblings/order", json={"category_ids": ids}, headers=ORIGIN).status_code == 200
     after = by_slug()
     assert after["reference"]["sort_order"] < after["guide"]["sort_order"] < after["server"]["sort_order"]
     # Not siblings: refused, nothing changes.
     mixed = [after["linux"]["id"], after["guide"]["id"]]
-    assert c.post("/api/admin/categories/order", json={"category_ids": mixed}, headers=ORIGIN).status_code == 400
+    assert c.post(f"/api/admin/categories/{mixed[0]}/siblings/order", json={"category_ids": mixed}, headers=ORIGIN).status_code == 400
     assert by_slug()["linux"]["parent"] == "install"
 
 
