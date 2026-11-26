@@ -542,6 +542,7 @@ const de = {
   "notFound.body":
     "Zu dieser Adresse gibt es keine veröffentlichte Seite. Möglicherweise wurde sie umbenannt, entfernt — oder sie ist noch ein Entwurf.",
   "notFound.home": "Zur Startseite",
+  "notFound.similar": "Meintest du vielleicht",
   "home.title": "Dokumentation",
   "home.subtitle": "Wähle ein Projekt, um seine Doku zu öffnen.",
   "home.empty": "Noch keine Projekte veröffentlicht.",
@@ -1531,6 +1532,7 @@ const en: Dict = {
   "notFound.body":
     "There's no published page at this address. It may have been renamed, removed -- or it's still a draft.",
   "notFound.home": "Back to the homepage",
+  "notFound.similar": "Did you mean",
   "home.title": "Documentation",
   "home.subtitle": "Choose a project to open its docs.",
   "home.empty": "No projects published yet.",

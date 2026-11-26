@@ -116,13 +116,13 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | ✅ | A home page header: large search field, tagline, optional cover image | M |
 | ✅ | Category tiles with a short description and their top three pages | S |
 | ✅ | "Recently updated" on the home page | S |
-| | A calmer sidebar with category icons instead of capitals | S |
-| | A friendlier 404 page with search and similar pages | S |
+| ✅ | A calmer sidebar with category icons instead of capitals | S |
+| ✅ | A friendlier 404 page with search and similar pages | S |
 | ✅ | Typography: a clear heading scale, more white space, a choice of reading font | M |
 | ✅ | A polished dark mode: contrast checked, bright screenshots dimmed slightly | S |
 | | Gentle transitions, off under "reduce motion" | S |
 | | Sign-in and setup pages in the instance's branding | S |
-| | Mobile navigation as a drawer with search | S |
+| ✅ | Mobile navigation as a drawer with search | S |
 
 ## v2.3: tools for power users
 

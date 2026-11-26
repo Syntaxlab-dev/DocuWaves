@@ -1,10 +1,11 @@
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { ChevronDown, ChevronRight, Menu, Search, X } from "lucide-react";
 import type { ProjectNav } from "@/lib/api";
 import { FallbackBadge } from "@/components/FallbackBadge";
 import { categoryAncestors, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
+import { useContentLang } from "@/lib/lang";
 import { useDocPath } from "@/lib/version";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,11 @@ export function DocsSidebar({
 }) {
   const { t } = useI18n();
   const docPath = useDocPath();
+  const { path } = useContentLang();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [q, setQ] = useState("");
   // Only sections the reader has explicitly toggled land here; everything
   // else keeps following the active page as they navigate.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
@@ -49,6 +54,33 @@ export function DocsSidebar({
     setToggled((current) => ({ ...current, [slug]: !open }));
   }
 
+  // On a phone the contents are a drawer over the page. It closes when the
+  // reader goes somewhere (which is what they opened it for), on Escape,
+  // and on a tap beside it; while open, the page under it stays put.
+  // Adjusting state during render rather than in an effect: the drawer
+  // must already be shut in the render that shows the new page.
+  const [drawerPath, setDrawerPath] = useState(pathname);
+  if (drawerPath !== pathname) {
+    setDrawerPath(pathname);
+    setMobileOpen(false);
+  }
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMobileOpen(false);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [mobileOpen]);
+
+  function onSearch(e: FormEvent) {
+    e.preventDefault();
+    if (q.trim()) navigate(path(`/search?q=${encodeURIComponent(q.trim())}`));
+  }
+
   return (
     <div className="lg:w-60 lg:shrink-0">
       <button
@@ -56,11 +88,15 @@ export function DocsSidebar({
         onClick={() => setMobileOpen((open) => !open)}
         aria-expanded={mobileOpen}
         aria-controls="docs-sidebar"
-        className="flex w-full items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm font-medium lg:hidden"
+        className="flex w-full items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm font-medium lg:hidden"
       >
+        <Menu className="h-4 w-4" aria-hidden="true" />
         {t("nav.contents")}
-        {mobileOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
       </button>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-40 bg-black/40 lg:hidden" aria-hidden="true" onClick={() => setMobileOpen(false)} />
+      )}
 
       <nav
         id="docs-sidebar"
@@ -69,11 +105,39 @@ export function DocsSidebar({
           // Sticky only from lg up: on a phone it sits in the normal flow
           // above the page, where a sticky element would cover the text the
           // reader just navigated to.
-          "mt-3 lg:mt-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto",
+          // Below lg it is a drawer from the left, over the page.
+          "lg:sticky lg:top-6 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto",
+          "max-lg:fixed max-lg:inset-y-0 max-lg:left-0 max-lg:z-50 max-lg:w-80 max-lg:max-w-[85vw] max-lg:overflow-y-auto",
+          "max-lg:border-r max-lg:border-[var(--border)] max-lg:bg-[var(--bg)] max-lg:p-4 max-lg:shadow-2xl",
+          "docs-drawer",
           mobileOpen ? "block" : "hidden",
           "lg:block",
         )}
       >
+        <div className="mb-4 flex items-center gap-2 lg:hidden">
+          <form onSubmit={onSearch} role="search" className="relative flex-1">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--muted)]"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={t("nav.search")}
+              aria-label={t("nav.search")}
+              className="h-10 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] pl-8 pr-2 text-sm outline-none focus:border-[var(--accent)]"
+            />
+          </form>
+          <button
+            type="button"
+            onClick={() => setMobileOpen(false)}
+            aria-label={t("reader.close")}
+            className="rounded-lg p-2 text-[var(--muted)] hover:bg-[var(--surface-2)]"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
         <Link
           to={docPath(nav.project.slug, "")}
           className={cn(
@@ -108,14 +172,24 @@ export function DocsSidebar({
                   <Link
                     to={docPath(nav.project.slug, `/c/${category.slug}`)}
                     className={cn(
-                      "hover:text-[var(--accent)]",
-                      // Only the top level is a shouting section heading; a
-                      // subsection reads as an entry inside it.
-                      depth ? "text-sm font-medium" : "text-xs font-semibold uppercase tracking-wide",
-                      category.slug === activeCategorySlug ? "text-[var(--ink)]" : "text-[var(--muted)]",
+                      "flex min-w-0 items-center gap-1.5 text-sm hover:text-[var(--accent)]",
+                      // The top level reads as a section by weight and its
+                      // icon, not by shouting in capitals; a subsection is
+                      // an entry inside it.
+                      depth ? "font-medium" : "font-semibold",
+                      category.slug === activeCategorySlug
+                        ? "text-[var(--ink)]"
+                        : depth
+                          ? "text-[var(--muted)]"
+                          : "text-[var(--ink)] opacity-80",
                     )}
                   >
-                    {category.name}
+                    {!depth && category.icon && (
+                      <span className="w-5 shrink-0 text-center text-base leading-none" aria-hidden="true">
+                        {category.icon}
+                      </span>
+                    )}
+                    <span className="truncate">{category.name}</span>
                   </Link>
                 </div>
 

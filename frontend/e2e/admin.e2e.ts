@@ -520,3 +520,25 @@ test("the home page searches, and names a category's first pages", async ({ page
   await expect(page).toHaveURL(new RegExp(`${href}$`));
   await expect(page.locator("main h1")).toBeVisible();
 });
+
+test("on a phone the contents open as a drawer, and a 404 suggests pages", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/p/handbook/pages/installing-the-widget");
+  const contents = page.getByRole("navigation", { name: "Contents" });
+  await expect(contents).toBeHidden();
+  await page.getByRole("button", { name: "Contents" }).click();
+  await expect(contents.getByRole("searchbox", { name: "Search…" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(contents).toBeHidden();
+  await page.getByRole("button", { name: "Contents" }).click();
+  await contents.getByRole("link", { name: "Mains connection" }).click();
+  await expect(page).toHaveURL(/\/pages\/mains-connection$/);
+  await expect(contents).toBeHidden();
+
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/p/handbook/pages/instaling-the-widget");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  // (A test above renamed it to "Setting up the widget".)
+  await page.getByRole("link", { name: /the widget/ }).first().click();
+  await expect(page.getByRole("heading", { level: 1, name: /the widget/ })).toBeVisible();
+});

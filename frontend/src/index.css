@@ -658,3 +658,15 @@ html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(
     display: none;
   }
 }
+
+/* ---- Contents drawer on phones (v2.2) ------------------------------------ */
+@media (max-width: 1023.98px) {
+  .docs-drawer {
+    animation: docs-drawer-in 180ms ease-out;
+  }
+}
+@keyframes docs-drawer-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
