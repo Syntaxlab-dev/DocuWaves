@@ -130,6 +130,7 @@ const VisualEditor = forwardRef<VisualEditorHandle, Props>(function VisualEditor
       root: rootRef.current!,
       markdown: value,
       editable: !readOnly,
+      label: t("visual.textLabel"),
       onChange: (markdown) => {
         lastEmitted.current = markdown;
         latest.current.onChange(markdown);

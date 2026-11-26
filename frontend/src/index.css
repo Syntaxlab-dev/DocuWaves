@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* One visible focus ring everywhere a keyboard lands, in the accent colour,
+   instead of each browser's own (or none). In the base layer, so a utility
+   such as outline-none on an input with its own focus border still wins. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
@@ -12,9 +22,11 @@
   --ink: #12161c;
   --muted: #5b6472;
   --border: #dde1e7;
-  --accent: #4f6df5;
-  --accent-ink: #ffffff;
-  --accent-soft: #e8ecfe;
+  /* --brand-*: the owner's accent, when one is configured (theme.ts
+     applyAccent), already adjusted to stay readable in this scheme. */
+  --accent: var(--brand-accent, #4f6df5);
+  --accent-ink: var(--brand-accent-ink, #ffffff);
+  --accent-soft: var(--brand-accent-soft, #e8ecfe);
   --danger: #c53030;
   --danger-soft: #fbe8e8;
   --shadow: 0 1px 2px rgba(15, 20, 30, 0.05), 0 8px 24px -12px rgba(15, 20, 30, 0.15);
@@ -34,9 +46,9 @@
   --ink: #edf0f5;
   --muted: #8b93a3;
   --border: #262c37;
-  --accent: #7d93ff;
-  --accent-ink: #0d1017;
-  --accent-soft: #1e2440;
+  --accent: var(--brand-accent-dark, #7d93ff);
+  --accent-ink: var(--brand-accent-dark-ink, #0d1017);
+  --accent-soft: var(--brand-accent-dark-soft, #1e2440);
   --danger: #ea6a6a;
   --danger-soft: #3a1616;
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -12px rgba(0, 0, 0, 0.6);
@@ -766,9 +778,9 @@ html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(
 html:not(.dark) .markdown-body pre code.hljs { color: var(--ink); }
 html:not(.dark) .hljs-doctag, html:not(.dark) .hljs-keyword, html:not(.dark) .hljs-meta .hljs-keyword,
 html:not(.dark) .hljs-template-tag, html:not(.dark) .hljs-template-variable, html:not(.dark) .hljs-type,
-html:not(.dark) .hljs-variable.language_ { color: #cf222e; }
+html:not(.dark) .hljs-variable.language_ { color: #a40e26; }
 html:not(.dark) .hljs-title, html:not(.dark) .hljs-title.class_, html:not(.dark) .hljs-title.class_.inherited__,
-html:not(.dark) .hljs-title.function_ { color: #8250df; }
+html:not(.dark) .hljs-title.function_ { color: #6639ba; }
 html:not(.dark) .hljs-attr, html:not(.dark) .hljs-attribute, html:not(.dark) .hljs-literal, html:not(.dark) .hljs-meta,
 html:not(.dark) .hljs-number, html:not(.dark) .hljs-operator, html:not(.dark) .hljs-variable,
 html:not(.dark) .hljs-selector-attr, html:not(.dark) .hljs-selector-class, html:not(.dark) .hljs-selector-id { color: #0550ae; }
@@ -821,3 +833,7 @@ html:not(.dark) .hljs-deletion { color: #82071e; background-color: #ffebe9; }
 .editor-split-preview { max-height: calc(100vh - 12rem); }
 .editor-focus .editor-split-preview { max-height: calc(100vh - 15rem); }
 .editor-focus .visual-editor .ProseMirror { min-height: calc(100vh - 15rem); }
+
+/* github-dark's comment grey falls just under 4.5:1 on a highlighted
+   line; a shade lighter keeps it readable there too. */
+.dark .hljs-comment, .dark .hljs-code, .dark .hljs-formula { color: #a2abb6; }

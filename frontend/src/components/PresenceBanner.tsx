@@ -30,7 +30,7 @@ export function PresenceBanner({ others }: { others: PresenceEntry[] }) {
             {o.dirty && ` ${t("presence.dirty")}`}
           </p>
         ))}
-        <p className="mt-0.5 text-xs opacity-80">{t("presence.hint")}</p>
+        <p className="mt-0.5 text-xs">{t("presence.hint")}</p>
       </div>
     </div>
   );

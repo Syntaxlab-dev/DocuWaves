@@ -133,29 +133,73 @@ export function accentVariables(accent: string): Record<string, string> | null {
   const luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
   return {
     "--accent": accent,
-    "--accent-ink": luminance > 0.45 ? "#12161c" : "#ffffff",
+    // Whichever label reads better on it: white, or near-black.
+    "--accent-ink": (1.05 / (luminance + 0.05) >= (luminance + 0.05) / (0.0078 + 0.05)) ? "#ffffff" : "#12161c",
     "--accent-soft": `rgba(${r}, ${g}, ${b}, 0.16)`,
   };
 }
 
 /** Applies (or clears) the configured accent colour for the whole document.
  *
- *  Set as inline custom properties on <html>, which beats both the `:root`
- *  and the `.dark` rule in index.css -- one accent for both colour schemes,
- *  chosen by whoever runs the instance, rather than the two built-in ones.
+ *  Set as --brand-* custom properties on <html>, which the `:root` and
+ *  `.dark` rules in index.css turn into --accent: the colour chosen by
+ *  whoever runs the instance, in a shade that stays readable in each scheme.
  *  Everything themed by --accent (links, the active sidebar item, the
  *  primary button, focus rings) follows automatically. No configured accent
  *  removes the properties again, which hands both modes back to index.css. */
 export function applyAccent(accent: string) {
   const root = document.documentElement;
-  const variables = accentVariables(accent);
-  if (!variables) {
-    root.style.removeProperty("--accent");
-    root.style.removeProperty("--accent-ink");
-    root.style.removeProperty("--accent-soft");
+  const names = ["--brand-accent", "--brand-accent-ink", "--brand-accent-soft", "--brand-accent-dark", "--brand-accent-dark-ink", "--brand-accent-dark-soft"];
+  const light = accentVariables(readableAccent(accent, LIGHT_SURFACES));
+  const dark = accentVariables(readableAccent(accent, DARK_SURFACES));
+  if (!light || !dark) {
+    names.forEach((name) => root.style.removeProperty(name));
     return;
   }
-  for (const [name, value] of Object.entries(variables)) root.style.setProperty(name, value);
+  // Read by the :root and .dark rules in index.css: the owner's colour in
+  // each scheme, nudged lighter on dark and darker on light until text in
+  // it stays readable (WCAG AA, 4.5:1) on that scheme's surfaces.
+  root.style.setProperty("--brand-accent", light["--accent"]);
+  root.style.setProperty("--brand-accent-ink", light["--accent-ink"]);
+  root.style.setProperty("--brand-accent-soft", light["--accent-soft"]);
+  root.style.setProperty("--brand-accent-dark", dark["--accent"]);
+  root.style.setProperty("--brand-accent-dark-ink", dark["--accent-ink"]);
+  root.style.setProperty("--brand-accent-dark-soft", dark["--accent-soft"]);
+}
+
+/** The surfaces accent-coloured text sits on, per scheme (index.css). */
+const LIGHT_SURFACES = ["#ffffff", "#f6f7f9", "#eef0f4"];
+const DARK_SURFACES = ["#0d1017", "#151920", "#1c212a"];
+
+function luminanceOf(hex: string): number {
+  const { r, g, b } = hexToRgb(hex);
+  const channel = (value: number) => {
+    const c = value / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [luminanceOf(a), luminanceOf(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** `accent`, mixed step by step towards white (for dark surfaces) or black
+ *  (for light ones) until it reaches 4.5:1 against every one of them.
+ *  An accent that already does is returned as it is. */
+export function readableAccent(accent: string, surfaces: string[]): string {
+  if (!HEX_COLOR.test(accent)) return accent;
+  const towards = luminanceOf(surfaces[0]) < 0.5 ? 255 : 0;
+  const { r, g, b } = hexToRgb(accent);
+  const hex = (v: number) => Math.round(v).toString(16).padStart(2, "0");
+  for (let step = 0; step <= 20; step++) {
+    const t = step / 20;
+    const mix = (v: number) => v + (towards - v) * t;
+    const candidate = `#${hex(mix(r))}${hex(mix(g))}${hex(mix(b))}`;
+    if (surfaces.every((surface) => contrastRatio(candidate, surface) >= 4.5)) return candidate;
+  }
+  return towards ? "#ffffff" : "#000000";
 }
 
 const DEFAULT_FAVICON_HREF = "/favicon.svg";

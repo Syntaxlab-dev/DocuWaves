@@ -57,6 +57,8 @@ export interface VisualOptions {
   resolveImage?: (src: string) => string;
   /** Where the cursor is, for the toolbar: inside a table, inside a callout. */
   onSelection?: (where: VisualWhere) => void;
+  /** What a screen reader calls the text area. */
+  label?: string;
 }
 
 /** A rectangle in viewport coordinates. */
@@ -345,7 +347,13 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
       ctx.update(editorViewOptionsCtx, (prev) => ({
         ...prev,
         editable: () => options.editable !== false,
-        attributes: { class: "markdown-body visual-editor-body", spellcheck: "true" },
+        attributes: {
+          class: "markdown-body visual-editor-body",
+          spellcheck: "true",
+          role: "textbox",
+          "aria-multiline": "true",
+          "aria-label": options.label ?? "Text",
+        },
         nodeViews: {
           // Pages point at `../assets/x.png`, relative to the page's own
           // file; in the admin area that address means nothing, so the

@@ -174,9 +174,9 @@ export function ReviewPanel({
         )}
         <div className="min-w-0 flex-1">
           <p>{headline}</p>
-          {review.pending && <p className="text-xs opacity-80">{t("review.readersSeeLive")}</p>}
+          {review.pending && <p className="text-xs">{t("review.readersSeeLive")}</p>}
           {review.pending && review.branch && (
-            <p className="text-xs opacity-80">
+            <p className="text-xs">
               {t("review.alsoBranch")} <code className="break-all">{review.branch}</code>
             </p>
           )}
@@ -240,8 +240,8 @@ export function ReviewPanel({
             )}
           </div>
 
-          {submitted && ownText && <p className="mt-1 text-xs opacity-80">{t("review.ownChangeHint")}</p>}
-          {dirty && <p className="mt-1 text-xs opacity-80">{t("review.saveFirst")}</p>}
+          {submitted && ownText && <p className="mt-1 text-xs">{t("review.ownChangeHint")}</p>}
+          {dirty && <p className="mt-1 text-xs">{t("review.saveFirst")}</p>}
 
           {mode !== "none" && (
             <div className="mt-2 flex flex-col gap-2">
@@ -284,13 +284,13 @@ export function ReviewPanel({
 
           {showDiff && diff && (
             <div className="mt-2">
-              {diff.live === null && <p className="mb-1 text-xs opacity-80">{t("review.newPage")}</p>}
+              {diff.live === null && <p className="mb-1 text-xs">{t("review.newPage")}</p>}
               {diff.live && diff.live.title !== diff.proposed.title && (
                 <p className="mb-1 text-xs">
                   {t("review.titleChange").replace("{from}", diff.live.title).replace("{to}", diff.proposed.title)}
                 </p>
               )}
-              {diff.diff ? <DiffView diff={diff.diff} /> : <p className="text-xs opacity-80">{t("review.noTextChange")}</p>}
+              {diff.diff ? <DiffView diff={diff.diff} /> : <p className="text-xs">{t("review.noTextChange")}</p>}
             </div>
           )}
         </div>
@@ -370,7 +370,7 @@ function ReviewComments({
           {t("review.comments").replace("{open}", String(open.length))}
         </p>
         {resolved.length > 0 && (
-          <button type="button" className="text-xs underline opacity-80" onClick={() => setShowResolved((v) => !v)}>
+          <button type="button" className="text-xs underline" onClick={() => setShowResolved((v) => !v)}>
             {(showResolved ? t("review.hideResolved") : t("review.showResolved")).replace(
               "{count}",
               String(resolved.length),

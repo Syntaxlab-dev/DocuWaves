@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { AxeBuilder } from "@axe-core/playwright";
 
 /**
  * The path a new operator takes: set the instance up, sign in, write a
@@ -687,4 +688,51 @@ test("on a phone the admin lists pages and opens the editor without sideways scr
   expect(scroll).toBeLessThanOrEqual(inner);
   await page.getByRole("navigation", { name: "Path" }).getByRole("button", { name: "Handbook" }).click();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+});
+
+
+/** What axe finds that a reader or author would actually hit: WCAG A and
+ *  AA rules, serious and critical only. */
+async function accessibilityProblems(page: Page): Promise<string[]> {
+  // The site's branding (accent, header style) arrives a moment after the
+  // page itself; measured halfway, a header can be one scheme's colour with
+  // the other's label.
+  await page.waitForLoadState("networkidle");
+  const result = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"]).analyze();
+  return result.violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+
+    .map((v) => `${page.url()} ${v.id}: ${v.nodes.slice(0, 3).map((n) => `${n.target.join(" ")} ${JSON.stringify(n.any[0]?.data ?? "")}`).join(" | ")}`);
+}
+
+test("public pages and the admin pass an accessibility check, light and dark", async ({ page }) => {
+  const problems: string[] = [];
+  for (const scheme of ["light", "dark"] as const) {
+    // Reduced motion: axe measures colours, and a page still fading in
+    // (the view transitions) would read as low contrast.
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    for (const path of ["/", "/p/handbook", "/p/handbook/pages/mains-connection", "/search?q=widget"]) {
+      await page.goto(path);
+      await expect(page.locator("h1").first()).toBeVisible();
+      problems.push(...(await accessibilityProblems(page)));
+    }
+  }
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  await signIn(page);
+  problems.push(...(await accessibilityProblems(page)));
+  const nav = page.getByRole("navigation", { name: "Admin" });
+  for (const name of ["Projects and pages", "Branding", "Accounts", "Approvals", "Insights", "Diagnostics"]) {
+    await nav.getByRole("link", { name, exact: true }).click();
+    await page.waitForLoadState("networkidle");
+    problems.push(...(await accessibilityProblems(page)));
+  }
+  // The editor, visual mode.
+  await nav.getByRole("link", { name: "Projects and pages", exact: true }).click();
+  await page.getByText("Handbook", { exact: true }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  await page.getByText("Setting up the widget").first().click();
+  await page.getByRole("button", { name: "Visual" }).click();
+  await expect(page.getByRole("textbox", { name: "Page text" })).toBeVisible();
+  problems.push(...(await accessibilityProblems(page)));
+  expect(problems).toEqual([]);
 });
