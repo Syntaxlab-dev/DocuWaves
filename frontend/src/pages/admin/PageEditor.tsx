@@ -410,6 +410,11 @@ export function PageEditor({
    *  one it was started from, and the two disagreeing is what says the page
    *  moved underneath the draft -- see lib/drafts.ts. */
   const serverBase = useRef("");
+  /** The slug a page got on its very first save. Taking it on is what makes
+   *  the editor fetch the page below, and that fetch must not hand the text
+   *  back: it would land while the author is already typing (or selecting)
+   *  again, and wipe both the new keystrokes and the selection. */
+  const justCreated = useRef<string | null>(null);
 
   // What identifies the file being edited, as far as a local draft is
   // concerned: project, page, language and documentation version, which is
@@ -464,9 +469,15 @@ export function PageEditor({
 
   useEffect(() => {
     let current = true;
-    setTab("edit");
-    setDirty(false);
-    setSavedAt(null);
+    // The page this editor itself just created: only what the server adds
+    // (its id, revision, review state, languages) is taken from the answer.
+    const keepText = slug !== "" && justCreated.current === slug;
+    justCreated.current = null;
+    if (!keepText) {
+      setTab("edit");
+      setDirty(false);
+      setSavedAt(null);
+    }
     if (!slug) {
       // Brand-new page: nothing to load, and no other language to offer
       // until it has been saved once and has a slug of its own.
@@ -492,8 +503,12 @@ export function PageEditor({
       if (!current) return;
       setExisting(page.languages);
       if (page.page) {
-        setTitle(page.page.title);
-        setContent(page.page.markdown_content);
+        if (!keepText) {
+          setTitle(page.page.title);
+          setContent(page.page.markdown_content);
+          offerDraft(localDraftKey, page.page.title, page.page.markdown_content);
+          setTextArrived((n) => n + 1);
+        }
         setTargetCategoryId(page.page.category_id);
         setPublished(page.page.published);
         setLivePublished(page.page.published);
@@ -503,8 +518,6 @@ export function PageEditor({
         setRevision(page.page.revision ?? "");
         setReviewedBy(page.page.reviewed_by);
         setReviewedAt(page.page.reviewed_at);
-        offerDraft(localDraftKey, page.page.title, page.page.markdown_content);
-        setTextArrived((n) => n + 1);
       } else {
         // This language has no version yet: an empty editor, but on the
         // page's own slug and in its own category.
@@ -770,6 +783,7 @@ export function PageEditor({
         // draft until somebody approves it.
         if (!reviewRequired) await api.adminPublishPage(created.id, published);
         setLoadedId(created.id);
+        if (created.slug !== slug) justCreated.current = created.slug;
         setSlug(created.slug);
         setExisting((codes) => (codes.includes(created.language) ? codes : [...codes, created.language]));
       } else {
