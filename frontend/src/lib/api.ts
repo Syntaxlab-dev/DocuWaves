@@ -578,6 +578,15 @@ export interface Asset {
 export interface FooterLink {
   label: string;
   url: string;
+  /** The footer column it sits under; none = the line below the columns. */
+  column?: string;
+}
+
+/** The bar across the top of every public page; `{}` when there is none. */
+export interface SiteAnnouncement {
+  text?: string;
+  text_i18n?: LocalizedText;
+  link?: string;
 }
 
 /** This instance's branding, resolved from content/_site.yml in the content
@@ -619,6 +628,9 @@ export interface SiteBranding {
   accent: string;
   footer_text: string;
   footer_links: FooterLink[];
+  /** The "Made with DocuWaves" footer line. Optional for a stale cached copy. */
+  powered_by?: boolean;
+  announcement?: SiteAnnouncement;
   /** Umami, or an empty object for an instance that measures nothing --
    *  which is the default. Not a secret: the moment it is set, the script
    *  tag it describes is in the head of every public page. The tag itself is
@@ -1434,6 +1446,8 @@ export const api = {
     footer_text: string;
     footer_text_i18n: LocalizedText;
     footer_links: FooterLink[];
+    powered_by: boolean;
+    announcement: SiteAnnouncement;
     analytics: SiteAnalytics;
     pdf: SitePdf;
   }) => request<SiteBranding>("/api/admin/site", { method: "PUT", body: JSON.stringify(data) }),

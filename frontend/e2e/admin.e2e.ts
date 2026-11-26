@@ -561,3 +561,19 @@ test("a reader's bookmarks and recent pages come back in the quick search", asyn
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeHidden();
 });
+
+test("an announcement set in the admin shows until a reader closes it", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Branding" }).click();
+  await page.getByRole("textbox", { name: "Announcement text" }).fill("Maintenance on Friday");
+  // .last(): the first "Save" is the one drawn inside the header preview.
+  await page.getByRole("button", { name: "Save" }).last().click();
+  await expect(page.getByText("Branding saved")).toBeVisible();
+  await page.goto("/");
+  await expect(page.getByText("Maintenance on Friday")).toBeVisible();
+  await expect(page.getByRole("contentinfo").getByRole("link", { name: "DocuWaves" })).toBeVisible();
+  await page.getByRole("button", { name: "Close announcement" }).click();
+  await page.reload();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByText("Maintenance on Friday")).toHaveCount(0);
+});

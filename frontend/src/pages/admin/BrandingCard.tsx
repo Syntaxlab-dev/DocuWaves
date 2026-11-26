@@ -71,6 +71,8 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
         footer_text: draft.footer_text,
         footer_text_i18n: draft.footer_text_i18n,
         footer_links: draft.footer_links,
+        powered_by: draft.powered_by !== false,
+        announcement: draft.announcement ?? {},
         analytics: draft.analytics ?? {},
         pdf: draft.pdf ?? PDF_DEFAULTS,
       });
@@ -195,6 +197,31 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
             />
 
             <FooterLinksEditor links={draft.footer_links} onChange={(footer_links) => patch({ footer_links })} />
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={draft.powered_by !== false}
+                onChange={(e) => patch({ powered_by: e.target.checked })}
+              />
+              {t("admin.brandingPoweredBy")}
+            </label>
+
+            <div className="flex flex-col gap-2">
+              <span className="text-sm font-medium">{t("admin.brandingAnnouncement")}</span>
+              <p className="text-xs text-[var(--muted)]">{t("admin.brandingAnnouncementHint")}</p>
+              <Input
+                value={draft.announcement?.text ?? ""}
+                placeholder={t("admin.brandingAnnouncementText")}
+                aria-label={t("admin.brandingAnnouncementText")}
+                onChange={(e) => patch({ announcement: { ...draft.announcement, text: e.target.value } })}
+              />
+              <Input
+                value={draft.announcement?.link ?? ""}
+                placeholder={t("admin.brandingLinkUrl")}
+                aria-label={t("admin.brandingAnnouncementLink")}
+                onChange={(e) => patch({ announcement: { ...draft.announcement, link: e.target.value } })}
+              />
+            </div>
 
             <AnalyticsFields
               analytics={draft.analytics ?? {}}
@@ -453,6 +480,13 @@ export function FooterLinksEditor({ links, onChange }: { links: FooterLink[]; on
             placeholder={t("admin.brandingLinkUrl")}
             onChange={(e) => update(index, { url: e.target.value })}
             className="flex-1"
+          />
+          <Input
+            value={link.column ?? ""}
+            placeholder={t("admin.brandingLinkColumn")}
+            aria-label={t("admin.brandingLinkColumn")}
+            onChange={(e) => update(index, { column: e.target.value })}
+            className="max-w-[9rem]"
           />
           <Button
             variant="ghost"

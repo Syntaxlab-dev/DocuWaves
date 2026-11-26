@@ -757,3 +757,7 @@ html:not(.dark) .hljs-section { color: #0550ae; font-weight: bold; }
 html:not(.dark) .hljs-bullet { color: #953800; }
 html:not(.dark) .hljs-addition { color: #116329; background-color: #dafbe1; }
 html:not(.dark) .hljs-deletion { color: #82071e; background-color: #ffebe9; }
+
+@media print {
+  .announcement-bar { display: none; }
+}

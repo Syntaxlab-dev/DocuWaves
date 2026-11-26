@@ -1854,6 +1854,13 @@ def admin_delete_asset(project_slug: str, filename: str, request: Request, versi
 class FooterLinkIn(BaseModel):
     label: str = ""
     url: str = ""
+    column: str = ""
+
+
+class AnnouncementIn(BaseModel):
+    text: str = ""
+    text_i18n: dict[str, str] = {}
+    link: str = ""
 
 
 class SiteBrandingIn(BaseModel):
@@ -1875,6 +1882,9 @@ class SiteBrandingIn(BaseModel):
     accent: str = ""
     footer_text: str = ""
     footer_links: list[FooterLinkIn] = []
+    # The small "Made with DocuWaves" footer line; on unless switched off.
+    powered_by: bool = True
+    announcement: AnnouncementIn = AnnouncementIn()
     # {"umami_url": ..., "umami_website_id": ...}, or absent for an instance
     # that measures nothing. A free-form mapping here rather than a model,
     # because site_branding._analytics is the validator either way and a

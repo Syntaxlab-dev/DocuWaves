@@ -141,9 +141,9 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | ✅ | "Recently read" and bookmarks for readers, in their own browser | S |
 | ✅ | A filter field in the sidebar; expanded categories remembered | S |
 | ✅ | Quick search (Ctrl+K) shows recent pages and actions before typing | S |
-| | A project switcher in the header | S |
-| | An announcement bar, set in the admin, dismissible for readers | S |
-| | A footer with link columns and "Made with DocuWaves" (can be turned off) | S |
+| ✅ | A project switcher in the header | S |
+| ✅ | An announcement bar, set in the admin, dismissible for readers | S |
+| ✅ | A footer with link columns and "Made with DocuWaves" (can be turned off) | S |
 | | More branding with a live preview: background tone, corner radius, header style | M |
 | | Ready-made themes to pick with one click | M |
 | | Custom CSS for those who want it | S |

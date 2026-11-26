@@ -54,7 +54,8 @@ DEFAULT_NAME = "DocuWaves"
 # silent on purpose: refusing to render the whole site over an over-long
 # string would be the opposite of this module's contract.
 _MAX_TEXT = 200
-_MAX_FOOTER_LINKS = 12
+_MAX_FOOTER_LINKS = 24
+_MAX_COLUMN = 40
 
 # Only #rgb / #rrggbb. The value is written into a CSS custom property, so
 # anything else -- `red; background: url(...)`, `javascript:alert(1)`, an
@@ -207,11 +208,38 @@ def _footer_links(data: dict) -> list[dict]:
             continue
         label = label.strip()[:_MAX_TEXT]
         url = url.strip()
+        # Optional: the heading of the footer column the link sits under.
+        # Links without one stay in the single line under the columns.
+        column = item.get("column")
+        column = column.strip()[:_MAX_COLUMN] if isinstance(column, str) else ""
         # One malformed row is dropped, the rest of the footer still renders
         # -- the same "degrade, don't fail" rule the whole file follows.
         if label and _SAFE_LINK_RE.match(url):
-            links.append({"label": label, "url": url})
+            links.append({"label": label, "url": url, "column": column} if column else {"label": label, "url": url})
     return links
+
+
+def _powered_by(data: dict) -> bool:
+    """The small "Made with DocuWaves" line in the footer: on unless the file
+    says `powered_by: false`. Anything but an explicit false keeps it."""
+    return data.get("powered_by") is not False
+
+
+def _announcement(data: dict) -> dict:
+    """The bar across the top of every public page: `{"text", "text_i18n",
+    "link"}`, or `{}` when there is none. The text follows the same
+    string-or-per-language-mapping rule as the tagline; the link the same
+    http(s)/mailto/site-relative rule as a footer link, and a link that
+    breaks it is dropped while the text stays."""
+    raw = data.get("announcement")
+    if not isinstance(raw, dict):
+        return {}
+    text, text_i18n = _localized_text(raw, "text")
+    if not text and not text_i18n:
+        return {}
+    link = raw.get("link")
+    link = link.strip() if isinstance(link, str) and _SAFE_LINK_RE.match(link.strip()) else ""
+    return {"text": text, "text_i18n": text_i18n, "link": link}
 
 
 def _analytics(data: dict) -> dict:
@@ -330,6 +358,8 @@ def read_branding() -> dict:
         "favicon_url": favicon_url,
         "accent": _accent(data),
         "footer_links": _footer_links(data),
+        "powered_by": _powered_by(data),
+        "announcement": _announcement(data),
         # Public on purpose: the moment this is configured, the script tag it
         # describes is in the head of every page anyway. Nothing here is a
         # secret -- a Umami website id identifies a dashboard, it does not
@@ -357,6 +387,18 @@ def _i18n_payload(payload: dict, key: str) -> dict[str, str]:
         for code, value in raw.items()
         if code in configured and isinstance(value, str) and value.strip()
     }
+
+
+def _announcement_to_file(payload: dict, default_lang: str) -> dict:
+    raw = payload.get("announcement")
+    if not isinstance(raw, dict):
+        return {}
+    text = site_languages.to_yaml_value(_text(raw, "text"), _i18n_payload(raw, "text_i18n"), default_lang)
+    if not text:
+        return {}
+    link = raw.get("link")
+    link = link.strip() if isinstance(link, str) and _SAFE_LINK_RE.match(link.strip()) else ""
+    return {"text": text, "link": link} if link else {"text": text}
 
 
 def write_branding(payload: dict) -> list[str]:
@@ -391,10 +433,14 @@ def write_branding(payload: dict) -> list[str]:
             _text(payload, "footer_text"), _i18n_payload(payload, "footer_text_i18n"), default_lang
         ),
         "footer_links": _footer_links(payload),
+        "announcement": _announcement_to_file(payload, default_lang),
         "analytics": _analytics(payload),
         "pdf": _pdf_to_file(payload),
     }
     document = {k: v for k, v in normalized.items() if v}
+    # Written only when it is off: the default needs no line in the file.
+    if payload.get("powered_by") is False:
+        document["powered_by"] = False
 
     path = site_file()
     path.parent.mkdir(parents=True, exist_ok=True)

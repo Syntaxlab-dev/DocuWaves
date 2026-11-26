@@ -11,6 +11,7 @@ import { VersionSwitcher } from "@/components/VersionSwitcher";
 import { DocChat } from "@/components/DocChat";
 import { QuickSearch, useQuickSearchShortcut } from "@/components/QuickSearch";
 import { ShortcutsDialog, useReaderShortcuts } from "@/components/Shortcuts";
+import { AnnouncementBar, ProjectSwitcher, SiteFooter } from "@/components/SiteChrome";
 import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
@@ -66,7 +67,6 @@ export function PublicLayout() {
 
   const logoUrl = logoForTheme(site, isDark);
   const footerText = siteText(site, "footer_text", contentLang.lang);
-  const hasFooter = Boolean(footerText) || site.footer_links.length > 0;
 
   return (
     // flex column so the footer sits at the bottom of a short page instead
@@ -93,6 +93,7 @@ export function PublicLayout() {
         onShortcuts={openShortcuts}
       />
       <ShortcutsDialog open={shortcutsOpen} onClose={closeShortcuts} isMac={isMac} />
+      <AnnouncementBar site={site} />
       <header className="border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
           <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">
@@ -101,6 +102,7 @@ export function PublicLayout() {
             {logoUrl && <img src={logoUrl} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />}
             <span>{siteText(site, "name", contentLang.lang)}</span>
           </Link>
+          <ProjectSwitcher />
           <form onSubmit={onSearch} className="ml-auto flex flex-1 max-w-sm items-center gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted)]" />
@@ -149,28 +151,7 @@ export function PublicLayout() {
       </main>
       {/* Nothing configured, no footer at all -- an empty bar would be a
           visible change to an instance that never asked for one. */}
-      {hasFooter && (
-        <footer className="mt-12 border-t border-[var(--border)] bg-[var(--surface)]">
-          <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-6 text-sm text-[var(--muted)]">
-            {footerText && <span>{footerText}</span>}
-            {site.footer_links.map((link) => (
-              <a
-                key={`${link.label}-${link.url}`}
-                href={link.url}
-                // These point off this site by definition (the backend only
-                // accepts http(s)/mailto/site-relative), so: new tab, and
-                // noreferrer stops the target from reaching back via
-                // window.opener.
-                target="_blank"
-                rel="noreferrer noopener"
-                className="hover:text-[var(--accent)]"
-              >
-                {link.label}
-              </a>
-            ))}
-          </div>
-        </footer>
-      )}
+      <SiteFooter site={site} footerText={footerText} />
       {/* Last in the layout and fixed-positioned, so it floats over every
           reading view without any of them having to know about it. Renders
           nothing at all unless the operator configured a model. */}
