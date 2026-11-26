@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { api, type ChangelogEntry, type Project } from "@/lib/api";
 import { formatIsoDate } from "@/lib/dates";
+import { useReaderHistory, type ReadEntry } from "@/lib/readerHistory";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CoverImage } from "@/components/CoverImage";
 import { PrivateBadge } from "@/components/PrivateBadge";
@@ -23,6 +24,7 @@ export function PublicHome() {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [recent, setRecent] = useState<ChangelogEntry[]>([]);
   const [q, setQ] = useState("");
+  const { history, bookmarks } = useReaderHistory();
 
   // No page title of its own -- the home page IS the site.
   useDocumentTitle();
@@ -149,6 +151,15 @@ export function PublicHome() {
         </div>
       )}
 
+      {/* This reader's own trail, from this browser: nothing on a first
+          visit, and nothing anybody else ever sees. */}
+      {(bookmarks.length > 0 || history.length > 0) && (
+        <div className="mt-12 grid gap-6 sm:grid-cols-2">
+          {bookmarks.length > 0 && <ReadList title={t("reader.bookmarks")} entries={bookmarks.slice(0, 5)} />}
+          {history.length > 0 && <ReadList title={t("reader.recent")} entries={history.slice(0, 5)} />}
+        </div>
+      )}
+
       {recent.length > 0 && (
         <section className="mt-12">
           <div className="flex items-baseline justify-between gap-3">
@@ -178,5 +189,23 @@ export function PublicHome() {
         </section>
       )}
     </div>
+  );
+}
+
+function ReadList({ title, entries }: { title: string; entries: ReadEntry[] }) {
+  return (
+    <section>
+      <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{title}</h2>
+      <ul className="mt-3 space-y-1">
+        {entries.map((entry) => (
+          <li key={entry.path}>
+            <Link to={entry.path} className="group block rounded-lg px-3 py-2 hover:bg-[var(--surface)]">
+              <span className="block truncate font-medium group-hover:text-[var(--accent)]">{entry.title}</span>
+              <span className="block truncate text-xs text-[var(--muted)]">{entry.context}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

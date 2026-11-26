@@ -135,12 +135,12 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | | A slash menu to insert blocks | M |
 | | A floating formatting bar on text selection | M |
 | | Split view in Markdown mode: text left, live preview right | M |
-| | A keyboard-shortcut overview behind "?" | S |
+| ✅ | A keyboard-shortcut overview behind "?" | S |
 | | Code blocks with a file-name header, line numbers and highlighted lines | M |
 | | Link previews for internal links on hover | M |
-| | "Recently read" and bookmarks for readers, in their own browser | S |
-| | A filter field in the sidebar; expanded categories remembered | S |
-| | Quick search (Ctrl+K) shows recent pages and actions before typing | S |
+| ✅ | "Recently read" and bookmarks for readers, in their own browser | S |
+| ✅ | A filter field in the sidebar; expanded categories remembered | S |
+| ✅ | Quick search (Ctrl+K) shows recent pages and actions before typing | S |
 | | A project switcher in the header | S |
 | | An announcement bar, set in the admin, dismissible for readers | S |
 | | A footer with link columns and "Made with DocuWaves" (can be turned off) | S |

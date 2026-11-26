@@ -10,6 +10,7 @@ import { useProjectVersion } from "@/lib/version";
 import { VersionSwitcher } from "@/components/VersionSwitcher";
 import { DocChat } from "@/components/DocChat";
 import { QuickSearch, useQuickSearchShortcut } from "@/components/QuickSearch";
+import { ShortcutsDialog, useReaderShortcuts } from "@/components/Shortcuts";
 import { logoForTheme, siteText, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
@@ -34,11 +35,17 @@ export function PublicLayout() {
     : null;
   const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-  function toggleTheme() {
-    const next = isDark ? "light" : "dark";
+  // Reads the live state rather than `isDark`, so the "t" shortcut can hold
+  // on to one stable function.
+  const toggleTheme = useCallback(() => {
+    const next = document.documentElement.classList.contains("dark") ? "light" : "dark";
     applyTheme(next);
     setIsDark(next === "dark");
-  }
+  }, []);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const openShortcuts = useCallback(() => setShortcutsOpen(true), []);
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
+  useReaderShortcuts({ onHelp: openShortcuts, onTheme: toggleTheme });
 
   function onSearch(e: FormEvent) {
     e.preventDefault();
@@ -79,7 +86,13 @@ export function PublicLayout() {
       >
         {t("nav.skipToContent")}
       </a>
-      <QuickSearch open={quickSearchOpen} onOpenChange={setQuickSearchOpen} scope={searchScope} />
+      <QuickSearch
+        open={quickSearchOpen}
+        onOpenChange={setQuickSearchOpen}
+        scope={searchScope}
+        onShortcuts={openShortcuts}
+      />
+      <ShortcutsDialog open={shortcutsOpen} onClose={closeShortcuts} isMac={isMac} />
       <header className="border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
           <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">

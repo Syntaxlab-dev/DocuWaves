@@ -1,13 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ChevronDown, ChevronRight, Menu, Search, X } from "lucide-react";
-import type { ProjectNav } from "@/lib/api";
+import { ChevronDown, ChevronRight, ListFilter, Menu, Search, X } from "lucide-react";
+import type { NavCategory, ProjectNav } from "@/lib/api";
 import { FallbackBadge } from "@/components/FallbackBadge";
 import { categoryAncestors, visibleCategories } from "@/lib/nav";
 import { useI18n } from "@/lib/i18n";
 import { useContentLang } from "@/lib/lang";
 import { useDocPath } from "@/lib/version";
 import { cn } from "@/lib/utils";
+import { readStored, writeStored } from "@/lib/theme";
 
 /**
  * Up to this many published pages in a project, every section starts open:
@@ -37,8 +38,16 @@ export function DocsSidebar({
   const [mobileOpen, setMobileOpen] = useState(false);
   const [q, setQ] = useState("");
   // Only sections the reader has explicitly toggled land here; everything
-  // else keeps following the active page as they navigate.
-  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  // else keeps following the active page as they navigate. Remembered per
+  // project in this browser, so a section closed yesterday stays closed.
+  const storageKey = `docuwaves-sidebar:${nav.project.slug}`;
+  const [toggled, setToggled] = useState<Record<string, boolean>>(() => loadToggled(storageKey));
+  const [toggledFor, setToggledFor] = useState(storageKey);
+  if (toggledFor !== storageKey) {
+    setToggledFor(storageKey);
+    setToggled(loadToggled(storageKey));
+  }
+  const [filter, setFilter] = useState("");
 
   const categories = visibleCategories(nav);
   const expandAll = categories.reduce((total, c) => total + c.pages.length, 0) <= EXPAND_ALL_UP_TO;
@@ -48,10 +57,21 @@ export function DocsSidebar({
   const activeChain = new Set(
     activeCategorySlug ? [activeCategorySlug, ...categoryAncestors(nav, activeCategorySlug).map((c) => c.slug)] : [],
   );
-  const isOpen = (slug: string) => toggled[slug] ?? (expandAll || activeChain.has(slug));
+  // Filtering: the pages whose title has the text in it, plus every page of
+  // a section whose name does; each section with a match, and the sections
+  // around it, shown open. Everything else is out of the way until the
+  // field is empty again.
+  const needle = filter.trim().toLocaleLowerCase();
+  const matches = needle ? filterNav(categories, needle, (slug) => categoryAncestors(nav, slug)) : null;
+  const isOpen = (slug: string) =>
+    matches ? matches.sections.has(slug) : (toggled[slug] ?? (expandAll || activeChain.has(slug)));
 
   function toggle(slug: string, open: boolean) {
-    setToggled((current) => ({ ...current, [slug]: !open }));
+    setToggled((current) => {
+      const next = { ...current, [slug]: !open };
+      writeStored(storageKey, JSON.stringify(next));
+      return next;
+    });
   }
 
   // On a phone the contents are a drawer over the page. It closes when the
@@ -149,8 +169,31 @@ export function DocsSidebar({
           {nav.project.name}
         </Link>
 
+        {!expandAll && (
+          <div className="relative mt-3">
+            <ListFilter
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted)]"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && filter && (e.stopPropagation(), setFilter(""))}
+              placeholder={t("reader.filter")}
+              aria-label={t("reader.filter")}
+              className="h-8 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] pl-8 pr-2 text-sm outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+        )}
+        {matches && matches.sections.size === 0 && (
+          <p className="mt-4 text-sm text-[var(--muted)]">{t("reader.filterEmpty")}</p>
+        )}
+
         <div className="mt-4 flex flex-col gap-4">
           {categories.map((category) => {
+            if (matches && !matches.sections.has(category.slug)) return null;
+            const shown = matches ? category.pages.filter((page) => matches.pages.has(page.id)) : category.pages;
             // A subsection is drawn only while every section above it is
             // open -- a closed section closes everything under it.
             const ancestors = categoryAncestors(nav, category.slug);
@@ -193,9 +236,9 @@ export function DocsSidebar({
                   </Link>
                 </div>
 
-                {open && category.pages.length > 0 && (
+                {open && shown.length > 0 && (
                   <ul className="mt-1 flex flex-col border-l border-[var(--border)] pl-3 ml-2.5">
-                    {category.pages.map((page) => {
+                    {shown.map((page) => {
                       const current = page.slug === activePageSlug;
                       return (
                         <li key={page.id}>
@@ -230,4 +273,33 @@ export function DocsSidebar({
       </nav>
     </div>
   );
+}
+
+function loadToggled(key: string): Record<string, boolean> {
+  try {
+    const raw = JSON.parse(readStored(key) ?? "{}");
+    return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, boolean>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** What a sidebar filter leaves standing: the matching pages (by id) and
+ *  the sections to show -- those with a match and everything around them. */
+export function filterNav(
+  categories: NavCategory[],
+  needle: string,
+  ancestors: (slug: string) => { slug: string }[],
+): { pages: Set<number>; sections: Set<string> } {
+  const pages = new Set<number>();
+  const sections = new Set<string>();
+  for (const c of categories) {
+    const whole = c.name.toLocaleLowerCase().includes(needle);
+    const hits = c.pages.filter((p) => whole || p.title.toLocaleLowerCase().includes(needle));
+    if (!whole && hits.length === 0) continue;
+    hits.forEach((p) => pages.add(p.id));
+    sections.add(c.slug);
+    ancestors(c.slug).forEach((a) => sections.add(a.slug));
+  }
+  return { pages, sections };
 }

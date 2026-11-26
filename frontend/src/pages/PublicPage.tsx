@@ -20,7 +20,8 @@ import { useDocPath, useReportProjectVersion } from "@/lib/version";
 import { useGlossary } from "@/lib/glossary";
 import { PrintMargins } from "@/lib/printBranding";
 import { siteText, useDocumentTitle, useSite } from "@/lib/site";
-import { BackToTop, ReaderSettings, ReadingProgress } from "@/components/ReaderTools";
+import { BackToTop, BookmarkButton, ReaderSettings, ReadingProgress } from "@/components/ReaderTools";
+import { recordRead } from "@/lib/readerHistory";
 
 /** Below this, a contents list is just the page's own outline restated --
  *  one entry is never worth a column, and two is where it starts telling a
@@ -34,7 +35,7 @@ export function PublicPage() {
     pageSlug: string;
     version: string;
   }>();
-  const { hash } = useLocation();
+  const { hash, pathname } = useLocation();
   const { t, lang: uiLang } = useI18n();
   const { site } = useSite();
   const { lang } = useContentLang();
@@ -97,6 +98,19 @@ export function PublicPage() {
   // Undefined while loading, which just leaves the site name in the tab.
   useDocumentTitle(data?.page.title);
 
+  // What this browser remembers as read: the address as it stands (so a
+  // version or language prefix comes along), once the page is really there.
+  const readEntry = useMemo(
+    () =>
+      data && data.page.slug === pageSlug
+        ? { path: pathname, title: data.page.title, context: `${data.project.name} › ${data.category.name}` }
+        : null,
+    [data, pageSlug, pathname],
+  );
+  useEffect(() => {
+    if (readEntry) recordRead(readEntry);
+  }, [readEntry]);
+
   const headings = useMemo(() => (data ? collectHeadings(data.page.markdown_content) : []), [data]);
 
   useEffect(() => {
@@ -136,6 +150,7 @@ export function PublicPage() {
       <BackToTop />
       <div className="mt-2 mb-4 flex items-start gap-2">
         <h1 className="min-w-0 flex-1 text-2xl font-semibold">{data.page.title}</h1>
+        {readEntry && <BookmarkButton entry={readEntry} />}
         <ReaderSettings />
       </div>
       {/* Between the title and the text, where it is read before the page

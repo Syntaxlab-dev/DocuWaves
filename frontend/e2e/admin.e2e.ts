@@ -542,3 +542,22 @@ test("on a phone the contents open as a drawer, and a 404 suggests pages", async
   await page.getByRole("link", { name: /the widget/ }).first().click();
   await expect(page.getByRole("heading", { level: 1, name: /the widget/ })).toBeVisible();
 });
+
+test("a reader's bookmarks and recent pages come back in the quick search", async ({ page }) => {
+  await page.goto("/p/handbook/pages/mains-connection");
+  await expect(page.getByRole("heading", { level: 1, name: "Mains connection" })).toBeVisible();
+  await page.getByRole("button", { name: "Bookmark" }).click();
+  await expect(page.getByRole("button", { name: "Bookmark" })).toHaveAttribute("aria-pressed", "true");
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Your bookmarks" })).toBeVisible();
+  await page.keyboard.press("Control+k");
+  const dialog = page.getByRole("dialog", { name: "Quick search" });
+  await dialog.getByRole("option", { name: /Mains connection/ }).click();
+  await expect(page).toHaveURL(/\/pages\/mains-connection$/);
+  // "?" opens the overview of shortcuts, Escape closes it.
+  await page.locator("main h1").click();
+  await page.keyboard.press("?");
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Keyboard shortcuts" })).toBeHidden();
+});

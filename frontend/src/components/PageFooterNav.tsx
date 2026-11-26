@@ -65,6 +65,8 @@ export function PageFooterNav({
     return (
       <Link
         to={docPath(nav.project.slug, `/pages/${entry.page.slug}`)}
+        // "[" and "]" follow these (see Shortcuts.tsx).
+        data-page-nav={direction}
         className={`group flex flex-col gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3 transition-colors hover:border-[var(--accent)] ${
           isNext ? "text-right sm:col-start-2" : ""
         }`}

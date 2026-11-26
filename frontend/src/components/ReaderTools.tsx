@@ -2,7 +2,8 @@
 // top, a "back to top" button once the reader is well down, and a text
 // settings menu (size, line width). All three stay out of print (index.css).
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Type } from "lucide-react";
+import { ArrowUp, Bookmark, Type } from "lucide-react";
+import { toggleBookmark, useReaderHistory, type ReadEntry } from "@/lib/readerHistory";
 import { useI18n } from "@/lib/i18n";
 import { setReaderPrefs, useReaderPrefs, type ReaderFont, type ReaderSize, type ReaderWidth } from "@/lib/readerPrefs";
 
@@ -148,5 +149,29 @@ export function ReaderSettings() {
         </div>
       )}
     </div>
+  );
+}
+
+/** Keeps this page in the reader's bookmarks (this browser only), found
+ *  again in the quick search and on the home page. "b" does the same. */
+export function BookmarkButton({ entry }: { entry: Omit<ReadEntry, "at"> }) {
+  const { t } = useI18n();
+  const { bookmarks } = useReaderHistory();
+  const saved = bookmarks.some((b) => b.path === entry.path);
+  const label = t(saved ? "reader.unbookmark" : "reader.bookmark");
+  return (
+    <button
+      type="button"
+      aria-pressed={saved}
+      aria-label={t("reader.bookmark")}
+      title={label}
+      data-bookmark-toggle
+      onClick={() => toggleBookmark(entry)}
+      className={`reader-chrome flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--surface-2)] ${
+        saved ? "text-[var(--accent)]" : "text-[var(--muted)] hover:text-[var(--ink)]"
+      }`}
+    >
+      <Bookmark className="h-4 w-4" fill={saved ? "currentColor" : "none"} aria-hidden="true" />
+    </button>
   );
 }
