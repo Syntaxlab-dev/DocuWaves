@@ -330,6 +330,33 @@ def reorder_category(project_id: int, category_id: int, direction: int, author: 
     content_sync.full_sync()
 
 
+def set_order(category_ids: list[int], author: str) -> None:
+    """Puts sibling categories in the order given (drag and drop in the
+    admin): one commit, and only the files whose position changed. All of
+    them must be siblings -- one project, one version, one parent -- since
+    order only means something among those."""
+    rows = [get_category(i) for i in category_ids]
+    if not rows or any(r is None for r in rows):
+        raise ValueError("unknown category")
+    first = rows[0]
+    if any((r["project_id"], r["version"], r["parent"]) != (first["project_id"], first["version"], first["parent"]) for r in rows):
+        raise ValueError("not siblings")
+    project = projects_store.get_project(first["project_id"])
+    version = first["version"]
+    content_versions.ensure_editable(project["slug"], version)
+    siblings = [c for c in list_categories(first["project_id"], "", version) if c["parent"] == first["parent"]]
+    given = [r["id"] for r in rows]
+    # Siblings the caller didn't name keep their place after the named ones.
+    ordered = [c for i in given for c in siblings if c["id"] == i] + [c for c in siblings if c["id"] not in given]
+    paths: list[str] = []
+    for position, category in enumerate(ordered):
+        if category["sort_order"] != position:
+            paths += _rewrite(project["slug"], category, version, order=position)
+    if paths:
+        git_content_repo.commit_and_push(paths, f"Reorder categories ({project['name']})", author)
+        content_sync.full_sync()
+
+
 def delete_category(category_id: int, author: str) -> None:
     current = get_category(category_id)
     if current is None:

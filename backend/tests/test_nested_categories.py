@@ -203,3 +203,41 @@ def test_moving_stays_among_siblings(world):
     assert after["reference"]["sort_order"] == before["server"]
     assert after["server"]["sort_order"] == before["reference"]
     assert after["linux"]["parent"] == "install"
+
+
+def test_drag_and_drop_orders_siblings_in_one_go(world):
+    app, _ = world
+    c = admin(app)
+    cats = by_slug()
+    ids = [cats[s]["id"] for s in ("reference", "guide", "server")]
+    assert c.post("/api/admin/categories/order", json={"category_ids": ids}, headers=ORIGIN).status_code == 200
+    after = by_slug()
+    assert after["reference"]["sort_order"] < after["guide"]["sort_order"] < after["server"]["sort_order"]
+    # Not siblings: refused, nothing changes.
+    mixed = [after["linux"]["id"], after["guide"]["id"]]
+    assert c.post("/api/admin/categories/order", json={"category_ids": mixed}, headers=ORIGIN).status_code == 400
+    assert by_slug()["linux"]["parent"] == "install"
+
+
+def test_drag_and_drop_orders_pages(world):
+    from app.services import pages_store
+
+    app, _ = world
+    c = admin(app)
+    reference = by_slug()["reference"]
+    for title in ("Config", "Env"):
+        made = c.post(
+            "/api/admin/pages",
+            json={"title": title, "markdown_content": "x", "category_id": reference["id"]},
+            headers=ORIGIN,
+        )
+        assert made.status_code == 200, made.text
+    pages = {p["slug"]: p for p in pages_store.list_pages(reference["id"])}
+    wanted = [pages["env"]["id"], pages["cli"]["id"], pages["config"]["id"]]
+    r = c.post(f"/api/admin/categories/{reference['id']}/pages/order", json={"page_ids": wanted}, headers=ORIGIN)
+    assert r.status_code == 200, r.text
+    assert [p["slug"] for p in pages_store.list_pages(reference["id"])] == ["env", "cli", "config"]
+    # A page from another category is refused.
+    other = pages_store.list_pages(by_slug()["guide"]["id"])[0]["id"]
+    r = c.post(f"/api/admin/categories/{reference['id']}/pages/order", json={"page_ids": [other]}, headers=ORIGIN)
+    assert r.status_code == 400

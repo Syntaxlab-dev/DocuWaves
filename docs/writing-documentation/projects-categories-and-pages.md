@@ -75,7 +75,13 @@ The file is tidied automatically: renaming a page again points its older address
 
 Every project, category and page carries an `order` number. Lower sorts first. New items are appended to the end.
 
-In the admin area, each row has **Move up** and **Move down** buttons. Pressing one swaps the `order:` value in the two affected files and commits the swap — the ordering is data in the repository, not a hidden column, so a pull request can reorder a section too.
+In the admin area, projects and their categories form one tree on the left; the pages of the category you pick are listed beside it.
+
+- **Drag** a category onto another one with the same parent to put it before or after it (a line shows where it lands), or drag a page row to a new place in the list.
+- **Drop a page on a category** in the tree to move it there, translations included.
+- Without a mouse: **Alt+↑** and **Alt+↓** move the focused page row; projects and categories keep their **Move up** and **Move down** buttons.
+
+Every reordering writes the new `order:` values into the files that changed and commits them together — the ordering is data in the repository, not a hidden column, so a pull request can reorder a section too.
 
 ## Editing structure
 

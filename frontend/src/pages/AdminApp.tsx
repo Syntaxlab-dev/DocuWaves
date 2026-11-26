@@ -580,7 +580,7 @@ export function AdminApp() {
         {/* While a page is open, the project and category columns step
             aside and the editor takes the width; the breadcrumb above
             leads back to them. */}
-        <div className={editing !== null ? "grid gap-4" : "grid gap-4 lg:grid-cols-[260px_1fr]"}>
+        <div className={editing !== null ? "grid gap-4" : "grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]"}>
           {editing === null && (
           <ProjectsPanel
             projects={projects}
@@ -592,7 +592,25 @@ export function AdminApp() {
               setEditing(null);
             }}
             onChanged={loadProjects}
-          />
+          >
+            {selectedProject && (
+              <CategoriesPanel
+                projectId={selectedProject.id}
+                projectSlug={selectedProject.slug}
+                categories={categories}
+                selected={selectedCategory}
+                readOnly={contentReadOnly}
+                onSelect={(c) => {
+                  setSelectedCategory(c);
+                  setEditing(null);
+                }}
+                onChanged={(slug) => loadCategories(selectedProject.id, viewing, slug)}
+                onPageMoved={() => {
+                  if (selectedCategory) loadPages(selectedCategory.id);
+                }}
+              />
+            )}
+          </ProjectsPanel>
           )}
 
           <div className="min-w-0">
@@ -656,28 +674,9 @@ export function AdminApp() {
                   <SyncBanner projectSlug={selectedProject.slug} source={selectedProject.source} />
                 )}
 
-                {/* min-w-0 on the right column: a grid track is sized by its
-                    content unless told otherwise, so a wide unified diff in the
-                    History tab stretched this column instead of scrolling inside
-                    it, and pushed the whole admin page into horizontal scroll.
-                    Same failure and same fix as the public shell -- see
-                    DocsShell.tsx, which already carried the comment. */}
-                <div className={editing !== null ? "grid gap-4" : "grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]"}>
-                  {editing === null && (
-                  <CategoriesPanel
-                    projectId={selectedProject.id}
-                    projectSlug={selectedProject.slug}
-                    categories={categories}
-                    selected={selectedCategory}
-                    readOnly={contentReadOnly}
-                    onSelect={(c) => {
-                      setSelectedCategory(c);
-                      setEditing(null);
-                    }}
-                    onChanged={(slug) => loadCategories(selectedProject.id, viewing, slug)}
-                  />
-                  )}
-
+                {/* The categories live in the tree on the left now; this is
+                    the pages of the one picked, or the page being edited. */}
+                <div>
                   <div>
                     {!selectedCategory && <p className="text-[var(--muted)]">{t("admin.selectCategory")}</p>}
 

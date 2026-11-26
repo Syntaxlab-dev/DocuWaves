@@ -7,6 +7,7 @@ import {
   useState,
   type ChangeEvent,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { toast } from "sonner";
 import {
@@ -327,6 +328,7 @@ export function ProjectsPanel({
   selected,
   onSelect,
   onChanged,
+  children,
 }: {
   projects: Project[];
   /** A read-only account: browse the projects, don't change them. (Unlike
@@ -337,6 +339,9 @@ export function ProjectsPanel({
   onSelect: (p: Project) => void;
   /** `slug` is the slug the saved project now has -- see loadProjects(). */
   onChanged: (slug?: string) => void;
+  /** Shown under the selected project, indented: its categories, so the
+   *  projects and categories read as one tree. */
+  children?: ReactNode;
 }) {
   const { t } = useI18n();
   const [showForm, setShowForm] = useState(false);
@@ -393,17 +398,23 @@ export function ProjectsPanel({
         {projects.map((p, i) => (
           <div key={p.id}>
             <div
-              className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+              className={`group relative flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
                 selected?.id === p.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
               }`}
             >
-              <button type="button" onClick={() => onSelect(p)} className="flex flex-1 items-center gap-2 text-left">
+              <button
+                type="button"
+                onClick={() => onSelect(p)}
+                aria-expanded={children ? selected?.id === p.id : undefined}
+                title={p.name}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
                 <EntityIcon icon={p.icon} />
-                {p.name}
+                <span className="truncate">{p.name}</span>
                 {p.private && <PrivateBadge compact />}
               </button>
               {!readOnly && (
-                <span className="hover-reveal flex items-center gap-1">
+                <span className="hover-reveal tree-actions flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -416,13 +427,14 @@ export function ProjectsPanel({
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveProject(p.id, -1).then(() => onChanged())}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t("dnd.moveUp")} disabled={i === 0} onClick={() => api.adminMoveProject(p.id, -1).then(() => onChanged())}>
                     <ArrowUp className="h-3 w-3" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6"
+                    aria-label={t("dnd.moveDown")}
                     disabled={i === projects.length - 1}
                     onClick={() => api.adminMoveProject(p.id, 1).then(() => onChanged())}
                   >
@@ -447,6 +459,9 @@ export function ProjectsPanel({
                   if (slug) onChanged(slug);
                 }}
               />
+            )}
+            {children && selected?.id === p.id && (
+              <div className="mb-2 ml-3 mt-1 border-l border-[var(--border)] pl-2">{children}</div>
             )}
           </div>
         ))}

@@ -1,7 +1,8 @@
 // A category's pages, one row per page whatever languages it exists in.
 // Split out of pages/AdminApp.tsx, which keeps the layout and state.
 import { useEffect, useRef, useState } from "react";
-import { Plus, PencilLine, Trash2 } from "lucide-react";
+import { GripVertical, Plus, PencilLine, Trash2 } from "lucide-react";
+import { PAGE_MIME, carries, lowerHalf, reorder } from "@/lib/dragOrder";
 import { Button } from "@/components/ui/button";
 import { ReviewMark } from "@/components/ReviewWorkflow";
 import { askConfirm } from "@/components/ConfirmDialog";
@@ -115,6 +116,49 @@ export function PagesPanel({
       else next.delete(slug);
       return next;
     });
+  }
+
+  // Drag and drop (and Alt+arrow keys): the order of the pages, by slug.
+  const [dragSlug, setDragSlug] = useState<string | null>(null);
+  const [dropAt, setDropAt] = useState<{ slug: string; after: boolean } | null>(null);
+  const [order, setOrder] = useState<string[] | null>(null);
+  useEffect(() => setOrder(null), [listKey]);
+  const sorted = order
+    ? order.map((slug) => groups.find((g) => g.slug === slug)).filter((g): g is (typeof groups)[number] => !!g)
+    : groups;
+
+  async function saveOrder(next: string[]) {
+    if (categoryId === null) return;
+    setOrder(next);
+    const ids = next
+      .map((slug) => groups.find((g) => g.slug === slug))
+      .filter((g): g is (typeof groups)[number] => !!g)
+      .map((g) => (g.variants.get(site.default_language) ?? [...g.variants.values()][0]).id);
+    try {
+      await api.adminOrderPages(categoryId, ids);
+      onChanged();
+    } catch (err) {
+      setOrder(null);
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
+  }
+
+  function dropOn(target: string, after: boolean) {
+    const moving = dragSlug;
+    setDragSlug(null);
+    setDropAt(null);
+    if (!moving) return;
+    const slugs = sorted.map((g) => g.slug);
+    const next = reorder(slugs, moving, target, after);
+    if (next !== slugs) void saveOrder(next);
+  }
+
+  function nudge(slug: string, direction: -1 | 1) {
+    const slugs = sorted.map((g) => g.slug);
+    const at = slugs.indexOf(slug);
+    const to = at + direction;
+    if (at < 0 || to < 0 || to >= slugs.length) return;
+    void saveOrder(reorder(slugs, slug, slugs[to], direction === 1));
   }
 
   async function runBulk(action: BulkAction, categoryTarget?: number) {
@@ -279,12 +323,58 @@ export function PagesPanel({
             )}
           </div>
         )}
-        {!loading && groups.filter((group) => !deleting.has(group.slug)).map((group) => {
+        {!loading && sorted.filter((group) => !deleting.has(group.slug)).map((group) => {
           // Opening the row itself lands on the default language, which is
           // the version that always exists.
           const primary = group.variants.get(site.default_language) ?? [...group.variants.values()][0];
           return (
-            <div key={group.slug} className="group flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--surface-2)]">
+            <div
+              key={group.slug}
+              data-page-row={group.slug}
+              draggable={!readOnly}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(PAGE_MIME, String(primary.id));
+                e.dataTransfer.setData("text/plain", group.title);
+                e.dataTransfer.effectAllowed = "move";
+                setDragSlug(group.slug);
+              }}
+              onDragEnd={() => {
+                setDragSlug(null);
+                setDropAt(null);
+              }}
+              onDragOver={(e) => {
+                if (readOnly || !dragSlug || dragSlug === group.slug || !carries(e, PAGE_MIME)) return;
+                e.preventDefault();
+                const after = lowerHalf(e, e.currentTarget);
+                if (dropAt?.slug !== group.slug || dropAt.after !== after) setDropAt({ slug: group.slug, after });
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dropAt?.slug === group.slug) dropOn(group.slug, dropAt.after);
+              }}
+              onKeyDown={(e) => {
+                if (readOnly || !e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+                e.preventDefault();
+                nudge(group.slug, e.key === "ArrowUp" ? -1 : 1);
+              }}
+              className={`group relative flex items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--surface-2)] ${
+                dragSlug === group.slug ? "opacity-50" : ""
+              }`}
+            >
+              {dropAt?.slug === group.slug && (
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-x-2 h-0.5 rounded bg-[var(--accent)] ${dropAt.after ? "-bottom-px" : "-top-px"}`}
+                />
+              )}
+              {!readOnly && (
+                <GripVertical
+                  className="hover-reveal h-3.5 w-3.5 shrink-0 cursor-grab text-[var(--muted)]"
+                  aria-hidden="true"
+                >
+                  <title>{t("dnd.dragHint")}</title>
+                </GripVertical>
+              )}
               {!readOnly && (
                 <input
                   type="checkbox"

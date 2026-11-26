@@ -1176,6 +1176,15 @@ export const api = {
     }),
   adminMoveCategory: (id: number, direction: -1 | 1) =>
     request(`/api/admin/categories/${id}/move?direction=${direction}`, { method: "POST" }),
+  /** Sibling categories in this order (drag and drop). */
+  adminOrderCategories: (ids: number[]) =>
+    request("/api/admin/categories/order", { method: "POST", body: JSON.stringify({ category_ids: ids }) }),
+  /** A category's pages in this order (drag and drop). */
+  adminOrderPages: (categoryId: number, pageIds: number[]) =>
+    request(`/api/admin/categories/${categoryId}/pages/order`, {
+      method: "POST",
+      body: JSON.stringify({ page_ids: pageIds }),
+    }),
   adminDeleteCategory: (id: number) => request(`/api/admin/categories/${id}`, { method: "DELETE" }),
 
   // Admin: pages

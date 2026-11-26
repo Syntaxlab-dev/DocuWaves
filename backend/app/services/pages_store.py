@@ -723,6 +723,34 @@ def reorder_page(category_id: int, page_id: int, direction: int, author: str) ->
     content_sync.full_sync()
 
 
+def set_order(category_id: int, page_ids: list[int], author: str) -> None:
+    """Puts a category's pages in the order given (drag and drop in the
+    admin). Any translation's id stands for its page; pages not named keep
+    their place after the named ones. One commit, only what moved."""
+    pages = list_pages(category_id)
+    slugs: list[str] = []
+    for page_id in page_ids:
+        page = get_page(page_id)
+        if page is None or page["category_id"] != category_id:
+            raise ValueError("unknown page")
+        if page["slug"] not in slugs:
+            slugs.append(page["slug"])
+    ordered = [p for slug in slugs for p in pages if p["slug"] == slug] + [p for p in pages if p["slug"] not in slugs]
+    if not ordered:
+        return
+    project = projects_store.get_project(ordered[0]["project_id"])
+    category = categories_store.get_category(category_id)
+    version = category["version"]
+    content_versions.ensure_editable(project["slug"], version)
+    paths: list[str] = []
+    for position, page in enumerate(ordered):
+        if page["sort_order"] != position:
+            paths += _write_order(project["slug"], category["slug"], page["project_id"], page["slug"], position, version)
+    if paths:
+        git_content_repo.commit_and_push(paths, f"Reorder pages ({category['name']})", author)
+        content_sync.full_sync()
+
+
 def delete_page(page_id: int, author: str) -> None:
     """Removes the page, translations included -- one page, one delete (see
     content_files.delete_page). Removing a single translation and keeping

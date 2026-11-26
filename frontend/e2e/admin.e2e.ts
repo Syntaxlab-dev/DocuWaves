@@ -652,3 +652,25 @@ test("an open page has its properties in a column beside the text", async ({ pag
   await page.getByRole("button", { name: "Page properties" }).click();
   await expect(props).toBeVisible();
 });
+
+test("categories and pages are sorted and moved by dragging", async ({ page }) => {
+  await signIn(page);
+  await page.getByText("Handbook", { exact: true }).click();
+  await page.getByRole("heading", { name: "Categories" }).locator("..").getByRole("button").click();
+  await page.getByRole("textbox", { name: "Name" }).fill("Later");
+  await page.getByRole("button", { name: "Save" }).click();
+  const rows = page.locator("[data-category-row]");
+  await expect(rows.first()).toHaveAttribute("data-category-row", "getting-started");
+  // A sibling dropped on the upper half of another goes before it.
+  await page.locator('[data-category-row="later"]').dragTo(page.locator('[data-category-row="getting-started"]'), {
+    targetPosition: { x: 20, y: 2 },
+  });
+  await expect(rows.first()).toHaveAttribute("data-category-row", "later");
+  // A page dropped on a category moves there.
+  await page.getByRole("button", { name: "Wiring" }).click();
+  await page.locator('[data-page-row="mains-connection"]').dragTo(page.locator('[data-category-row="later"]'));
+  await expect(page.getByText("Page moved to “Later”")).toBeVisible();
+  await expect(page.locator('[data-page-row="mains-connection"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Later" }).click();
+  await expect(page.locator('[data-page-row="mains-connection"]')).toHaveCount(1);
+});

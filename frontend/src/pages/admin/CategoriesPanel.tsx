@@ -18,6 +18,7 @@ import { useSite } from "@/lib/site";
 import { categoryTree, parentChoices, siblingsOf } from "@/lib/categoryTree";
 import { type FieldValues, toFieldValues, fromFieldValues, LocalizedInput } from "./shared";
 import { CoverField } from "./ProjectsPanel";
+import { CATEGORY_MIME, PAGE_MIME, carries, lowerHalf, reorder } from "@/lib/dragOrder";
 
 /** Create OR edit, one form -- see ProjectForm, which this mirrors. */
 export function CategoryForm({
@@ -126,6 +127,7 @@ export function CategoriesPanel({
   readOnly,
   onSelect,
   onChanged,
+  onPageMoved,
 }: {
   projectId: number;
   projectSlug: string;
@@ -135,9 +137,44 @@ export function CategoriesPanel({
   readOnly: boolean;
   onSelect: (c: Category) => void;
   onChanged: (slug?: string) => void;
+  /** A page was dropped onto a category and moved there. */
+  onPageMoved?: () => void;
 }) {
   const { t } = useI18n();
   const [showForm, setShowForm] = useState(false);
+  // Drag and drop: which category is being dragged, and where it would land
+  // (before or after which sibling), or which category a page would go into.
+  const [dragId, setDragId] = useState<number | null>(null);
+  const [dropAt, setDropAt] = useState<{ id: number; after: boolean } | null>(null);
+  const [pageInto, setPageInto] = useState<number | null>(null);
+
+  async function dropCategory(target: Category, after: boolean) {
+    const moving = categories.find((c) => c.id === dragId);
+    setDragId(null);
+    setDropAt(null);
+    if (!moving || moving.parent !== target.parent) return;
+    const siblings = siblingsOf(categories, target);
+    const next = reorder(siblings, moving, target, after);
+    if (next === siblings) return;
+    try {
+      await api.adminOrderCategories(next.map((c) => c.id));
+      onChanged();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
+  }
+
+  async function dropPage(target: Category, pageId: number) {
+    setPageInto(null);
+    try {
+      const result = await api.adminBulkPages("move", [pageId], target.id);
+      if (result.done.length) toast.success(t("dnd.pageMoved").replace("{category}", target.name));
+      else toast.error(result.skipped[0]?.reason || t("common.error"));
+      onPageMoved?.();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : t("common.error"));
+    }
+  }
   const [editingId, setEditingId] = useState<number | null>(null);
 
   async function onDelete(id: number) {
@@ -198,16 +235,62 @@ export function CategoriesPanel({
           return (
           <div key={c.id} style={depth ? { marginLeft: `${depth * 0.75}rem` } : undefined}>
             <div
-              className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
+              data-category-row={c.slug}
+              draggable={!readOnly && editingId !== c.id}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(CATEGORY_MIME, String(c.id));
+                e.dataTransfer.effectAllowed = "move";
+                setDragId(c.id);
+              }}
+              onDragEnd={() => {
+                setDragId(null);
+                setDropAt(null);
+              }}
+              onDragOver={(e) => {
+                if (readOnly) return;
+                if (carries(e, PAGE_MIME)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setPageInto(c.id);
+                  return;
+                }
+                const moving = categories.find((x) => x.id === dragId);
+                if (!carries(e, CATEGORY_MIME) || !moving || moving.id === c.id || moving.parent !== c.parent) return;
+                e.preventDefault();
+                const after = lowerHalf(e, e.currentTarget);
+                if (dropAt?.id !== c.id || dropAt.after !== after) setDropAt({ id: c.id, after });
+              }}
+              onDragLeave={() => {
+                setPageInto((id) => (id === c.id ? null : id));
+                setDropAt((at) => (at?.id === c.id ? null : at));
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const page = Number(e.dataTransfer.getData(PAGE_MIME));
+                if (page) void dropPage(c, page);
+                else if (dropAt?.id === c.id) void dropCategory(c, dropAt.after);
+              }}
+              className={`group relative flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm ${
                 selected?.id === c.id ? "bg-[var(--accent-soft)]" : "hover:bg-[var(--surface-2)]"
-              }`}
+              } ${pageInto === c.id ? "ring-2 ring-[var(--accent)]" : ""} ${dragId === c.id ? "opacity-50" : ""}`}
             >
-              <button type="button" onClick={() => onSelect(c)} className="flex flex-1 items-center gap-2 text-left">
+              {dropAt?.id === c.id && (
+                <span
+                  aria-hidden="true"
+                  className={`pointer-events-none absolute inset-x-1 h-0.5 rounded bg-[var(--accent)] ${dropAt.after ? "-bottom-0.5" : "-top-0.5"}`}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => onSelect(c)}
+                title={c.name}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
                 <EntityIcon icon={c.icon} />
-                {c.name}
+                <span className="truncate">{c.name}</span>
               </button>
               {!readOnly && (
-                <span className="hover-reveal flex items-center gap-1">
+                <span className="hover-reveal tree-actions flex items-center gap-1">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -220,13 +303,14 @@ export function CategoriesPanel({
                   >
                     <Pencil className="h-3 w-3" />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => api.adminMoveCategory(c.id, -1).then(() => onChanged())}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6" aria-label={t("dnd.moveUp")} disabled={i === 0} onClick={() => api.adminMoveCategory(c.id, -1).then(() => onChanged())}>
                     <ArrowUp className="h-3 w-3" />
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6"
+                    aria-label={t("dnd.moveDown")}
                     disabled={i === siblings.length - 1}
                     onClick={() => api.adminMoveCategory(c.id, 1).then(() => onChanged())}
                   >

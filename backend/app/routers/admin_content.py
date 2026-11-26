@@ -562,6 +562,22 @@ def admin_update_category(category_id: int, body: CategoryIn, request: Request):
     return {"ok": True, "id": updated["id"] if updated else category_id, "slug": updated["slug"] if updated else slug}
 
 
+class CategoryOrderIn(BaseModel):
+    category_ids: list[int] = Field(min_length=1, max_length=500)
+
+
+@router.post("/categories/order", summary="Put sibling categories in this order")
+def admin_order_categories(body: CategoryOrderIn, request: Request):
+    _require_content_repo()
+    try:
+        categories_store.set_order(body.category_ids, _author(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="The categories must exist and share one parent.") from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
+
+
 @router.post("/categories/{category_id}/move")
 def admin_move_category(category_id: int, direction: int, request: Request):
     _require_content_repo()
@@ -1286,6 +1302,24 @@ def admin_review_delete_comment(page_id: int, comment_id: str, request: Request)
 )
 def admin_review_discard(page_id: int, request: Request):
     return _review_action(page_review.discard, page_id, _author(request))
+
+
+class PageOrderIn(BaseModel):
+    page_ids: list[int] = Field(min_length=1, max_length=2000)
+
+
+@router.post("/categories/{category_id}/pages/order", summary="Put a category's pages in this order")
+def admin_order_pages(category_id: int, body: PageOrderIn, request: Request):
+    _require_content_repo()
+    if categories_store.get_category(category_id) is None:
+        raise HTTPException(status_code=404, detail="Category not found.")
+    try:
+        pages_store.set_order(category_id, body.page_ids, _author(request))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Every page must be in this category.") from exc
+    except git_content_repo.GitContentError as exc:
+        raise _git_error_response(exc) from exc
+    return {"ok": True}
 
 
 @router.post("/pages/{page_id}/move")
