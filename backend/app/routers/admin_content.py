@@ -566,9 +566,13 @@ class CategoryOrderIn(BaseModel):
     category_ids: list[int] = Field(min_length=1, max_length=500)
 
 
-@router.post("/categories/order", summary="Put sibling categories in this order")
-def admin_order_categories(body: CategoryOrderIn, request: Request):
+@router.post("/categories/{category_id}/siblings/order", summary="Put a category and its siblings in this order")
+def admin_order_categories(category_id: int, body: CategoryOrderIn, request: Request):
+    """`category_id` is one of the categories being ordered: the permission
+    check (project_access) reads the project from the path."""
     _require_content_repo()
+    if category_id not in body.category_ids:
+        raise HTTPException(status_code=400, detail="The category must be one of those ordered.")
     try:
         categories_store.set_order(body.category_ids, _author(request))
     except ValueError as exc:

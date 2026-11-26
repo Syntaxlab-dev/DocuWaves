@@ -1178,7 +1178,10 @@ export const api = {
     request(`/api/admin/categories/${id}/move?direction=${direction}`, { method: "POST" }),
   /** Sibling categories in this order (drag and drop). */
   adminOrderCategories: (ids: number[]) =>
-    request("/api/admin/categories/order", { method: "POST", body: JSON.stringify({ category_ids: ids }) }),
+    request(`/api/admin/categories/${ids[0]}/siblings/order`, {
+      method: "POST",
+      body: JSON.stringify({ category_ids: ids }),
+    }),
   /** A category's pages in this order (drag and drop). */
   adminOrderPages: (categoryId: number, pageIds: number[]) =>
     request(`/api/admin/categories/${categoryId}/pages/order`, {
