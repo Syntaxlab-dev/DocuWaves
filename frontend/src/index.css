@@ -573,6 +573,13 @@ body {
 /* In the content tree the actions float over the end of the row, so a
    name gets the whole width until the row is pointed at. Only where there
    is hovering: on touch screens they stay in line, always visible. */
+/* Dragging is a pointer thing (HTML5 drag events don't fire on touch):
+   no grip where it can't be used. */
+@media (hover: none) {
+  .drag-grip {
+    display: none;
+  }
+}
 @media (hover: hover) {
   .tree-actions {
     position: absolute;

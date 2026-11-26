@@ -1184,18 +1184,20 @@ export function PageEditor({
       </div>
 
       <div
-        className={
-          propsOpen && !focusMode ? "xl:grid xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start xl:gap-5" : undefined
-        }
+        // Narrow screens: the text first, the properties after it (where
+        // Save is), so a phone opens on the writing rather than on forms.
+        className={`flex flex-col ${
+          propsOpen && !focusMode ? "xl:grid xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start xl:gap-5" : ""
+        }`}
       >
       {!focusMode && (
         <aside
           aria-label={t("editor.properties")}
-          className={`mt-3 flex flex-col gap-3 xl:order-last xl:sticky xl:top-4 xl:mt-3 xl:rounded-lg xl:border xl:border-[var(--border)] xl:bg-[var(--surface)] xl:p-3 ${
+          className={`order-last mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-3 xl:sticky xl:top-4 xl:mt-3 xl:rounded-lg xl:border xl:border-[var(--border)] xl:bg-[var(--surface)] xl:p-3 ${
             propsOpen ? "" : "xl:hidden"
           }`}
         >
-          <h2 className="hidden text-xs font-semibold uppercase tracking-wide text-[var(--muted)] xl:block">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--muted)]">
             {t("editor.properties")}
           </h2>
           <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
@@ -1311,7 +1313,7 @@ export function PageEditor({
         />
       )}
 
-      <div className="mt-3 flex gap-1 border-b border-[var(--border)]">
+      <div className="mt-3 flex flex-wrap gap-1 border-b border-[var(--border)]">
         <button
           type="button"
           onClick={() => setTab("edit")}

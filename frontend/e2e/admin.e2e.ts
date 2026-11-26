@@ -674,3 +674,17 @@ test("categories and pages are sorted and moved by dragging", async ({ page }) =
   await page.getByRole("button", { name: "Later" }).click();
   await expect(page.locator('[data-page-row="mains-connection"]')).toHaveCount(1);
 });
+
+test("on a phone the admin lists pages and opens the editor without sideways scrolling", async ({ page }) => {
+  await signIn(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/admin/content/handbook/getting-started");
+  // The tree steps aside for the category's pages; the path leads back.
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeHidden();
+  await page.getByText("Setting up the widget").first().click();
+  await expect(page.getByRole("textbox", { name: "Title" })).toBeVisible();
+  const [scroll, inner] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+  expect(scroll).toBeLessThanOrEqual(inner);
+  await page.getByRole("navigation", { name: "Path" }).getByRole("button", { name: "Handbook" }).click();
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+});

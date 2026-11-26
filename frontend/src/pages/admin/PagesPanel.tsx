@@ -369,7 +369,7 @@ export function PagesPanel({
               )}
               {!readOnly && (
                 <GripVertical
-                  className="hover-reveal h-3.5 w-3.5 shrink-0 cursor-grab text-[var(--muted)]"
+                  className="hover-reveal drag-grip h-3.5 w-3.5 shrink-0 cursor-grab text-[var(--muted)]"
                   aria-hidden="true"
                 >
                   <title>{t("dnd.dragHint")}</title>

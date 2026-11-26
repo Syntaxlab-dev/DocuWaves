@@ -581,7 +581,11 @@ export function AdminApp() {
             aside and the editor takes the width; the breadcrumb above
             leads back to them. */}
         <div className={editing !== null ? "grid gap-4" : "grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]"}>
+          {/* On a phone or tablet the tree and the page list can't sit
+              side by side: once a category is picked, its pages take the
+              screen and the breadcrumb leads back to the tree. */}
           {editing === null && (
+          <div className={selectedCategory ? "hidden lg:block" : undefined}>
           <ProjectsPanel
             projects={projects}
             readOnly={!canWrite}
@@ -611,6 +615,7 @@ export function AdminApp() {
               />
             )}
           </ProjectsPanel>
+          </div>
           )}
 
           <div className="min-w-0">
