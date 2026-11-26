@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readingMinutes, wordCount } from "./textStats";
+import { excerpt, readingMinutes, wordCount } from "./textStats";
 
 describe("wordCount", () => {
   it("counts the prose, not the markup", () => {
@@ -17,5 +17,21 @@ describe("readingMinutes", () => {
   it("rounds, and never says 0", () => {
     expect(readingMinutes(0)).toBe(1);
     expect(readingMinutes(450)).toBe(2);
+  });
+});
+
+describe("excerpt", () => {
+  it("takes the first paragraph of prose as plain text", () => {
+    expect(excerpt("# Title\n\n![x](a.png)\n\nUse the **supplied** [cable](x.md).\n\nMore.")).toBe(
+      "Use the supplied cable.",
+    );
+  });
+  it("cuts long text at a word", () => {
+    const text = excerpt("word ".repeat(60), 30);
+    expect(text.endsWith("…")).toBe(true);
+    expect(text.length).toBeLessThanOrEqual(31);
+  });
+  it("is empty for a page without prose", () => {
+    expect(excerpt("```\ncode\n```")).toBe("");
   });
 });

@@ -228,6 +228,16 @@ export function MarkdownView({
             }
             return image;
           },
+          // Wide tables scroll sideways in place on a phone instead of
+          // widening the page (index.css .table-wrap).
+          table({ node, children, ...props }) {
+            void node;
+            return (
+              <div className="table-wrap">
+                <table {...props}>{children}</table>
+              </div>
+            );
+          },
           a({ node, children, ...props }) {
             void node;
             return (

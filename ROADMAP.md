@@ -110,16 +110,16 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | ✅ | A reading-progress bar on long pages | S |
 | ✅ | A "back to top" button | S |
 | ✅ | Reader settings: text size and line width, remembered in the browser | S |
-| | Nicer tables: striped rows, sticky header, horizontal scrolling on phones | S |
-| | Previous/next as cards with category and a short excerpt | S |
+| ✅ | Nicer tables: striped rows, sticky header, horizontal scrolling on phones | S |
+| ✅ | Previous/next as cards with category and a short excerpt | S |
 | ✅ | Image captions from the image title, optional frame and shadow | S |
 | | A home page header: large search field, tagline, optional cover image | M |
 | | Category tiles with a short description and their top three pages | S |
 | | "Recently updated" on the home page | S |
 | | A calmer sidebar with category icons instead of capitals | S |
 | | A friendlier 404 page with search and similar pages | S |
-| | Typography: a clear heading scale, more white space, a choice of reading font | M |
-| | A polished dark mode: contrast checked, bright screenshots dimmed slightly | S |
+| ✅ | Typography: a clear heading scale, more white space, a choice of reading font | M |
+| ✅ | A polished dark mode: contrast checked, bright screenshots dimmed slightly | S |
 | | Gentle transitions, off under "reduce motion" | S |
 | | Sign-in and setup pages in the instance's branding | S |
 | | Mobile navigation as a drawer with search | S |

@@ -6,9 +6,11 @@ import { readStored, writeStored } from "@/lib/theme";
 
 export type ReaderSize = "s" | "m" | "l";
 export type ReaderWidth = "full" | "narrow";
+export type ReaderFont = "sans" | "serif";
 export interface ReaderPrefs {
   size: ReaderSize;
   width: ReaderWidth;
+  font: ReaderFont;
 }
 
 const KEY = "docuwaves-reader";
@@ -20,9 +22,10 @@ function load(): ReaderPrefs {
     return {
       size: raw.size === "s" || raw.size === "l" ? raw.size : "m",
       width: raw.width === "narrow" ? "narrow" : "full",
+      font: raw.font === "serif" ? "serif" : "sans",
     };
   } catch {
-    return { size: "m", width: "full" };
+    return { size: "m", width: "full", font: "sans" };
   }
 }
 
@@ -32,6 +35,7 @@ export function applyReaderPrefs(prefs: ReaderPrefs = current): void {
   const root = document.documentElement;
   root.dataset.readerSize = prefs.size;
   root.dataset.readerWidth = prefs.width;
+  root.dataset.readerFont = prefs.font;
 }
 
 export function setReaderPrefs(next: Partial<ReaderPrefs>): void {

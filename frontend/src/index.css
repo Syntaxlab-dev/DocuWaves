@@ -602,3 +602,44 @@ html[data-reader-width="narrow"] .markdown-body { max-width: 42rem; }
   .reader-chrome { display: none !important; }
   .markdown-body .zoom-trigger { cursor: auto; }
 }
+
+/* Typography: a clearer heading scale and a little more air. */
+.markdown-body { line-height: 1.75; }
+.markdown-body h1 { font-size: 2rem; line-height: 1.25; letter-spacing: -0.015em; }
+.markdown-body h2 { font-size: 1.5rem; line-height: 1.3; letter-spacing: -0.01em; margin: 2.25rem 0 0.75rem; }
+.markdown-body h3 { font-size: 1.2rem; line-height: 1.35; margin: 1.75rem 0 0.5rem; }
+.markdown-body h4 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.4rem; }
+.markdown-body p { margin: 0.9rem 0; line-height: inherit; }
+.markdown-body li { margin: 0.35rem 0; }
+.markdown-body > :first-child { margin-top: 0; }
+html[data-reader-font="serif"] .markdown-body {
+  font-family: Charter, "Bitstream Charter", "Iowan Old Style", "Sitka Text", Cambria, Georgia, serif;
+}
+html[data-reader-font="serif"] .markdown-body :is(h1, h2, h3, h4, code, pre, table, .callout-title) { font-family: var(--font-sans); }
+html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(--font-mono); }
+
+/* Tables: a rounded frame, striped rows, a header that stays in view while
+   a long table scrolls past, and sideways scrolling in place on a phone. */
+.markdown-body .table-wrap { margin: 1.25rem 0; border: 1px solid var(--border); border-radius: 0.6rem; }
+.markdown-body .table-wrap table { margin: 0; border-collapse: separate; border-spacing: 0; font-size: 0.925em; }
+.markdown-body .table-wrap th, .markdown-body .table-wrap td { border: 0; border-bottom: 1px solid var(--border); padding: 0.55rem 0.8rem; vertical-align: top; }
+.markdown-body .table-wrap th:not(:last-child), .markdown-body .table-wrap td:not(:last-child) { border-right: 1px solid var(--border); }
+.markdown-body .table-wrap tr:last-child td { border-bottom: 0; }
+.markdown-body .table-wrap th { position: sticky; top: 0; z-index: 1; font-weight: 600; background: var(--surface-2); }
+.markdown-body .table-wrap thead tr:first-child th:first-child { border-top-left-radius: 0.6rem; }
+.markdown-body .table-wrap thead tr:first-child th:last-child { border-top-right-radius: 0.6rem; }
+.markdown-body .table-wrap tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-2) 55%, transparent); }
+@media (max-width: 639px) {
+  /* A scroll container can't have a sticky header against the page, so the
+     header only sticks on wider screens, where nothing scrolls sideways. */
+  .markdown-body .table-wrap { overflow-x: auto; }
+  .markdown-body .table-wrap th { position: static; }
+  .markdown-body .table-wrap table { min-width: 32rem; }
+}
+
+/* Dark mode: bright screenshots are dimmed a touch so they don't glare; a
+   hover or the lightbox shows them at full brightness. */
+.dark .markdown-body img { filter: brightness(0.88) contrast(1.04); transition: filter 0.2s; }
+.dark .markdown-body img:hover, .dark .lightbox img { filter: none; }
+.dark .markdown-body .image-figure img { box-shadow: 0 6px 24px -12px rgb(0 0 0 / 0.8); }
+@media print { .markdown-body img { filter: none !important; } }

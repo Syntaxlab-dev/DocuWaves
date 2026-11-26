@@ -224,7 +224,7 @@ export function PublicPage() {
         language={data.page.language}
         version={data.page.version}
       />
-      <PageFooterNav nav={nav} pageSlug={data.page.slug} />
+      <PageFooterNav nav={nav} pageSlug={data.page.slug} lang={lang} version={version} />
       {/* Screen-invisible; the address and date a printout would otherwise
           not carry. Last in the flow so it lands at the foot of the text. */}
       <PrintMargins

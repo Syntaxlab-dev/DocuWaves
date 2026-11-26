@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Type } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
-import { setReaderPrefs, useReaderPrefs, type ReaderSize, type ReaderWidth } from "@/lib/readerPrefs";
+import { setReaderPrefs, useReaderPrefs, type ReaderFont, type ReaderSize, type ReaderWidth } from "@/lib/readerPrefs";
 
 function useScroll(): { progress: number; y: number; long: boolean } {
   const [state, setState] = useState({ progress: 0, y: 0, long: false });
@@ -94,6 +94,10 @@ export function ReaderSettings() {
     ["full", t("reader.widthFull")],
     ["narrow", t("reader.widthNarrow")],
   ];
+  const fonts: [ReaderFont, string][] = [
+    ["sans", t("reader.fontSans")],
+    ["serif", t("reader.fontSerif")],
+  ];
   const segment = (active: boolean) =>
     `flex-1 rounded-md px-2 py-1 text-xs transition-colors ${
       active ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "text-[var(--muted)] hover:text-[var(--ink)]"
@@ -129,6 +133,14 @@ export function ReaderSettings() {
           <div className="mt-1 flex gap-1 rounded-lg border border-[var(--border)] p-0.5">
             {widths.map(([value, label]) => (
               <button key={value} type="button" aria-pressed={prefs.width === value} className={segment(prefs.width === value)} onClick={() => setReaderPrefs({ width: value })}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-3 text-xs font-medium">{t("reader.font")}</p>
+          <div className="mt-1 flex gap-1 rounded-lg border border-[var(--border)] p-0.5">
+            {fonts.map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={prefs.font === value} className={segment(prefs.font === value)} onClick={() => setReaderPrefs({ font: value })}>
                 {label}
               </button>
             ))}
