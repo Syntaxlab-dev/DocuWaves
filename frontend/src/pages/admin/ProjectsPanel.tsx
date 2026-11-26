@@ -1,4 +1,5 @@
 // The project list and the project form.
+import { EntityIcon, IconField } from "@/components/EntityIcon";
 // Split out of pages/AdminApp.tsx, which keeps the layout and state.
 import {
   useEffect,
@@ -223,7 +224,7 @@ export function ProjectForm({ project, onDone }: { project: Project | null; onDo
   return (
     <form onSubmit={onSubmit} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
       <LocalizedInput label={t("admin.projectName")} values={name} onChange={setName} languages={languages} required />
-      <Input placeholder={t("admin.projectIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
+      <IconField placeholder={t("admin.projectIcon")} value={icon} onChange={setIcon} />
       <Input placeholder={t("admin.projectColor")} value={color} onChange={(e) => setColor(e.target.value)} />
       <LocalizedInput
         label={t("admin.projectDescription")}
@@ -397,7 +398,7 @@ export function ProjectsPanel({
               }`}
             >
               <button type="button" onClick={() => onSelect(p)} className="flex flex-1 items-center gap-2 text-left">
-                {p.icon && <span>{p.icon}</span>}
+                <EntityIcon icon={p.icon} />
                 {p.name}
                 {p.private && <PrivateBadge compact />}
               </button>

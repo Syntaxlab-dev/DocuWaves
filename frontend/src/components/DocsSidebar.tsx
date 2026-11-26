@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { EntityIcon } from "@/components/EntityIcon";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown, ChevronRight, ListFilter, Menu, Search, X } from "lucide-react";
 import type { NavCategory, ProjectNav } from "@/lib/api";
@@ -165,7 +166,7 @@ export function DocsSidebar({
             activeCategorySlug || activePageSlug ? "text-[var(--ink)]" : "text-[var(--accent)]",
           )}
         >
-          {nav.project.icon && <span>{nav.project.icon}</span>}
+          <EntityIcon icon={nav.project.icon} />
           {nav.project.name}
         </Link>
 
@@ -229,7 +230,7 @@ export function DocsSidebar({
                   >
                     {!depth && category.icon && (
                       <span className="w-5 shrink-0 text-center text-base leading-none" aria-hidden="true">
-                        {category.icon}
+                        <EntityIcon icon={category.icon} />
                       </span>
                     )}
                     <span className="truncate">{category.name}</span>

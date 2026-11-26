@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { EntityIcon } from "@/components/EntityIcon";
 import { Link, useParams } from "react-router-dom";
 import { FileText } from "lucide-react";
 import { DocsShell } from "@/components/DocsShell";
@@ -77,7 +78,9 @@ export function PublicCategory() {
         ))}
       </nav>
       <div className="mt-2 flex items-center gap-2">
-        {category.icon && <span className="text-2xl">{category.icon}</span>}
+        <span className="text-2xl">
+          <EntityIcon icon={category.icon} className="h-7 w-7" />
+        </span>
         <h1 className="text-2xl font-semibold">{category.name}</h1>
       </div>
       <Link

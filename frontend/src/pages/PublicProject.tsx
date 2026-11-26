@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { EntityIcon } from "@/components/EntityIcon";
 import { Link, useParams } from "react-router-dom";
 import { CloudDownload } from "lucide-react";
 import { offlineAvailable, saveForOffline, savedAt } from "@/lib/offline";
@@ -59,7 +60,9 @@ export function PublicProject() {
   return (
     <DocsShell nav={nav}>
       <div className="flex items-center gap-2">
-        {nav.project.icon && <span className="text-2xl">{nav.project.icon}</span>}
+        <span className="text-2xl">
+          <EntityIcon icon={nav.project.icon} className="h-7 w-7" />
+        </span>
         <h1 className="text-2xl font-semibold">{nav.project.name}</h1>
         {nav.project.private && <PrivateBadge />}
       </div>

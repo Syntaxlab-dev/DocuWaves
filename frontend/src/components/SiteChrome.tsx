@@ -1,4 +1,5 @@
 // The parts of the public frame the instance's owner configures in the
+import { EntityIcon } from "@/components/EntityIcon";
 // admin's branding form: the announcement bar on top, the project switcher
 // in the header, and the footer with its link columns.
 import { useEffect, useRef, useState } from "react";
@@ -116,7 +117,7 @@ export function ProjectSwitcher() {
       >
         {current ? (
           <>
-            {current.icon && <span aria-hidden="true">{current.icon}</span>}
+            <EntityIcon icon={current.icon} />
             <span className="max-w-[10rem] truncate">{current.name}</span>
           </>
         ) : (
@@ -134,7 +135,7 @@ export function ProjectSwitcher() {
                 className="flex items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--surface-2)]"
               >
                 <span className="w-5 shrink-0 text-center" aria-hidden="true">
-                  {p.icon}
+                  <EntityIcon icon={p.icon} />
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">{p.name}</span>

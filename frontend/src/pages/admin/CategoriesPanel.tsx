@@ -1,4 +1,5 @@
 // A project's categories and the category form.
+import { EntityIcon, IconField } from "@/components/EntityIcon";
 // Split out of pages/AdminApp.tsx, which keeps the layout and state.
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
@@ -11,7 +12,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { askConfirm } from "@/components/ConfirmDialog";
-import { Input } from "@/components/ui/input";
 import { api, ApiError, type Category } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { useSite } from "@/lib/site";
@@ -72,7 +72,7 @@ export function CategoryForm({
   return (
     <form onSubmit={onSubmit} className="mt-2 flex flex-col gap-2 rounded-lg border border-[var(--border)] p-3">
       <LocalizedInput label={t("admin.categoryName")} values={name} onChange={setName} languages={languages} required />
-      <Input placeholder={t("admin.categoryIcon")} value={icon} onChange={(e) => setIcon(e.target.value)} />
+      <IconField placeholder={t("admin.categoryIcon")} value={icon} onChange={setIcon} />
       {/* Only when there is somewhere to nest it: in a project with one
           category, the choice would have a single answer. */}
       {(choices.length > 0 || parent) && (
@@ -203,7 +203,7 @@ export function CategoriesPanel({
               }`}
             >
               <button type="button" onClick={() => onSelect(c)} className="flex flex-1 items-center gap-2 text-left">
-                {c.icon && <span>{c.icon}</span>}
+                <EntityIcon icon={c.icon} />
                 {c.name}
               </button>
               {!readOnly && (

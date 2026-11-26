@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { EntityIcon } from "@/components/EntityIcon";
 import { ChevronRight } from "lucide-react";
 import { CoverImage } from "@/components/CoverImage";
 import type { NavCategory, ProjectNav } from "@/lib/api";
@@ -49,7 +50,7 @@ export function CategoryTiles({
               <div className="flex items-center gap-2">
                 {c.icon && (
                   <span className="text-lg" aria-hidden="true">
-                    {c.icon}
+                    <EntityIcon icon={c.icon} className="h-5 w-5" />
                   </span>
                 )}
                 <Link

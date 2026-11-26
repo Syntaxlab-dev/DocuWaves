@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { EntityIcon } from "@/components/EntityIcon";
 import { Link, useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
 import { api, type ChangelogEntry, type Project } from "@/lib/api";
@@ -139,7 +140,9 @@ export function PublicHome() {
                 <CoverImage url={p.image_url} />
                 <CardHeader>
                   <div className="flex items-center gap-2">
-                    {p.icon && <span className="text-xl">{p.icon}</span>}
+                    <span className="text-xl">
+                      <EntityIcon icon={p.icon} className="h-5 w-5" />
+                    </span>
                     <CardTitle className="text-base font-semibold text-[var(--ink)]">{p.name}</CardTitle>
                     {p.private && <PrivateBadge compact />}
                   </div>

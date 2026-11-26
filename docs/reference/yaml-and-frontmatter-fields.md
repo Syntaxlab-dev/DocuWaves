@@ -29,8 +29,15 @@ The file is optional, and so is every field in it.
 | `logo_dark` | string | falls back to `logo` | Used in dark mode |
 | `favicon` | string | *(the shipped icon)* | A filename in `content/_site/` |
 | `accent` | string | *(the built-in accent)* | `#rgb` or `#rrggbb` only |
-| `footer_text` | string, **localizable** | *(no footer)* | |
-| `footer_links` | list of `{label, url}` | *(none)* | Maximum 12. `url` must start with `http://`, `https://`, `mailto:` or `/` |
+| `footer_text` | string, **localizable** | *(none)* | |
+| `footer_links` | list of `{label, url, column}` | *(none)* | Maximum 24. `url` must start with `http://`, `https://`, `mailto:` or `/`. Links with the same optional `column` form a column under that heading |
+| `powered_by` | boolean | `true` | `false` hides the small "Made with DocuWaves" line in the footer |
+| `announcement.text` | string, **localizable** | *(none)* | One line on top of every public page; readers can close it until the text changes |
+| `announcement.link` | string | *(none)* | Same rule as a footer link's `url` |
+| `appearance.surface` | `cool`, `neutral` or `warm` | `cool` | Background tone |
+| `appearance.radius` | `sharp`, `medium` or `round` | `medium` | Corners everywhere on the site |
+| `appearance.header` | `plain` or `accent` | `plain` | `accent` fills the header with the accent colour |
+| `custom_css` | string | *(none)* | Loaded on the public site only, after every other style. Maximum 20,000 characters |
 | `analytics.umami_url` | string | *(none — off)* | An absolute `http(s)` URL whose path ends in `.js`. Both analytics fields or neither |
 | `analytics.umami_website_id` | string | *(none — off)* | Letters, digits, `-` and `_`, 8–64 characters |
 
@@ -41,7 +48,7 @@ Text fields are truncated at 200 characters. See [Branding this instance](/p/doc
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `name` | string, **localizable** | the slug | What the project is called |
-| `icon` | string | `""` | A single emoji, shown on the tile |
+| `icon` | string | `""` | A single emoji, or `lucide:<name>` for one of the built-in line icons (the admin form has a picker), shown on the tile |
 | `color` | string | `""` | An accent for this project |
 | `image` | string | *(none)* | Cover image, relative to **this file's** directory — so `assets/cover.png`. See [Tile cover images](/p/docuwaves/pages/tile-cover-images) |
 | `description` | string, **localizable** | `""` | One line on the home page tile |
@@ -58,7 +65,7 @@ The directory name is the slug, and the slug is the URL. `image` is the only fie
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `name` | string, **localizable** | the slug | |
-| `icon` | string | `""` | A single emoji |
+| `icon` | string | `""` | A single emoji, or `lucide:<name>` as for a project |
 | `image` | string | *(none)* | Cover image, relative to this file's directory — one level below `assets/`, so `../assets/x.png` |
 | `parent` | string | *(none)* | The slug of the category this one sits inside, in the same version. Up to four levels deep; an unknown parent, a loop or a deeper nesting is ignored and the category shows at the top level. See [Categories inside categories](/p/docuwaves/pages/projects-categories-and-pages) |
 | `order` | integer | `0` | Lower sorts first, among categories with the same parent |
