@@ -189,7 +189,9 @@ test("renaming a page keeps its old address working", async ({ page }) => {
   await openPageInEditor(page, "Installing the widget");
   await page.getByRole("textbox", { name: "Title" }).fill("Setting up the widget");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  // Waits for the save itself: the button is only disabled WHILE saving,
+  // which a fast save can finish before anyone looks.
+  await expect(page.getByRole("status").filter({ hasText: /^Saved / })).toBeVisible();
   await expect
     .poll(async () => (await page.request.get("/api/public/projects/handbook/pages/installing-the-widget", { maxRedirects: 0 })).status())
     .toBe(301);
@@ -204,7 +206,9 @@ test("an unpublished page leaves the public site", async ({ page, request }) => 
   await page.getByRole("button", { name: "Published" }).click();
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("button", { name: "Draft" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  // Waits for the save itself: the button is only disabled WHILE saving,
+  // which a fast save can finish before anyone looks.
+  await expect(page.getByRole("status").filter({ hasText: /^Saved / })).toBeVisible();
 
   // A reader without a session: the editor's own browser may still see drafts.
   // Polled, because the button flips before the server has written the file.

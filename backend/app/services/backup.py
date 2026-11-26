@@ -117,9 +117,12 @@ def _has_history() -> bool:
     """False for a repository with no commits yet -- a fresh install before
     anything has been written. The archive is still worth making; it just
     has no bundle in it, and says so."""
+    # head_sha(), not repo.head.is_valid(): the latter reads HEAD's object
+    # through GitPython's shared cat-file process without the lock that
+    # process needs, and a page view reading at the same moment left the
+    # pipe wedged -- every later git read in the instance then hung.
     try:
-        repo = git_content_repo.ensure_clone()
-        return bool(repo.head.is_valid())
+        return bool(git_content_repo.head_sha())
     except (git_content_repo.GitContentError, git.GitError, ValueError):
         return False
 
@@ -130,9 +133,9 @@ def _write_bundle(destination: Path) -> bool:
     --all rather than the branch: a bundle is the backup of the history, and
     a tag or a second branch somebody made in the repo is part of that."""
     try:
-        repo = git_content_repo.ensure_clone()
-        if not repo.head.is_valid():
+        if not git_content_repo.head_sha():  # see _has_history
             return False
+        repo = git_content_repo.ensure_clone()
         repo.git.bundle("create", str(destination), "--all")
         return destination.is_file()
     except (git_content_repo.GitContentError, git.GitError, ValueError, OSError) as exc:
