@@ -60,3 +60,34 @@ either way.
 
 The file name is not decoration: "add this to your config" is the sentence
 that sends readers hunting for *which* config.
+
+## Line numbers and marked lines
+
+Two more things can follow the language, in any order with the title:
+`showLineNumbers` puts numbers beside the lines, and `{…}` marks lines,
+either one by one or as ranges.
+
+````markdown
+```python title="app/settings.py" {2,5-6} showLineNumbers
+from pathlib import Path
+DATA_DIR = Path("/data")  # everything lives here
+
+def content_path(project: str) -> Path:
+    """Where a project's Markdown files are."""
+    return DATA_DIR / "content" / project
+```
+````
+
+```python title="app/settings.py" {2,5-6} showLineNumbers
+from pathlib import Path
+DATA_DIR = Path("/data")  # everything lives here
+
+def content_path(project: str) -> Path:
+    """Where a project's Markdown files are."""
+    return DATA_DIR / "content" / project
+```
+
+Marked lines are how a page says "this is the line that changed" without
+a paragraph around it. Neither the numbers nor the marking end up in what
+the copy button copies, and both are left out of a printout, where long
+lines wrap.

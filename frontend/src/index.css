@@ -698,3 +698,62 @@ html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(
     animation: none;
   }
 }
+
+/* ---- Code blocks: line numbers and marked lines (v2.3) --------------------
+   Both lie over the <pre> (see CodeBlock). One line pitch is 1lh of the
+   block's own line-height, set here once for the <pre> and its overlays. */
+.markdown-body .code-body { position: relative; margin: 1rem 0; border-radius: 0.5rem; background: var(--surface-2); }
+.markdown-body .code-block.has-title .code-body { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+/* The block's background moves to .code-body, so a marked line can sit
+   between it and the text instead of over the text. */
+.markdown-body .code-body > pre { position: relative; z-index: 1; margin: 0; background: transparent; }
+.markdown-body .code-body > pre > code { display: block; padding: 0; font-size: 0.85em; line-height: 1.6; background: transparent; }
+.markdown-body .code-mark {
+  position: absolute; left: 0; right: 0;
+  /* The code's own size and line-height, so 1lh is exactly one line. */
+  font-size: 0.85em; line-height: 1.6; height: 1lh;
+  top: calc(1rem + var(--line) * 1lh);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 3px 0 0 var(--accent);
+  pointer-events: none;
+}
+.markdown-body .code-body.has-numbers > pre { padding-left: 3.25rem; }
+.markdown-body .code-gutter {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 2.5rem; z-index: 2;
+  padding: 1rem 0.5rem 1rem 0;
+  display: flex; flex-direction: column; align-items: flex-end;
+  border-right: 1px solid var(--border);
+  font-size: 0.85em; line-height: 1.6;
+  color: var(--muted); user-select: none;
+}
+.markdown-body .code-gutter > span { font-family: var(--font-mono); font-size: 0.85em; line-height: calc(1.6em / 0.85); }
+.markdown-body .code-gutter > .is-marked { color: var(--accent); font-weight: 600; }
+@media print {
+  .markdown-body .code-mark, .markdown-body .code-gutter { display: none; }
+  .markdown-body .code-body.has-numbers > pre { padding-left: 1rem; }
+}
+
+/* ---- Light code colours ----------------------------------------------------
+   main.tsx loads highlight.js's github-dark theme, whose plain text and
+   strings are light greys and blues meant for a dark background. On the
+   light theme's pale block they were barely readable. These are the GitHub
+   light colours for the same tokens, used whenever the dark theme isn't on. */
+html:not(.dark) .markdown-body pre code.hljs { color: var(--ink); }
+html:not(.dark) .hljs-doctag, html:not(.dark) .hljs-keyword, html:not(.dark) .hljs-meta .hljs-keyword,
+html:not(.dark) .hljs-template-tag, html:not(.dark) .hljs-template-variable, html:not(.dark) .hljs-type,
+html:not(.dark) .hljs-variable.language_ { color: #cf222e; }
+html:not(.dark) .hljs-title, html:not(.dark) .hljs-title.class_, html:not(.dark) .hljs-title.class_.inherited__,
+html:not(.dark) .hljs-title.function_ { color: #8250df; }
+html:not(.dark) .hljs-attr, html:not(.dark) .hljs-attribute, html:not(.dark) .hljs-literal, html:not(.dark) .hljs-meta,
+html:not(.dark) .hljs-number, html:not(.dark) .hljs-operator, html:not(.dark) .hljs-variable,
+html:not(.dark) .hljs-selector-attr, html:not(.dark) .hljs-selector-class, html:not(.dark) .hljs-selector-id { color: #0550ae; }
+html:not(.dark) .hljs-regexp, html:not(.dark) .hljs-string, html:not(.dark) .hljs-meta .hljs-string { color: #0a3069; }
+html:not(.dark) .hljs-built_in, html:not(.dark) .hljs-symbol { color: #953800; }
+html:not(.dark) .hljs-comment, html:not(.dark) .hljs-code, html:not(.dark) .hljs-formula { color: #57606a; }
+html:not(.dark) .hljs-name, html:not(.dark) .hljs-quote, html:not(.dark) .hljs-selector-tag,
+html:not(.dark) .hljs-selector-pseudo { color: #116329; }
+html:not(.dark) .hljs-subst { color: var(--ink); }
+html:not(.dark) .hljs-section { color: #0550ae; font-weight: bold; }
+html:not(.dark) .hljs-bullet { color: #953800; }
+html:not(.dark) .hljs-addition { color: #116329; background-color: #dafbe1; }
+html:not(.dark) .hljs-deletion { color: #82071e; background-color: #ffebe9; }

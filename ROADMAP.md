@@ -136,8 +136,8 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | | A floating formatting bar on text selection | M |
 | | Split view in Markdown mode: text left, live preview right | M |
 | ✅ | A keyboard-shortcut overview behind "?" | S |
-| | Code blocks with a file-name header, line numbers and highlighted lines | M |
-| | Link previews for internal links on hover | M |
+| ✅ | Code blocks with a file-name header, line numbers and highlighted lines | M |
+| ✅ | Link previews for internal links on hover | M |
 | ✅ | "Recently read" and bookmarks for readers, in their own browser | S |
 | ✅ | A filter field in the sidebar; expanded categories remembered | S |
 | ✅ | Quick search (Ctrl+K) shows recent pages and actions before typing | S |

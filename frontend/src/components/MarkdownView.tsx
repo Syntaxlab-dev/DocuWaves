@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type HTMLAttributes, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type HTMLAttributes, type ReactNode } from "react";
 import { AlertOctagon, AlertTriangle, Info, Lightbulb, MessageSquareWarning, type LucideIcon } from "lucide-react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +17,7 @@ import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
 import { remarkTabs } from "@/lib/tabs";
 import { InsideLink, ZoomImage } from "@/components/ZoomImage";
+import { PreviewLink } from "@/components/LinkPreview";
 
 /**
  * Images are written in a page as a plain relative path
@@ -242,7 +243,7 @@ export function MarkdownView({
             void node;
             return (
               <InsideLink.Provider value={true}>
-                <a {...props}>{children}</a>
+                <PreviewLink {...props}>{children}</PreviewLink>
               </InsideLink.Provider>
             );
           },
@@ -268,9 +269,16 @@ export function MarkdownView({
             // A ```openapi block is an API reference, see OpenApiReference.
             const spec = fencedSource(node, "openapi");
             if (spec !== null) return <OpenApiReference source={spec} />;
-            const { title, language } = codeInfo(node);
+            const { title, language, lineNumbers, marked, lines } = codeInfo(node);
             return (
-              <CodeBlock title={title} language={language} {...props}>
+              <CodeBlock
+                title={title}
+                language={language}
+                lineNumbers={lineNumbers}
+                marked={marked}
+                lines={lines}
+                {...props}
+              >
                 {children}
               </CodeBlock>
             );
@@ -352,25 +360,58 @@ const CALLOUTS = {
 /**
  * What the fence line says about a block beyond its language:
  *
- *     ```python title="app/main.py"
+ *     ```python title="app/main.py" {2,5-7} showLineNumbers
  *
  * The part after the language is the fence's "meta" string, which Markdown
- * itself ignores and remark hands through on the <code> element. Only
- * `title` is read; anything else there is left alone, so a meta string
+ * itself ignores and remark hands through on the <code> element. Read here:
+ * `title`, `{…}` (lines to highlight, the notation other docs tools use
+ * too) and `showLineNumbers`. Anything else is left alone, so a meta string
  * written for another tool does no harm here.
  */
-function codeInfo(node?: Element): { title: string; language: string } {
-  const code = node?.children.find((child) => child.type === "element");
-  if (code?.type !== "element" || code.tagName !== "code") return { title: "", language: "" };
-  const meta = typeof code.data === "object" && code.data && "meta" in code.data ? String(code.data.meta ?? "") : "";
+export function parseCodeMeta(meta: string): { title: string; lineNumbers: boolean; marked: Set<number> } {
   const title = /(?:^|\s)title=(?:"([^"]*)"|'([^']*)'|(\S+))/.exec(meta);
+  const marked = new Set<number>();
+  // Outside the title's quotes, so a file called "a{1}.txt" marks nothing.
+  const rest = title ? meta.replace(title[0], " ") : meta;
+  const ranges = /(?:^|\s)\{([\d\s,-]+)\}/.exec(rest);
+  for (const part of ranges ? ranges[1].split(",") : []) {
+    const [from, to] = part.split("-").map((n) => parseInt(n.trim(), 10));
+    if (!Number.isFinite(from)) continue;
+    const end = Number.isFinite(to) ? Math.min(to, from + 500) : from;
+    for (let line = from; line <= end; line++) if (line > 0) marked.add(line);
+  }
+  return {
+    title: title ? (title[1] ?? title[2] ?? title[3] ?? "").trim() : "",
+    lineNumbers: /(?:^|\s)(?:showLineNumbers|lineNumbers|linenums)(?:\s|$)/.test(rest),
+    marked,
+  };
+}
+
+function textOf(node: ElementContent | Element): string {
+  if (node.type === "text") return node.value;
+  if (node.type === "element") return node.children.map((c) => textOf(c as ElementContent)).join("");
+  return "";
+}
+
+function codeInfo(node?: Element): {
+  title: string;
+  language: string;
+  lineNumbers: boolean;
+  marked: Set<number>;
+  lines: number;
+} {
+  const code = node?.children.find((child) => child.type === "element");
+  if (code?.type !== "element" || code.tagName !== "code")
+    return { title: "", language: "", lineNumbers: false, marked: new Set(), lines: 0 };
+  const meta = typeof code.data === "object" && code.data && "meta" in code.data ? String(code.data.meta ?? "") : "";
   const className = code.properties?.className;
   const languageClass = Array.isArray(className)
     ? className.map(String).find((name) => name.startsWith("language-"))
     : undefined;
   return {
-    title: title ? (title[1] ?? title[2] ?? title[3] ?? "").trim() : "",
+    ...parseCodeMeta(meta),
     language: languageClass ? languageClass.slice("language-".length) : "",
+    lines: textOf(code).replace(/\n$/, "").split("\n").length,
   };
 }
 
@@ -378,9 +419,19 @@ function CodeBlock({
   children,
   title,
   language,
+  lineNumbers = false,
+  marked,
+  lines = 0,
   ...props
-}: HTMLAttributes<HTMLPreElement> & { title?: string; language?: string }) {
+}: HTMLAttributes<HTMLPreElement> & {
+  title?: string;
+  language?: string;
+  lineNumbers?: boolean;
+  marked?: Set<number>;
+  lines?: number;
+}) {
   const preRef = useRef<HTMLPreElement>(null);
+  const marks = [...(marked ?? [])].filter((line) => line <= lines);
 
   return (
     <div className={`code-block${title ? " has-title" : ""}`}>
@@ -393,9 +444,28 @@ function CodeBlock({
           {language && <span className="code-language">{language}</span>}
         </div>
       )}
-      <pre ref={preRef} {...props}>
-        {children}
-      </pre>
+      {/* Line numbers and marked lines lie over the block rather than in
+          it: the highlighter's spans cross line ends, and cutting them up
+          per line is far more machinery than a gutter needs. They line up
+          because a <pre> never wraps (in print, where it does, they are
+          left out). Copying takes the <pre>'s text, so neither is copied. */}
+      <div className={`code-body${lineNumbers ? " has-numbers" : ""}`}>
+        {marks.map((line) => (
+          <span key={line} className="code-mark" style={{ "--line": line - 1 } as CSSProperties} aria-hidden="true" />
+        ))}
+        {lineNumbers && (
+          <span className="code-gutter" aria-hidden="true">
+            {Array.from({ length: lines }, (_, i) => (
+              <span key={i} className={marked?.has(i + 1) ? "is-marked" : undefined}>
+                {i + 1}
+              </span>
+            ))}
+          </span>
+        )}
+        <pre ref={preRef} {...props}>
+          {children}
+        </pre>
+      </div>
       {/* textContent of the rendered <pre>, not the Markdown source: by this
           point rehype-highlight has split the code into nested <span>s, and
           the DOM is where the block's plain text still exists in one piece. */}

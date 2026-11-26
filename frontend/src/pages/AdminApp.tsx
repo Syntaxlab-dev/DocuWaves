@@ -358,15 +358,25 @@ export function AdminApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProject, versions, viewing]);
 
+  // Only the newest request counts. Two in flight is normal (a click while
+  // the restored selection is still loading), and if the older answer came
+  // back last it used to win: the list showed the wrong category's pages,
+  // or -- `pagesFor` then not matching the selection -- "Loading…" for good.
+  const pagesRequest = useRef(0);
   function loadPages(categoryId: number) {
+    const request = ++pagesRequest.current;
     api.adminListPages(categoryId).then((r) => {
+      if (request !== pagesRequest.current) return;
       setPages(r.pages);
       setPagesFor(categoryId);
     });
   }
   useEffect(() => {
     if (selectedCategory) loadPages(selectedCategory.id);
-    else setPages([]);
+    else {
+      pagesRequest.current++;
+      setPages([]);
+    }
   }, [selectedCategory]);
 
   function toggleTheme() {
