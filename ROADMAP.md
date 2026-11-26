@@ -131,10 +131,10 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | | Content as one tree (project, category, page) instead of three narrow columns | L |
 | | Drag and drop to sort and move | M |
 | | Page properties in a right-hand sidebar in the editor | M |
-| | A distraction-free full-screen writing mode | S |
+| ✅ | A distraction-free full-screen writing mode | S |
 | | A slash menu to insert blocks | M |
 | | A floating formatting bar on text selection | M |
-| | Split view in Markdown mode: text left, live preview right | M |
+| ✅ | Split view in Markdown mode: text left, live preview right | M |
 | ✅ | A keyboard-shortcut overview behind "?" | S |
 | ✅ | Code blocks with a file-name header, line numbers and highlighted lines | M |
 | ✅ | Link previews for internal links on hover | M |

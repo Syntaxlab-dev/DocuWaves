@@ -784,3 +784,15 @@ html:not(.dark) .hljs-deletion { color: #82071e; background-color: #ffebe9; }
 }
 [data-header="accent"] .site-header :is(a, button):not(.site-header-field *, .site-header-menu *) { color: inherit; }
 [data-header="accent"] .site-header .site-header-field input { color: var(--ink); }
+
+/* ---- Editor: full-screen writing (v2.3) ----------------------------------- */
+.editor-focus {
+  position: fixed; inset: 0; z-index: 60; overflow-y: auto;
+  background: var(--bg);
+  padding: 1.5rem max(1rem, calc((100vw - 56rem) / 2)) 2rem;
+}
+.editor-focus.is-split { padding-inline: max(1rem, calc((100vw - 104rem) / 2)); }
+.editor-focus .editor-text, .editor-focus .editor-split-preview { min-height: calc(100vh - 15rem); }
+.editor-split-preview { max-height: calc(100vh - 12rem); }
+.editor-focus .editor-split-preview { max-height: calc(100vh - 15rem); }
+.editor-focus .visual-editor .ProseMirror { min-height: calc(100vh - 15rem); }

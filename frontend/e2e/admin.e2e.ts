@@ -594,3 +594,20 @@ test("a ready-made theme sets the look of the public site in one click", async (
   await page.goto("/admin");
   await expect(page.locator("style#docuwaves-custom-css")).toHaveCount(0);
 });
+
+test("the Markdown editor shows its preview alongside, and full screen hides the rest", async ({ page }) => {
+  await signIn(page);
+  await page.getByText("Handbook", { exact: true }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Split view");
+  await page.getByRole("button", { name: "Markdown" }).click();
+  await page.getByRole("button", { name: "Text and preview side by side" }).click();
+  await page.locator("textarea").first().fill("## Seen on the right\n\nWhile typing.\n");
+  await expect(page.getByTestId("split-preview").getByRole("heading", { name: "Seen on the right" })).toBeVisible();
+  await page.getByRole("button", { name: "Full-screen writing" }).click();
+  await expect(page.locator(".editor-focus")).toHaveCount(1);
+  await expect(page.getByTestId("split-preview")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".editor-focus")).toHaveCount(0);
+});

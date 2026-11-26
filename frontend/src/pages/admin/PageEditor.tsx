@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 import {
   AlertTriangle,
+  Columns2,
   Eye,
   EyeOff,
   FileClock,
@@ -23,6 +24,8 @@ import {
   Trash2,
   Upload,
   Languages,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { SchedulePanel } from "@/components/SchedulePanel";
 import { Button } from "@/components/ui/button";
@@ -148,6 +151,18 @@ export const DRAFT_DEBOUNCE_MS = 800;
  *  on the server (services/snippets.py), where the snippet files are. Until
  *  that answer arrives -- or if it can't, for a read-only account say -- the
  *  source is shown as it is, which is still the page. */
+const SPLIT_KEY = "docuwaves-editor-split";
+
+/** The value, once it has stopped changing for `ms`. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSettled(value), ms);
+    return () => window.clearTimeout(timer);
+  }, [value, ms]);
+  return settled;
+}
+
 export function ResolvedPreview({
   content,
   title,
@@ -167,7 +182,9 @@ export function ResolvedPreview({
 
   useEffect(() => {
     let current = true;
-    setResolved(null);
+    // The last answer stays up while the next one is on its way: next to a
+    // text being typed (the split view), blanking it on every pause would
+    // make the preview flicker between resolved and raw.
     api
       .resolveMarkdown({ project_slug: projectSlug, version, language, markdown: content })
       .then((r) => current && setResolved(r.markdown))
@@ -186,6 +203,13 @@ export function ResolvedPreview({
       versionDir={version}
     />
   );
+}
+
+/** The preview beside the text: the same page as the preview tab, redrawn
+ *  once typing pauses rather than on every keystroke. */
+function SplitPreview(props: Parameters<typeof ResolvedPreview>[0]) {
+  const content = useDebounced(props.content, 400);
+  return <ResolvedPreview {...props} content={content} />;
 }
 
 export function PageEditor({
@@ -242,6 +266,44 @@ export function PageEditor({
   /** Docs-as-code: where this page's file can be changed instead. */
   const [sourceEditUrl, setSourceEditUrl] = useState("");
   const [tab, setTab] = useState<"edit" | "preview" | "history">("edit");
+  /** Full-screen writing: the text and nothing else, until Escape. */
+  const [focusMode, setFocusMode] = useState(false);
+  /** Markdown mode only: the text on the left, the page on the right.
+   *  Remembered in this browser, like the editor mode. */
+  const [split, setSplit] = useState(() => {
+    try {
+      return localStorage.getItem(SPLIT_KEY) === "on";
+    } catch {
+      return false;
+    }
+  });
+  function toggleSplit() {
+    setSplit((on) => {
+      try {
+        localStorage.setItem(SPLIT_KEY, on ? "off" : "on");
+      } catch {
+        // Not remembered; it still switches.
+      }
+      return !on;
+    });
+  }
+  useEffect(() => {
+    if (!focusMode) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      // Escape leaves focus mode -- unless something on top (a dialog, the
+      // slash menu) is using it.
+      if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector('[aria-modal="true"]')) {
+        setFocusMode(false);
+      }
+    };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [focusMode]);
   const [saving, setSaving] = useState(false);
   const [loadedId, setLoadedId] = useState<number | null>(null);
   // The server's fingerprint of the page as loaded; sent back on save so a
@@ -1009,8 +1071,11 @@ export function PageEditor({
     uploadImages(Array.from(event.dataTransfer.files), caretRange());
   }
 
+  const markdownActive = editorMode === "markdown" || visualCheck === "lossy";
+  const splitActive = tab === "edit" && markdownActive && split;
+
   return (
-    <div>
+    <div className={focusMode ? `editor-focus${splitActive ? " is-split" : ""}` : undefined}>
       {editing && <ImageEditor file={editing.file} onDone={editing.done} />}
       {multilingual && (
         <div className="mb-3 flex flex-wrap items-center gap-1" aria-label={t("admin.pageLanguages")}>
@@ -1107,7 +1172,7 @@ export function PageEditor({
           to the same set of facts about this page: is it public, and has
           anyone checked it. Only for a page that has been saved -- a note is
           about a text, and an unsaved editor has none yet. */}
-      {loadedId !== null && (
+      {loadedId !== null && !focusMode && (
         <ReviewNote
           pageId={loadedId}
           reviewedBy={reviewedBy}
@@ -1122,11 +1187,11 @@ export function PageEditor({
 
       {/* A saved draft can go live by itself later -- not where going live
           is what an approval does, and not in a frozen version. */}
-      {loadedId !== null && !livePublished && !reviewRequired && !frozen && (
+      {loadedId !== null && !livePublished && !reviewRequired && !frozen && !focusMode && (
         <SchedulePanel pageId={loadedId} readOnly={readOnly} />
       )}
 
-      {sourceEditUrl && (
+      {sourceEditUrl && !focusMode && (
         <a
           href={sourceEditUrl}
           target="_blank"
@@ -1138,7 +1203,7 @@ export function PageEditor({
         </a>
       )}
 
-      {loadedId !== null && review && !frozen && (
+      {loadedId !== null && review && !frozen && !focusMode && (
         <ReviewPanel
           pageId={loadedId}
           review={review}
@@ -1225,6 +1290,32 @@ export function PageEditor({
             ))}
           </div>
         )}
+        {tab === "edit" && markdownActive && (
+          <button
+            type="button"
+            aria-pressed={split}
+            onClick={toggleSplit}
+            title={t("editor.split")}
+            aria-label={t("editor.split")}
+            className={`mb-1 flex h-8 w-8 items-center justify-center self-center rounded-lg border border-[var(--border)] ${
+              split ? "bg-[var(--accent-soft)] text-[var(--accent)]" : "text-[var(--muted)] hover:text-[var(--ink)]"
+            }`}
+          >
+            <Columns2 className="h-4 w-4" aria-hidden="true" />
+          </button>
+        )}
+        <button
+          type="button"
+          aria-pressed={focusMode}
+          onClick={() => setFocusMode((on) => !on)}
+          title={focusMode ? t("editor.focusLeave") : t("editor.focus")}
+          aria-label={focusMode ? t("editor.focusLeave") : t("editor.focus")}
+          className={`mb-1 flex h-8 w-8 items-center justify-center self-center rounded-lg border border-[var(--border)] text-[var(--muted)] hover:text-[var(--ink)] ${
+            tab === "edit" ? "" : "ml-auto"
+          }`}
+        >
+          {focusMode ? <Minimize2 className="h-4 w-4" aria-hidden="true" /> : <Maximize2 className="h-4 w-4" aria-hidden="true" />}
+        </button>
       </div>
 
       {/* Only while the body is empty, and gone for good once it isn't:
@@ -1359,19 +1450,36 @@ export function PageEditor({
             }}
           />
         )}
-        {tab === "edit" && (editorMode === "markdown" || visualCheck === "lossy") && (
-          <Textarea
-            ref={editorRef}
-            value={content}
-            readOnly={readOnly}
-            onPaste={onPaste}
-            onKeyDown={onEditorKeyDown}
-            onChange={(e) => {
-              setContent(e.target.value);
-              setDirty(true);
-            }}
-            className="min-h-[420px] font-mono"
-          />
+        {tab === "edit" && markdownActive && (
+          <div className={splitActive ? "grid gap-4 lg:grid-cols-2" : undefined}>
+            <Textarea
+              ref={editorRef}
+              value={content}
+              readOnly={readOnly}
+              onPaste={onPaste}
+              onKeyDown={onEditorKeyDown}
+              onChange={(e) => {
+                setContent(e.target.value);
+                setDirty(true);
+              }}
+              className="editor-text min-h-[420px] font-mono"
+            />
+            {splitActive && (
+              <div
+                className="editor-split-preview min-h-[420px] overflow-y-auto rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4"
+                data-testid="split-preview"
+              >
+                <SplitPreview
+                  content={content}
+                  title={title}
+                  projectSlug={projectSlug}
+                  categorySlug={targetCategorySlug}
+                  version={version}
+                  language={multilingual ? language : ""}
+                />
+              </div>
+            )}
+          </div>
         )}
         {tab === "edit" && (editorMode === "markdown" || visualCheck === "lossy") && <MarkdownCheatSheet />}
         {tab === "preview" && (
@@ -1422,7 +1530,7 @@ export function PageEditor({
           is something an author does once the draft is worth showing, which
           is after they have written it, not before. Nothing on a frozen
           version -- there is no draft in a released version to preview. */}
-      {loadedId !== null && !readOnly && tab !== "history" && <PreviewLinksPanel pageId={loadedId} />}
+      {loadedId !== null && !readOnly && tab !== "history" && !focusMode && <PreviewLinksPanel pageId={loadedId} />}
 
       <div className="mt-3 flex gap-2">
         {/* No Save at all on a frozen version, rather than one that errors:
