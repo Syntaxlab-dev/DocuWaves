@@ -56,7 +56,24 @@ export interface VisualOptions {
   /** Turns a Markdown image path into an address the browser can load. */
   resolveImage?: (src: string) => string;
   /** Where the cursor is, for the toolbar: inside a table, inside a callout. */
-  onSelection?: (where: { inTable: boolean; callout: string | null }) => void;
+  onSelection?: (where: VisualWhere) => void;
+}
+
+/** A rectangle in viewport coordinates. */
+export interface VisualRect {
+  top: number;
+  bottom: number;
+  left: number;
+}
+
+export interface VisualWhere {
+  inTable: boolean;
+  callout: string | null;
+  /** Text selected in a line of prose: where the formatting bar goes. */
+  selected: VisualRect | null;
+  /** A paragraph holding only "/word", typed up to the cursor: the slash
+   *  menu, with the range to remove when an entry is picked. */
+  slash: { query: string; from: number; to: number; at: VisualRect } | null;
 }
 
 export interface VisualHandle {
@@ -349,17 +366,47 @@ export async function createVisualEditor(options: VisualOptions): Promise<Visual
           tab_group: (node: ProseNode, view, getPos) => tabsView(node, view, getPos as () => number | undefined),
         },
       }));
-      ctx.get(listenerCtx).selectionUpdated((_ctx, selection) => {
+      ctx.get(listenerCtx).selectionUpdated((ctx, selection) => {
         if (!options.onSelection) return;
         let inTable = false;
         let callout: string | null = null;
+        let inCode = false;
         const { $from } = selection;
         for (let depth = $from.depth; depth > 0; depth--) {
           const node = $from.node(depth);
           if (node.type.name === "table") inTable = true;
+          if (node.type.name === "code_block") inCode = true;
           if (node.type.name === "blockquote" && callout === null) callout = String(node.attrs.kind ?? "");
         }
-        options.onSelection({ inTable, callout });
+        const view = ctx.get(editorViewCtx);
+        const rect = (pos: number): VisualRect | null => {
+          try {
+            const c = view.coordsAtPos(pos);
+            return { top: c.top, bottom: c.bottom, left: c.left };
+          } catch {
+            return null;
+          }
+        };
+        const parent = $from.parent;
+        let selected: VisualRect | null = null;
+        if (!selection.empty && parent.inlineContent && !inCode && view.hasFocus()) {
+          const start = rect(selection.from);
+          const end = rect(selection.to);
+          if (start && end) {
+            // Centred over the selection when it is on one line, over its
+            // start when it runs across several.
+            const left = start.top === end.top ? (start.left + end.left) / 2 : start.left;
+            selected = { top: start.top, bottom: end.bottom, left };
+          }
+        }
+        let slash: VisualWhere["slash"] = null;
+        if (selection.empty && parent.type.name === "paragraph" && !inTable) {
+          const before = parent.textBetween(0, $from.parentOffset);
+          const match = /^\/([\p{L}\d-]{0,24})$/u.exec(before);
+          const at = match && before.length === parent.textContent.length ? rect($from.start()) : null;
+          if (match && at) slash = { query: match[1], from: $from.start(), to: $from.pos, at };
+        }
+        options.onSelection({ inTable, callout, selected, slash });
       });
       ctx.get(listenerCtx).markdownUpdated((_ctx, markdown, previous) => {
         if (!suppress && markdown !== previous) options.onChange?.(tidyMarkdown(markdown));

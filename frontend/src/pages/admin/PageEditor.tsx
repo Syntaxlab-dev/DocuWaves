@@ -613,6 +613,15 @@ export function PageEditor({
   }, [editorMode, textArrived, slug, language]);
 
   function chooseEditorMode(mode: EditorMode) {
+    // Leaving the visual editor straight after a keystroke: its last change
+    // may not have reached `content` yet (see onSave), so take it from there.
+    if (mode !== "visual" && visualActive) {
+      const latest = visualRef.current?.markdown();
+      if (latest != null && latest !== content) {
+        setContent(latest);
+        setDirty(true);
+      }
+    }
     setEditorMode(mode);
     try {
       localStorage.setItem(EDITOR_MODE_KEY, mode);

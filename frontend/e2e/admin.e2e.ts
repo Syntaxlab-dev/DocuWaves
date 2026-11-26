@@ -611,3 +611,26 @@ test("the Markdown editor shows its preview alongside, and full screen hides the
   await page.keyboard.press("Escape");
   await expect(page.locator(".editor-focus")).toHaveCount(0);
 });
+
+test("a slash opens the block menu, and a selection gets its own format bar", async ({ page }) => {
+  await signIn(page);
+  await page.getByText("Handbook", { exact: true }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  await page.getByRole("heading", { name: "Pages" }).locator("..").getByRole("button").first().click();
+  await page.getByRole("textbox", { name: "Title" }).fill("Slash menu");
+  const editor = page.locator(".visual-editor .ProseMirror");
+  await editor.click();
+  await page.keyboard.type("Wiring the panel.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("/note");
+  await expect(page.getByRole("listbox", { name: "Insert a block" }).getByRole("option").first()).toHaveText("Note");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Power off first.");
+  await expect(page.getByRole("listbox", { name: "Insert a block" })).toHaveCount(0);
+  await editor.locator("p").first().dblclick({ position: { x: 10, y: 8 } });
+  await page.getByRole("toolbar", { name: "Format the selection" }).getByRole("button", { name: "Bold" }).click();
+  await page.getByRole("button", { name: "Markdown" }).click();
+  const markdown = await page.locator("textarea").first().inputValue();
+  expect(markdown).toContain("**Wiring**");
+  expect(markdown).toContain("> [!NOTE]\n> Power off first.");
+});
