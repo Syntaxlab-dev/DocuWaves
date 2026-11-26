@@ -448,8 +448,9 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await page.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("button", { name: "History" })).toBeEnabled();
 
-  // A page goes at once, with a few seconds to take it back.
-  await cats.getByRole("button", { name: "Scratch" }).click();
+  // A page goes at once, with a few seconds to take it back. (The editor
+  // has the width to itself; the path above leads back to the list.)
+  await page.getByRole("navigation", { name: "Path" }).getByRole("button", { name: "Scratch" }).click();
   const pages = page.getByRole("heading", { name: "Pages" }).locator("../..");
   const row = pages.locator("div.group").filter({ hasText: "Temporary" });
   await row.hover();
@@ -633,4 +634,21 @@ test("a slash opens the block menu, and a selection gets its own format bar", as
   const markdown = await page.locator("textarea").first().inputValue();
   expect(markdown).toContain("**Wiring**");
   expect(markdown).toContain("> [!NOTE]\n> Power off first.");
+});
+
+test("an open page has its properties in a column beside the text", async ({ page }) => {
+  await signIn(page);
+  await page.getByText("Handbook", { exact: true }).click();
+  await page.getByRole("button", { name: "Getting started" }).click();
+  // (Renamed by a test above.)
+  await page.getByText("Setting up the widget").first().click();
+  const props = page.getByRole("complementary", { name: "Page properties" });
+  await expect(props.getByRole("combobox", { name: "Category" })).toBeVisible();
+  await expect(props.getByRole("button", { name: "See earlier versions" })).toBeVisible();
+  // The project and category columns step aside while a page is open.
+  await expect(page.getByRole("heading", { name: "Categories" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Page properties" }).click();
+  await expect(props).toBeHidden();
+  await page.getByRole("button", { name: "Page properties" }).click();
+  await expect(props).toBeVisible();
 });

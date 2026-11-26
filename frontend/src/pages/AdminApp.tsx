@@ -577,7 +577,11 @@ export function AdminApp() {
         {/* No "not connected" gate any more: there is always a content
          *  repository (a local one in the data volume when no remote is
          *  configured), so the editor is always the thing to show. */}
-        <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+        {/* While a page is open, the project and category columns step
+            aside and the editor takes the width; the breadcrumb above
+            leads back to them. */}
+        <div className={editing !== null ? "grid gap-4" : "grid gap-4 lg:grid-cols-[260px_1fr]"}>
+          {editing === null && (
           <ProjectsPanel
             projects={projects}
             readOnly={!canWrite}
@@ -589,8 +593,9 @@ export function AdminApp() {
             }}
             onChanged={loadProjects}
           />
+          )}
 
-          <div>
+          <div className="min-w-0">
             {!selectedProject && <p className="text-[var(--muted)]">{t("admin.selectProject")}</p>}
 
             {selectedProject && (
@@ -657,7 +662,8 @@ export function AdminApp() {
                     it, and pushed the whole admin page into horizontal scroll.
                     Same failure and same fix as the public shell -- see
                     DocsShell.tsx, which already carried the comment. */}
-                <div className="grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]">
+                <div className={editing !== null ? "grid gap-4" : "grid gap-4 md:grid-cols-[220px_minmax(0,1fr)]"}>
+                  {editing === null && (
                   <CategoriesPanel
                     projectId={selectedProject.id}
                     projectSlug={selectedProject.slug}
@@ -670,6 +676,7 @@ export function AdminApp() {
                     }}
                     onChanged={(slug) => loadCategories(selectedProject.id, viewing, slug)}
                   />
+                  )}
 
                   <div>
                     {!selectedCategory && <p className="text-[var(--muted)]">{t("admin.selectCategory")}</p>}

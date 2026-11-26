@@ -26,6 +26,8 @@ import {
   Languages,
   Maximize2,
   Minimize2,
+  PanelRightClose,
+  PanelRightOpen,
 } from "lucide-react";
 import { SchedulePanel } from "@/components/SchedulePanel";
 import { Button } from "@/components/ui/button";
@@ -152,6 +154,8 @@ export const DRAFT_DEBOUNCE_MS = 800;
  *  that answer arrives -- or if it can't, for a read-only account say -- the
  *  source is shown as it is, which is still the page. */
 const SPLIT_KEY = "docuwaves-editor-split";
+/** Whether the properties column is folded away, on wide screens. */
+const PROPS_KEY = "docuwaves-editor-props";
 
 /** The value, once it has stopped changing for `ms`. */
 function useDebounced<T>(value: T, ms: number): T {
@@ -277,6 +281,25 @@ export function PageEditor({
       return false;
     }
   });
+  /** The page's properties in a column of their own on the right, so the
+   *  text gets the width; folded away on request, remembered here too. */
+  const [propsOpen, setPropsOpen] = useState(() => {
+    try {
+      return localStorage.getItem(PROPS_KEY) !== "closed";
+    } catch {
+      return true;
+    }
+  });
+  function toggleProps() {
+    setPropsOpen((open) => {
+      try {
+        localStorage.setItem(PROPS_KEY, open ? "closed" : "open");
+      } catch {
+        // Not remembered; it still folds.
+      }
+      return !open;
+    });
+  }
   function toggleSplit() {
     setSplit((on) => {
       try {
@@ -1148,70 +1171,115 @@ export function PageEditor({
           placeholder={t("admin.pageTitle")}
           className="flex-1 text-base font-medium"
         />
-        <select
-          value={targetCategoryId}
-          disabled={readOnly}
-          onChange={(e) => setTargetCategoryId(Number(e.target.value))}
-          className="h-9 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm"
+        <button
+          type="button"
+          onClick={toggleProps}
+          aria-pressed={propsOpen}
+          title={t("editor.properties")}
+          aria-label={t("editor.properties")}
+          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] text-[var(--muted)] hover:text-[var(--ink)] xl:flex"
         >
-          {categoryTree(categories).map(({ category: c, depth }) => (
-            <option key={c.id} value={c.id}>
-              {`${"\u00a0\u00a0".repeat(depth)}${c.name}`}
-            </option>
-          ))}
-        </select>
-        <Button
-          variant="outline"
-          size="icon"
-          disabled={readOnly || (reviewRequired && !livePublished)}
-          onClick={() => setPublished((v) => !v)}
-          title={
-            reviewRequired && !livePublished
-              ? t("review.publishViaApproval")
-              : published
-                ? t("admin.published")
-                : t("admin.draft")
-          }
-        >
-          {published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-        </Button>
+          {propsOpen ? <PanelRightClose className="h-4 w-4" aria-hidden="true" /> : <PanelRightOpen className="h-4 w-4" aria-hidden="true" />}
+        </button>
       </div>
 
-      {/* Directly under the title and the publish toggle, because it belongs
-          to the same set of facts about this page: is it public, and has
-          anyone checked it. Only for a page that has been saved -- a note is
-          about a text, and an unsaved editor has none yet. */}
-      {loadedId !== null && !focusMode && (
-        <ReviewNote
-          pageId={loadedId}
-          reviewedBy={reviewedBy}
-          reviewedAt={reviewedAt}
-          readOnly={readOnly}
-          onChanged={(by, at) => {
-            setReviewedBy(by);
-            setReviewedAt(at);
-          }}
-        />
-      )}
-
-      {/* A saved draft can go live by itself later -- not where going live
-          is what an approval does, and not in a frozen version. */}
-      {loadedId !== null && !livePublished && !reviewRequired && !frozen && !focusMode && (
-        <SchedulePanel pageId={loadedId} readOnly={readOnly} />
-      )}
-
-      {sourceEditUrl && !focusMode && (
-        <a
-          href={sourceEditUrl}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="mt-2 inline-flex items-center gap-1.5 self-start rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)]"
+      <div
+        className={
+          propsOpen && !focusMode ? "xl:grid xl:grid-cols-[minmax(0,1fr)_17rem] xl:items-start xl:gap-5" : undefined
+        }
+      >
+      {!focusMode && (
+        <aside
+          aria-label={t("editor.properties")}
+          className={`mt-3 flex flex-col gap-3 xl:order-last xl:sticky xl:top-4 xl:mt-3 xl:rounded-lg xl:border xl:border-[var(--border)] xl:bg-[var(--surface)] xl:p-3 ${
+            propsOpen ? "" : "xl:hidden"
+          }`}
         >
-          <GitBranch className="h-4 w-4" />
-          {t("sync.editInRepo")}
-        </a>
-      )}
+          <h2 className="hidden text-xs font-semibold uppercase tracking-wide text-[var(--muted)] xl:block">
+            {t("editor.properties")}
+          </h2>
+          <label className="flex flex-col gap-1 text-xs text-[var(--muted)]">
+            {t("editor.category")}
+            <select
+              value={targetCategoryId}
+              disabled={readOnly}
+              onChange={(e) => setTargetCategoryId(Number(e.target.value))}
+              className="h-9 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--ink)]"
+            >
+              {categoryTree(categories).map(({ category: c, depth }) => (
+                <option key={c.id} value={c.id}>
+                  {`${"\u00a0\u00a0".repeat(depth)}${c.name}`}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex items-center gap-2 text-sm">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={readOnly || (reviewRequired && !livePublished)}
+              onClick={() => setPublished((v) => !v)}
+              title={
+                reviewRequired && !livePublished
+                  ? t("review.publishViaApproval")
+                  : published
+                    ? t("admin.published")
+                    : t("admin.draft")
+              }
+            >
+              {published ? <Eye className="h-4 w-4" aria-hidden="true" /> : <EyeOff className="h-4 w-4" aria-hidden="true" />}
+              {published ? t("admin.published") : t("admin.draft")}
+            </Button>
+          </div>
+          {/* Directly under the title and the publish toggle, because it belongs
+              to the same set of facts about this page: is it public, and has
+              anyone checked it. Only for a page that has been saved -- a note is
+              about a text, and an unsaved editor has none yet. */}
+          {loadedId !== null && (
+            <ReviewNote
+              pageId={loadedId}
+              reviewedBy={reviewedBy}
+              reviewedAt={reviewedAt}
+              readOnly={readOnly}
+              onChanged={(by, at) => {
+                setReviewedBy(by);
+                setReviewedAt(at);
+              }}
+            />
+          )}
 
+          {/* A saved draft can go live by itself later -- not where going live
+              is what an approval does, and not in a frozen version. */}
+          {loadedId !== null && !livePublished && !reviewRequired && !frozen && (
+            <SchedulePanel pageId={loadedId} readOnly={readOnly} />
+          )}
+
+          {sourceEditUrl && (
+            <a
+              href={sourceEditUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="mt-2 inline-flex items-center gap-1.5 self-start rounded-lg border border-[var(--border)] px-3 py-1.5 text-sm hover:bg-[var(--surface-2)]"
+            >
+              <GitBranch className="h-4 w-4" />
+              {t("sync.editInRepo")}
+            </a>
+          )}
+
+          {loadedId !== null && (
+            <button
+              type="button"
+              onClick={() => setTab("history")}
+              className="flex items-center gap-1.5 self-start text-xs text-[var(--muted)] underline-offset-2 hover:text-[var(--accent)] hover:underline"
+            >
+              <History className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("editor.showHistory")}
+            </button>
+          )}
+          {loadedId !== null && !readOnly && tab !== "history" && <PreviewLinksPanel pageId={loadedId} />}
+        </aside>
+      )}
+      <div className="min-w-0">
       {loadedId !== null && review && !frozen && !focusMode && (
         <ReviewPanel
           pageId={loadedId}
@@ -1539,7 +1607,6 @@ export function PageEditor({
           is something an author does once the draft is worth showing, which
           is after they have written it, not before. Nothing on a frozen
           version -- there is no draft in a released version to preview. */}
-      {loadedId !== null && !readOnly && tab !== "history" && !focusMode && <PreviewLinksPanel pageId={loadedId} />}
 
       <div className="mt-3 flex gap-2">
         {/* No Save at all on a frozen version, rather than one that errors:
@@ -1553,6 +1620,8 @@ export function PageEditor({
         <Button variant="outline" onClick={onDone}>
           {readOnly ? t("common.back") : t("admin.cancel")}
         </Button>
+      </div>
+      </div>
       </div>
     </div>
   );
