@@ -219,6 +219,41 @@ def _footer_links(data: dict) -> list[dict]:
     return links
 
 
+_APPEARANCE_CHOICES = {
+    "surface": ("cool", "neutral", "warm"),
+    "radius": ("medium", "sharp", "round"),
+    "header": ("plain", "accent"),
+}
+APPEARANCE_DEFAULTS = {key: choices[0] for key, choices in _APPEARANCE_CHOICES.items()}
+_MAX_CUSTOM_CSS = 20_000
+
+
+def _appearance(data: dict) -> dict:
+    """The look beyond the accent colour: background tone, corner radius and
+    header style. Every key always answers; one the file doesn't have, or has
+    with a value this version doesn't know, is its default."""
+    raw = data.get("appearance")
+    raw = raw if isinstance(raw, dict) else {}
+    return {
+        key: raw.get(key) if raw.get(key) in choices else choices[0]
+        for key, choices in _APPEARANCE_CHOICES.items()
+    }
+
+
+def _appearance_to_file(payload: dict) -> dict:
+    """Only what differs from the default, so an untouched instance's file
+    stays as short as it was."""
+    return {key: value for key, value in _appearance(payload).items() if value != APPEARANCE_DEFAULTS[key]}
+
+
+def _custom_css(data: dict) -> str:
+    """Extra CSS for the public site, written by an administrator. It is
+    theirs to write and reaches the page as the text of a <style> element
+    (never parsed as HTML), so the only rule here is a size limit."""
+    value = data.get("custom_css")
+    return value[:_MAX_CUSTOM_CSS] if isinstance(value, str) else ""
+
+
 def _powered_by(data: dict) -> bool:
     """The small "Made with DocuWaves" line in the footer: on unless the file
     says `powered_by: false`. Anything but an explicit false keeps it."""
@@ -360,6 +395,8 @@ def read_branding() -> dict:
         "footer_links": _footer_links(data),
         "powered_by": _powered_by(data),
         "announcement": _announcement(data),
+        "appearance": _appearance(data),
+        "custom_css": _custom_css(data),
         # Public on purpose: the moment this is configured, the script tag it
         # describes is in the head of every page anyway. Nothing here is a
         # secret -- a Umami website id identifies a dashboard, it does not
@@ -434,6 +471,8 @@ def write_branding(payload: dict) -> list[str]:
         ),
         "footer_links": _footer_links(payload),
         "announcement": _announcement_to_file(payload, default_lang),
+        "appearance": _appearance_to_file(payload),
+        "custom_css": _custom_css(payload).strip(),
         "analytics": _analytics(payload),
         "pdf": _pdf_to_file(payload),
     }

@@ -47,3 +47,16 @@ def test_write_and_read_round_trip(tmp_path, monkeypatch):
     site_branding.write_branding({"name": "Docs", "powered_by": True, "announcement": {"text": ""}})
     written = yaml.safe_load((tmp_path / "_site.yml").read_text())
     assert "powered_by" not in written and "announcement" not in written
+
+
+def test_appearance_defaults_and_bad_values():
+    assert site_branding._appearance({}) == {"surface": "cool", "radius": "medium", "header": "plain"}
+    got = site_branding._appearance({"appearance": {"surface": "warm", "radius": "huge", "header": "accent"}})
+    assert got == {"surface": "warm", "radius": "medium", "header": "accent"}
+    assert site_branding._appearance_to_file({"appearance": {"surface": "cool", "radius": "round"}}) == {"radius": "round"}
+
+
+def test_custom_css_is_kept_and_capped():
+    assert site_branding._custom_css({}) == ""
+    assert site_branding._custom_css({"custom_css": 3}) == ""
+    assert len(site_branding._custom_css({"custom_css": "a" * 50_000})) == 20_000

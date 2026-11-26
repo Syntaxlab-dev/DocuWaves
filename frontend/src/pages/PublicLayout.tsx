@@ -12,7 +12,7 @@ import { DocChat } from "@/components/DocChat";
 import { QuickSearch, useQuickSearchShortcut } from "@/components/QuickSearch";
 import { ShortcutsDialog, useReaderShortcuts } from "@/components/Shortcuts";
 import { AnnouncementBar, ProjectSwitcher, SiteFooter } from "@/components/SiteChrome";
-import { logoForTheme, siteText, useSite } from "@/lib/site";
+import { logoForTheme, siteText, useCustomCss, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -67,6 +67,7 @@ export function PublicLayout() {
 
   const logoUrl = logoForTheme(site, isDark);
   const footerText = siteText(site, "footer_text", contentLang.lang);
+  useCustomCss(site.custom_css);
 
   return (
     // flex column so the footer sits at the bottom of a short page instead
@@ -94,7 +95,7 @@ export function PublicLayout() {
       />
       <ShortcutsDialog open={shortcutsOpen} onClose={closeShortcuts} isMac={isMac} />
       <AnnouncementBar site={site} />
-      <header className="border-b border-[var(--border)] bg-[var(--surface)]">
+      <header className="site-header border-b border-[var(--border)] bg-[var(--surface)]">
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 py-3">
           <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">
             {/* alt="" -- the name sits right next to it in text, so a screen
@@ -103,7 +104,7 @@ export function PublicLayout() {
             <span>{siteText(site, "name", contentLang.lang)}</span>
           </Link>
           <ProjectSwitcher />
-          <form onSubmit={onSearch} className="ml-auto flex flex-1 max-w-sm items-center gap-2">
+          <form onSubmit={onSearch} className="site-header-field ml-auto flex flex-1 max-w-sm items-center gap-2">
             <div className="relative flex-1">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[var(--muted)]" />
               <Input

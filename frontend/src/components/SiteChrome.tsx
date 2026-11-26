@@ -125,7 +125,7 @@ export function ProjectSwitcher() {
         <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
       {open && (
-        <ul className="absolute left-0 z-40 mt-1 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 shadow-lg">
+        <ul className="site-header-menu absolute left-0 z-40 mt-1 w-64 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-1 shadow-lg">
           {projects.map((p) => (
             <li key={p.id}>
               <Link

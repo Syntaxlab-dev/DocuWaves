@@ -577,3 +577,20 @@ test("an announcement set in the admin shows until a reader closes it", async ({
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByText("Maintenance on Friday")).toHaveCount(0);
 });
+
+test("a ready-made theme sets the look of the public site in one click", async ({ page }) => {
+  await signIn(page);
+  await page.getByRole("navigation", { name: "Admin" }).getByRole("link", { name: "Branding" }).click();
+  await page.getByRole("button", { name: "Graphite" }).click();
+  await expect(page.getByRole("button", { name: "Sharp" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("textbox", { name: "Custom CSS" }).fill(".markdown-body h1 { letter-spacing: 1px; }");
+  await page.getByRole("button", { name: "Save" }).last().click();
+  await expect(page.getByText("Branding saved")).toBeVisible();
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-header", "accent");
+  await expect(page.locator("html")).toHaveAttribute("data-radius", "sharp");
+  await expect(page.locator("style#docuwaves-custom-css")).toHaveCount(1);
+  // The admin area never gets the custom CSS.
+  await page.goto("/admin");
+  await expect(page.locator("style#docuwaves-custom-css")).toHaveCount(0);
+});

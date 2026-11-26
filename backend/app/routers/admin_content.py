@@ -1885,6 +1885,9 @@ class SiteBrandingIn(BaseModel):
     # The small "Made with DocuWaves" footer line; on unless switched off.
     powered_by: bool = True
     announcement: AnnouncementIn = AnnouncementIn()
+    # {"surface", "radius", "header"}; site_branding._appearance validates.
+    appearance: dict[str, str] = {}
+    custom_css: str = ""
     # {"umami_url": ..., "umami_website_id": ...}, or absent for an instance
     # that measures nothing. A free-form mapping here rather than a model,
     # because site_branding._analytics is the validator either way and a

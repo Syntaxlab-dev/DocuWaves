@@ -29,6 +29,8 @@ const DEFAULT_SITE: SiteBranding = {
   footer_links: [],
   powered_by: true,
   announcement: {},
+  appearance: { surface: "cool", radius: "medium", header: "plain" },
+  custom_css: "",
   // Nothing measured until the real branding says otherwise. Nothing in the
   // browser acts on this anyway -- the tag is written server-side (the
   // backend's seo.render_analytics); the admin form is its only reader here.
@@ -83,6 +85,19 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     applyFavicon(site.favicon_url);
   }, [site.favicon_url]);
 
+  // Background tone, corners and header style: attributes on <html> that
+  // index.css turns into variables, the same way the reader's own text
+  // settings work -- so nothing has to re-render to apply them.
+  const surface = site.appearance?.surface ?? "cool";
+  const radius = site.appearance?.radius ?? "medium";
+  const header = site.appearance?.header ?? "plain";
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.surface = surface;
+    root.dataset.radius = radius;
+    root.dataset.header = header;
+  }, [surface, radius, header]);
+
   return <SiteContext.Provider value={{ site, ready, reload }}>{children}</SiteContext.Provider>;
 }
 
@@ -120,4 +135,18 @@ export function useDocumentTitle(pageTitle?: string) {
  *  normal logo in both. Null means "no logo" -- the name renders as text. */
 export function logoForTheme(site: SiteBranding, isDark: boolean): string | null {
   return isDark && site.logo_dark_url ? site.logo_dark_url : site.logo_url;
+}
+
+/** The administrator's own CSS, on the public site only: the admin area has
+ *  to stay usable whatever a stylesheet does to the docs. Set as the text of
+ *  a <style> element, so it is never parsed as HTML. */
+export function useCustomCss(css: string | undefined) {
+  useEffect(() => {
+    if (!css) return;
+    const style = document.createElement("style");
+    style.id = "docuwaves-custom-css";
+    style.textContent = css;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, [css]);
 }

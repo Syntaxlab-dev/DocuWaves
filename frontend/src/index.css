@@ -71,7 +71,7 @@ body {
 .markdown-body li { margin: 0.25rem 0; }
 .markdown-body a { color: var(--accent); text-decoration: underline; }
 .markdown-body code { background: var(--surface-2); padding: 0.1rem 0.35rem; border-radius: 0.25rem; font-family: var(--font-mono); font-size: 0.85em; }
-.markdown-body pre { background: var(--surface-2); padding: 1rem; border-radius: 0.5rem; overflow-x: auto; margin: 1rem 0; }
+.markdown-body pre { background: var(--surface-2); padding: 1rem; border-radius: var(--radius-lg); overflow-x: auto; margin: 1rem 0; }
 .markdown-body pre code { background: transparent; padding: 0; }
 .code-block { position: relative; }
 .code-block .code-copy { position: absolute; top: 1.5rem; right: 0.5rem; display: inline-flex; align-items: center; gap: 0.3rem; border: 1px solid var(--border); border-radius: 0.375rem; background: var(--surface); color: var(--muted); padding: 0.25rem 0.4rem; font-size: 0.75rem; opacity: 0; transition: opacity 0.15s; }
@@ -88,14 +88,14 @@ body {
    exactly --surface and --surface-2 -- on the page background the boxes stay
    visibly boxes in both modes. overflow-x for the same reason a <pre> has it:
    a wide diagram scrolls in its own frame instead of widening the page. */
-.markdown-body .mermaid-block { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; overflow-x: auto; }
+.markdown-body .mermaid-block { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; margin: 1rem 0; overflow-x: auto; }
 /* Centred while it fits, flush left once it is wider than the frame and the
    reader has to scroll it (margin: auto contributes nothing at that point). */
 .markdown-body .mermaid-block svg { display: block; margin: 0 auto; }
 /* The moment between "there is a diagram here" and the chunk having loaded
    and drawn it. Same box as the diagram that replaces it, so the text below
    doesn't jump when it does. */
-.markdown-body .mermaid-pending { border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem; margin: 1rem 0; color: var(--muted); font-size: 0.85rem; }
+.markdown-body .mermaid-pending { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 1rem; margin: 1rem 0; color: var(--muted); font-size: 0.85rem; }
 /* A diagram that didn't parse: the source above (a plain <pre>, exactly as
    the block would have rendered without diagram support at all) and this
    underneath it. Not red-on-red -- --danger-soft is the wash behind a
@@ -108,7 +108,7 @@ body {
 .markdown-body th { background: var(--surface-2); }
 /* height: auto keeps an image with a width/height attribute from being
    stretched once max-width kicks in on a narrow screen. */
-.markdown-body img { max-width: 100%; height: auto; border-radius: 0.5rem; }
+.markdown-body img { max-width: 100%; height: auto; border-radius: var(--radius-lg); }
 .markdown-body hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
 
 /* A unified diff in the admin page history. Hand-styled rather than pulled
@@ -345,7 +345,7 @@ body {
 }
 
 /* ---- Callouts: GitHub's > [!NOTE] ... syntax, see lib/callouts.ts ---- */
-.markdown-body .callout { --callout: var(--accent); margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid color-mix(in srgb, var(--callout) 35%, var(--border)); border-left: 4px solid var(--callout); border-radius: 0.5rem; background: color-mix(in srgb, var(--callout) 8%, var(--surface)); }
+.markdown-body .callout { --callout: var(--accent); margin: 1rem 0; padding: 0.75rem 1rem; border: 1px solid color-mix(in srgb, var(--callout) 35%, var(--border)); border-left: 4px solid var(--callout); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--callout) 8%, var(--surface)); }
 .markdown-body .callout > :last-child { margin-bottom: 0; }
 .markdown-body .callout-title { display: flex; align-items: center; gap: 0.4rem; margin: 0 0 0.35rem; font-weight: 600; color: var(--callout); }
 .markdown-body .callout-note { --callout: #3b82f6; }
@@ -355,7 +355,7 @@ body {
 .markdown-body .callout-caution { --callout: var(--danger); }
 
 /* ---- Tabs: <!-- tabs --> groups, see lib/tabs.ts ---- */
-.markdown-body .tabs { margin: 1rem 0; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--surface); }
+.markdown-body .tabs { margin: 1rem 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 .markdown-body .tabs-list { display: flex; gap: 0.25rem; overflow-x: auto; scrollbar-width: thin; padding: 0 0.5rem; box-shadow: inset 0 -1px 0 var(--border); }
 .markdown-body .tabs-tab { flex-shrink: 0; padding: 0.55rem 0.75rem; border-bottom: 2px solid transparent; font-size: 0.875rem; font-weight: 500; color: var(--muted); white-space: nowrap; }
 .markdown-body .tabs-tab:hover { color: var(--ink); }
@@ -388,7 +388,7 @@ body {
   position: relative;
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
   font-family: var(--font-mono);
   font-size: 0.85rem;
@@ -419,7 +419,7 @@ body {
 .visual-editor .ProseMirror code { font-family: var(--font-mono); font-size: 0.88em; background: var(--surface-2); padding: 0.1em 0.35em; border-radius: 0.3rem; }
 .visual-editor .ProseMirror pre code { background: none; padding: 0; }
 /* Callouts in the visual editor: the same boxes readers see. */
-.visual-editor .ProseMirror blockquote.callout { --callout: var(--accent); color: var(--ink); padding: 1.6rem 1rem 0.5rem; border: 1px solid color-mix(in srgb, var(--callout) 35%, var(--border)); border-left: 4px solid var(--callout); border-radius: 0.5rem; background: color-mix(in srgb, var(--callout) 8%, var(--surface)); position: relative; }
+.visual-editor .ProseMirror blockquote.callout { --callout: var(--accent); color: var(--ink); padding: 1.6rem 1rem 0.5rem; border: 1px solid color-mix(in srgb, var(--callout) 35%, var(--border)); border-left: 4px solid var(--callout); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--callout) 8%, var(--surface)); position: relative; }
 .visual-editor .ProseMirror blockquote.callout > p:first-child { margin-top: 0.2rem; }
 .visual-editor .ProseMirror blockquote.callout::before { content: attr(data-kind); position: absolute; top: 0.5rem; left: 1rem; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; color: var(--callout); }
 .visual-editor .ProseMirror blockquote.callout-note { --callout: #3b82f6; }
@@ -436,7 +436,7 @@ body {
 /* Previews next to their source: formulas and diagrams. */
 .visual-editor .visual-math-source { color: var(--muted); font-family: var(--font-mono); font-size: 0.85em; }
 .visual-editor .visual-preview-inline-math { margin-left: 0.35em; padding: 0 0.3em; border-radius: 0.3rem; background: var(--surface-2); }
-.visual-editor .visual-preview-math, .visual-editor .visual-preview-diagram { margin: -0.25rem 0 0.9rem; padding: 0.6rem; border: 1px dashed var(--border); border-radius: 0.5rem; overflow-x: auto; user-select: none; }
+.visual-editor .visual-preview-math, .visual-editor .visual-preview-diagram { margin: -0.25rem 0 0.9rem; padding: 0.6rem; border: 1px dashed var(--border); border-radius: var(--radius-lg); overflow-x: auto; user-select: none; }
 .visual-editor .visual-preview-error { color: var(--danger); font-size: 0.8rem; }
 .visual-editor .visual-math { cursor: pointer; border-radius: 0.3rem; }
 .visual-editor .visual-math:hover { background: var(--accent-soft); }
@@ -456,7 +456,7 @@ body {
 .visual-editor:lang(en) .ProseMirror blockquote[data-kind="CAUTION"]::before { content: "Caution"; }
 
 /* Tabs in the visual editor: a strip of titles, the chosen panel below. */
-.visual-editor .visual-tabs { margin: 0.9rem 0; border: 1px solid var(--border); border-radius: 0.5rem; }
+.visual-editor .visual-tabs { margin: 0.9rem 0; border: 1px solid var(--border); border-radius: var(--radius-lg); }
 .visual-editor .visual-tabs-strip { display: flex; flex-wrap: wrap; gap: 0.15rem; padding: 0.3rem 0.4rem 0; border-bottom: 1px solid var(--border); background: var(--surface-2); border-radius: 0.5rem 0.5rem 0 0; }
 .visual-editor .visual-tab { padding: 0.35rem 0.8rem; font-size: 0.85rem; color: var(--muted); border-bottom: 2px solid transparent; }
 .visual-editor .visual-tab.is-active { color: var(--ink); font-weight: 600; border-bottom-color: var(--accent); }
@@ -526,13 +526,13 @@ body {
 
 /* ---- OpenAPI reference (components/OpenApiReference.tsx) ---- */
 .openapi { margin: 1.25rem 0; }
-.openapi-loading { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px dashed var(--border); border-radius: 0.5rem; color: var(--muted); font-size: 0.875rem; }
+.openapi-loading { margin: 1rem 0; padding: 0.75rem 1rem; border: 1px dashed var(--border); border-radius: var(--radius-lg); color: var(--muted); font-size: 0.875rem; }
 .openapi-title { font-size: 1.15rem; font-weight: 600; margin: 0 0 0.25rem; }
 .openapi-version { font-size: 0.75rem; font-weight: 500; padding: 0.1rem 0.45rem; border-radius: 999px; background: var(--surface-2); color: var(--muted); vertical-align: middle; }
 .openapi-text { margin: 0.35rem 0 0.6rem; white-space: pre-line; color: var(--muted); font-size: 0.9rem; }
 .openapi-servers { font-size: 0.85rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .openapi-tag { margin: 1.5rem 0 0.4rem; font-weight: 600; font-size: 1rem; }
-.openapi-op { --method: #64748b; margin: 0.5rem 0; border: 1px solid color-mix(in srgb, var(--method) 35%, var(--border)); border-radius: 0.5rem; background: color-mix(in srgb, var(--method) 5%, var(--surface)); }
+.openapi-op { --method: #64748b; margin: 0.5rem 0; border: 1px solid color-mix(in srgb, var(--method) 35%, var(--border)); border-radius: var(--radius-lg); background: color-mix(in srgb, var(--method) 5%, var(--surface)); }
 .openapi-get { --method: #2563eb; } .openapi-post { --method: #16a34a; } .openapi-put { --method: #d97706; }
 .openapi-patch { --method: #0d9488; } .openapi-delete { --method: #dc2626; }
 .openapi-op > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; padding: 0.55rem 0.75rem; cursor: pointer; list-style: none; }
@@ -586,7 +586,7 @@ html[data-reader-width="narrow"] .markdown-body { max-width: 42rem; }
   border: 0;
   background: none;
   cursor: zoom-in;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-lg);
 }
 .markdown-body .zoom-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
@@ -702,7 +702,7 @@ html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(
 /* ---- Code blocks: line numbers and marked lines (v2.3) --------------------
    Both lie over the <pre> (see CodeBlock). One line pitch is 1lh of the
    block's own line-height, set here once for the <pre> and its overlays. */
-.markdown-body .code-body { position: relative; margin: 1rem 0; border-radius: 0.5rem; background: var(--surface-2); }
+.markdown-body .code-body { position: relative; margin: 1rem 0; border-radius: var(--radius-lg); background: var(--surface-2); }
 .markdown-body .code-block.has-title .code-body { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
 /* The block's background moves to .code-body, so a marked line can sit
    between it and the text instead of over the text. */
@@ -761,3 +761,26 @@ html:not(.dark) .hljs-deletion { color: #82071e; background-color: #ffebe9; }
 @media print {
   .announcement-bar { display: none; }
 }
+
+/* ---- Appearance from the branding form (v2.3) -----------------------------
+   Attributes, not classes: SiteProvider sets them on <html> for the live
+   site, and the branding form's preview sets them on its own box, so the
+   same rules show a draft before it is saved. Light values first, then the
+   dark ones (on <html> itself, or on a preview inside a dark page). */
+[data-surface="neutral"] { --bg: #f5f5f5; --surface-2: #eeeeee; --border: #dedede; }
+[data-surface="warm"] { --bg: #f7f4ef; --surface: #fffdfa; --surface-2: #f0ebe3; --border: #e4ddd2; }
+.dark[data-surface="neutral"], .dark [data-surface="neutral"] { --bg: #0f0f10; --surface: #18181a; --surface-2: #202023; --border: #2b2b2f; }
+.dark[data-surface="warm"], .dark [data-surface="warm"] { --bg: #12100d; --surface: #1b1814; --surface-2: #24201b; --border: #332d26; }
+
+/* Tailwind's rounded-* utilities read these variables, and so do the
+   Markdown styles above -- one switch for every corner on the site. */
+[data-radius="sharp"] { --radius-sm: 0.125rem; --radius-md: 0.1875rem; --radius-lg: 0.25rem; --radius-xl: 0.375rem; --radius-2xl: 0.5rem; }
+[data-radius="round"] { --radius-sm: 0.375rem; --radius-md: 0.5rem; --radius-lg: 0.75rem; --radius-xl: 1rem; --radius-2xl: 1.5rem; }
+
+[data-header="accent"] .site-header {
+  background: var(--accent);
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+[data-header="accent"] .site-header :is(a, button):not(.site-header-field *, .site-header-menu *) { color: inherit; }
+[data-header="accent"] .site-header .site-header-field input { color: var(--ink); }

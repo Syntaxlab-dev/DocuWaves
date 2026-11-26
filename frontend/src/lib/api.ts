@@ -582,6 +582,13 @@ export interface FooterLink {
   column?: string;
 }
 
+/** The look beyond the accent colour. */
+export interface SiteAppearance {
+  surface: "cool" | "neutral" | "warm";
+  radius: "medium" | "sharp" | "round";
+  header: "plain" | "accent";
+}
+
 /** The bar across the top of every public page; `{}` when there is none. */
 export interface SiteAnnouncement {
   text?: string;
@@ -631,6 +638,9 @@ export interface SiteBranding {
   /** The "Made with DocuWaves" footer line. Optional for a stale cached copy. */
   powered_by?: boolean;
   announcement?: SiteAnnouncement;
+  appearance?: SiteAppearance;
+  /** Extra CSS for the public site, from the branding form. */
+  custom_css?: string;
   /** Umami, or an empty object for an instance that measures nothing --
    *  which is the default. Not a secret: the moment it is set, the script
    *  tag it describes is in the head of every public page. The tag itself is
@@ -1448,6 +1458,8 @@ export const api = {
     footer_links: FooterLink[];
     powered_by: boolean;
     announcement: SiteAnnouncement;
+    appearance: SiteAppearance;
+    custom_css: string;
     analytics: SiteAnalytics;
     pdf: SitePdf;
   }) => request<SiteBranding>("/api/admin/site", { method: "PUT", body: JSON.stringify(data) }),

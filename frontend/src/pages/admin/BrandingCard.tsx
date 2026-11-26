@@ -11,6 +11,7 @@ import {
   ApiError,
   type FooterLink,
   type SiteAnalytics,
+  type SiteAppearance,
   type SiteAsset,
   type SiteBranding,
   type SitePdf,
@@ -22,6 +23,21 @@ import { accentVariables } from "@/lib/theme";
 import { PDF_DEFAULTS } from "@/lib/printBranding";
 import { toFieldValues, fromFieldValues, LocalizedInput } from "./shared";
 import { SkeletonLines } from "@/components/Skeleton";
+
+export const APPEARANCE_DEFAULTS: SiteAppearance = { surface: "cool", radius: "medium", header: "plain" };
+
+/** Ready-made looks: one click fills in the accent and the three appearance
+ *  choices, which stay editable one by one afterwards. A theme is not saved
+ *  as such -- only the values it set -- so nothing changes under an instance
+ *  when a later version adds or tunes a theme. */
+const THEMES: { id: string; accent: string; appearance: SiteAppearance }[] = [
+  { id: "default", accent: "", appearance: APPEARANCE_DEFAULTS },
+  { id: "ocean", accent: "#0e7490", appearance: { surface: "cool", radius: "round", header: "accent" } },
+  { id: "forest", accent: "#2f7d4f", appearance: { surface: "neutral", radius: "medium", header: "plain" } },
+  { id: "sunset", accent: "#c2410c", appearance: { surface: "warm", radius: "round", header: "plain" } },
+  { id: "graphite", accent: "#374151", appearance: { surface: "neutral", radius: "sharp", header: "accent" } },
+  { id: "plum", accent: "#7c3aed", appearance: { surface: "cool", radius: "round", header: "plain" } },
+];
 
 /** The instance's own identity: name, tagline, accent colour, logo/favicon
  *  and footer. Saving writes content/_site.yml (plus any uploaded image into
@@ -73,6 +89,8 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
         footer_links: draft.footer_links,
         powered_by: draft.powered_by !== false,
         announcement: draft.announcement ?? {},
+        appearance: draft.appearance ?? APPEARANCE_DEFAULTS,
+        custom_css: draft.custom_css ?? "",
         analytics: draft.analytics ?? {},
         pdf: draft.pdf ?? PDF_DEFAULTS,
       });
@@ -164,6 +182,12 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
               </div>
             </div>
 
+            <AppearanceFields
+              accent={draft.accent}
+              appearance={draft.appearance ?? APPEARANCE_DEFAULTS}
+              onChange={(changes) => patch(changes)}
+            />
+
             <div className="grid gap-3 sm:grid-cols-3">
               <BrandingImageField
                 label={t("admin.brandingLogo")}
@@ -222,6 +246,19 @@ export function BrandingCard({ isDark, onClose }: { isDark: boolean; onClose: ()
                 onChange={(e) => patch({ announcement: { ...draft.announcement, link: e.target.value } })}
               />
             </div>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium">{t("admin.brandingCustomCss")}</span>
+              <span className="text-xs text-[var(--muted)]">{t("admin.brandingCustomCssHint")}</span>
+              <textarea
+                value={draft.custom_css ?? ""}
+                onChange={(e) => patch({ custom_css: e.target.value })}
+                rows={5}
+                spellCheck={false}
+                placeholder=".markdown-body h2 { letter-spacing: -0.01em; }"
+                className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2 font-mono text-xs outline-none focus:border-[var(--accent)]"
+              />
+            </label>
 
             <AnalyticsFields
               analytics={draft.analytics ?? {}}
@@ -347,26 +384,43 @@ export function BrandingTextField({
 export function BrandingPreview({ draft, isDark }: { draft: SiteBranding; isDark: boolean }) {
   const { t } = useI18n();
   const logoUrl = logoForTheme(draft, isDark);
+  const appearance = draft.appearance ?? APPEARANCE_DEFAULTS;
   return (
     <div>
       <span className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">
         {t("admin.brandingPreview")}
       </span>
+      {/* The same data-* attributes the live site gets on <html>, set on
+          this box instead: index.css's rules apply to either, so the draft
+          shows here before it is saved. */}
       <div
-        className="mt-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)]"
+        data-surface={appearance.surface}
+        data-radius={appearance.radius}
+        data-header={appearance.header}
+        className="mt-1.5 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg)]"
         style={accentVariables(draft.accent) ?? undefined}
       >
-        <div className="flex items-center gap-3 border-b border-[var(--border)] px-3 py-2.5">
+        <div className="site-header flex items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-3 py-2.5">
           {logoUrl && <img src={logoUrl} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />}
           <span className="text-lg font-semibold">{draft.name || "DocuWaves"}</span>
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-sm text-[var(--accent)]">{t("nav.public")}</span>
+            <span className="text-sm">{t("nav.public")}</span>
+          </div>
+        </div>
+        <div className="grid gap-3 p-3 sm:grid-cols-[1fr_auto]">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 shadow-[var(--shadow)]">
+            <span className="block font-semibold">{draft.tagline || t("admin.brandingPreviewCard")}</span>
+            <span className="mt-1 block text-sm text-[var(--muted)]">{t("admin.brandingPreviewText")}</span>
+            <span className="mt-2 inline-block rounded-md bg-[var(--surface-2)] px-2 py-1 font-mono text-xs">
+              npm run build
+            </span>
+          </div>
+          <div className="flex items-end">
             <Button size="sm">{t("admin.save")}</Button>
           </div>
         </div>
-        {(draft.tagline || draft.footer_text || draft.footer_links.length > 0) && (
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-sm text-[var(--muted)]">
-            {draft.tagline && <span>{draft.tagline}</span>}
+        {(draft.footer_text || draft.footer_links.length > 0) && (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--muted)]">
             {draft.footer_text && <span>{draft.footer_text}</span>}
             {draft.footer_links.map((link) => (
               <span key={`${link.label}-${link.url}`} className="text-[var(--accent)]">
@@ -375,6 +429,82 @@ export function BrandingPreview({ draft, isDark }: { draft: SiteBranding; isDark
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Ready-made themes and the three appearance choices, each a row of
+ *  buttons: the options are few and visual, a select would hide them. */
+function AppearanceFields({
+  accent,
+  appearance,
+  onChange,
+}: {
+  accent: string;
+  appearance: SiteAppearance;
+  onChange: (changes: Partial<SiteBranding>) => void;
+}) {
+  const { t } = useI18n();
+  const set = (changes: Partial<SiteAppearance>) => onChange({ appearance: { ...appearance, ...changes } });
+  const active = THEMES.find(
+    (theme) =>
+      theme.accent === accent &&
+      theme.appearance.surface === appearance.surface &&
+      theme.appearance.radius === appearance.radius &&
+      theme.appearance.header === appearance.header,
+  )?.id;
+  const segment = <K extends keyof SiteAppearance>(key: K, options: SiteAppearance[K][]) => (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-sm font-medium">{t(`admin.appearance.${key}` as never)}</span>
+      <div className="flex gap-1 rounded-lg border border-[var(--border)] p-0.5" role="group">
+        {options.map((option) => (
+          <button
+            key={option}
+            type="button"
+            aria-pressed={appearance[key] === option}
+            onClick={() => set({ [key]: option } as Partial<SiteAppearance>)}
+            className={`flex-1 rounded-md px-2 py-1 text-xs ${
+              appearance[key] === option
+                ? "bg-[var(--accent)] text-[var(--accent-ink)]"
+                : "text-[var(--muted)] hover:bg-[var(--surface-2)]"
+            }`}
+          >
+            {t(`admin.appearance.${key}.${option}` as never)}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">{t("admin.appearance.themes")}</span>
+        <div className="flex flex-wrap gap-2">
+          {THEMES.map((theme) => (
+            <button
+              key={theme.id}
+              type="button"
+              aria-pressed={active === theme.id}
+              onClick={() => onChange({ accent: theme.accent, appearance: theme.appearance })}
+              className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm ${
+                active === theme.id ? "border-[var(--accent)] bg-[var(--accent-soft)]" : "border-[var(--border)] hover:bg-[var(--surface-2)]"
+              }`}
+            >
+              <span
+                className="h-4 w-4 rounded-full border border-black/10"
+                style={{ background: theme.accent || "#4f6df5" }}
+                aria-hidden="true"
+              />
+              {t(`admin.theme.${theme.id}` as never)}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {segment("surface", ["cool", "neutral", "warm"])}
+        {segment("radius", ["sharp", "medium", "round"])}
+        {segment("header", ["plain", "accent"])}
       </div>
     </div>
   );

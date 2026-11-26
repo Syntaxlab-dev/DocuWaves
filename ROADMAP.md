@@ -144,9 +144,9 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | ✅ | A project switcher in the header | S |
 | ✅ | An announcement bar, set in the admin, dismissible for readers | S |
 | ✅ | A footer with link columns and "Made with DocuWaves" (can be turned off) | S |
-| | More branding with a live preview: background tone, corner radius, header style | M |
-| | Ready-made themes to pick with one click | M |
-| | Custom CSS for those who want it | S |
+| ✅ | More branding with a live preview: background tone, corner radius, header style | M |
+| ✅ | Ready-made themes to pick with one click | M |
+| ✅ | Custom CSS for those who want it | S |
 | | Icons from one consistent set for categories and projects, as an alternative to emoji | M |
 | | An accessibility pass: focus rings, WCAG AA contrast, skip link, labels, an automated axe check in CI | M |
 | | Admin and editor usable on tablets and phones | M |
