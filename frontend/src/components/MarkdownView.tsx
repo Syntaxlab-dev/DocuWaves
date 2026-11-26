@@ -16,6 +16,7 @@ import { rehypeGlossary, type GlossaryEntry } from "@/lib/glossary";
 import { collectHeadings, stripRedundantTitle } from "@/lib/headings";
 import { useI18n } from "@/lib/i18n";
 import { remarkTabs } from "@/lib/tabs";
+import { InsideLink, ZoomImage } from "@/components/ZoomImage";
 
 /**
  * Images are written in a page as a plain relative path
@@ -202,8 +203,8 @@ export function MarkdownView({
               );
             }
 
-            return (
-              <img
+            const image = (
+              <ZoomImage
                 {...props}
                 // undefined, never "": a src of "" makes the browser
                 // re-request the current page as an image. Empty is what
@@ -213,6 +214,26 @@ export function MarkdownView({
                 loading="lazy"
                 decoding="async"
               />
+            );
+            // `![Alt](x.png "Caption")`: the title becomes a visible caption
+            // under the image. Spans, not <figure>: the image sits inside a
+            // paragraph, where a figure is not allowed.
+            if (typeof props.title === "string" && props.title.trim()) {
+              return (
+                <span className="image-figure">
+                  {image}
+                  <span className="image-caption">{props.title}</span>
+                </span>
+              );
+            }
+            return image;
+          },
+          a({ node, children, ...props }) {
+            void node;
+            return (
+              <InsideLink.Provider value={true}>
+                <a {...props}>{children}</a>
+              </InsideLink.Provider>
             );
           },
           h2({ node, children, ...props }) {

@@ -20,6 +20,7 @@ import { useDocPath, useReportProjectVersion } from "@/lib/version";
 import { useGlossary } from "@/lib/glossary";
 import { PrintMargins } from "@/lib/printBranding";
 import { siteText, useDocumentTitle, useSite } from "@/lib/site";
+import { BackToTop, ReaderSettings, ReadingProgress } from "@/components/ReaderTools";
 
 /** Below this, a contents list is just the page's own outline restated --
  *  one entry is never worth a column, and two is where it starts telling a
@@ -131,7 +132,12 @@ export function PublicPage() {
           {data.category.name}
         </Link>
       </div>
-      <h1 className="mt-2 mb-4 text-2xl font-semibold">{data.page.title}</h1>
+      <ReadingProgress />
+      <BackToTop />
+      <div className="mt-2 mb-4 flex items-start gap-2">
+        <h1 className="min-w-0 flex-1 text-2xl font-semibold">{data.page.title}</h1>
+        <ReaderSettings />
+      </div>
       {/* Between the title and the text, where it is read before the page
           is: what follows is not in the language that was asked for, and
           saying so plainly is the whole point -- the alternative would be

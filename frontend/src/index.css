@@ -570,3 +570,35 @@ body {
 .hover-reveal {
   transition: opacity 120ms ease;
 }
+
+/* ---- Reading (v2.2) ---- */
+
+/* Text size and line width from the reader's own settings (readerPrefs.ts). */
+html[data-reader-size="s"] .markdown-body { font-size: 0.9375rem; }
+html[data-reader-size="l"] .markdown-body { font-size: 1.125rem; }
+html[data-reader-width="narrow"] .markdown-body { max-width: 42rem; }
+
+/* An image that opens large: the button around it is invisible. */
+.markdown-body .zoom-trigger {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: 0.5rem;
+}
+.markdown-body .zoom-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+/* `![Alt](x.png "Caption")`: the title as a caption, the image framed. */
+.markdown-body .image-figure { display: block; margin: 1.25rem 0; text-align: center; }
+.markdown-body .image-figure img {
+  border: 1px solid var(--border);
+  box-shadow: 0 6px 24px -12px rgb(0 0 0 / 0.35);
+}
+.markdown-body .image-caption { display: block; margin-top: 0.5rem; font-size: 0.875em; color: var(--muted); }
+
+@media print {
+  .reader-chrome { display: none !important; }
+  .markdown-body .zoom-trigger { cursor: auto; }
+}

@@ -490,3 +490,17 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await expect(cats.getByRole("button", { name: "Scratch" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("a reader picks a larger text, and it stays", async ({ page }) => {
+  const errors = watchErrors(page);
+  await page.goto("/p/handbook/c/wiring");
+  await page.locator("main").getByRole("link", { name: /^Mains connection/ }).first().click();
+  await page.getByRole("button", { name: "Text display" }).click();
+  await page.getByRole("button", { name: "Large", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-reader-size", "l");
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-reader-size", "l");
+  await page.getByRole("button", { name: "Text display" }).click();
+  await expect(page.getByRole("button", { name: "Large", exact: true })).toHaveAttribute("aria-pressed", "true");
+  expect(errors).toEqual([]);
+});
