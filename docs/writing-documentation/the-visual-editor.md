@@ -38,6 +38,22 @@ Inside a table, a second row of tools appears: insert a row above or below,
 a column left or right, delete the row or column, and align the column left,
 centred or right.
 
+**Type `/`** at the start of an empty line for a menu of blocks: headings,
+lists, quotes, the callout boxes, a code block, a table, an image, tabs, a
+formula or a divider. Keep typing to narrow it down (`/h2`, `/note`,
+`/table` — the English names work in every interface language), pick with
+the arrow keys and Enter, or close it with Escape.
+
+**Select some text** and a small bar appears right above it: bold, italic,
+strikethrough, inline code and link, without travelling up to the toolbar.
+
+## Writing without distractions
+
+**Full screen** (the arrows next to Visual | Markdown) hides everything but
+the title and the text; Escape brings the rest back. In **Markdown**, the
+**side by side** button puts the preview next to the text, updated as you
+type; the choice is remembered in your browser.
+
 Markdown shortcuts work while typing, too: `## ` at the start of a line
 becomes a heading, `- ` a list, `> ` a quote, ` ``` ` a code block.
 **⌘/Ctrl+S** saves, as in the Markdown editor.
