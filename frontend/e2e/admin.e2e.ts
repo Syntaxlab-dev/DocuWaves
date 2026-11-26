@@ -79,7 +79,7 @@ test("the page is on the public site", async ({ page }) => {
   await page.goto("/");
   // With one project, the homepage is that project's page.
   await expect(page.getByText("Everything about the product.")).toBeVisible();
-  await page.getByRole("link", { name: /Getting started/ }).click();
+  await page.getByRole("link", { name: /^Getting started/ }).click();
   await page.getByRole("link", { name: /Installing the widget/ }).first().click();
   await expect(page).toHaveURL(/\/p\/handbook\/pages\/installing-the-widget$/);
   await expect(page.getByRole("heading", { name: "Installing the widget" })).toBeVisible();
@@ -503,4 +503,20 @@ test("a reader picks a larger text, and it stays", async ({ page }) => {
   await page.getByRole("button", { name: "Text display" }).click();
   await expect(page.getByRole("button", { name: "Large", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect(errors).toEqual([]);
+});
+
+test("the home page searches, and names a category's first pages", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("searchbox", { name: "What are you looking for?" }).fill("green light");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/search\?q=green%20light$/);
+  await expect(page.getByRole("heading", { name: "Search results" })).toBeVisible();
+  // One click from the home page to a page, past its category.
+  await page.goto("/");
+  // (Which page comes first depends on what the tests above added.)
+  const first = page.locator("main .grid li a[href*='/pages/']").first();
+  const href = await first.getAttribute("href");
+  await first.click();
+  await expect(page).toHaveURL(new RegExp(`${href}$`));
+  await expect(page.locator("main h1")).toBeVisible();
 });

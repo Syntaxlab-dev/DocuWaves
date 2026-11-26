@@ -113,9 +113,9 @@ Effort: **S** up to a day, **M** two to five days, **L** more than a week.
 | ✅ | Nicer tables: striped rows, sticky header, horizontal scrolling on phones | S |
 | ✅ | Previous/next as cards with category and a short excerpt | S |
 | ✅ | Image captions from the image title, optional frame and shadow | S |
-| | A home page header: large search field, tagline, optional cover image | M |
-| | Category tiles with a short description and their top three pages | S |
-| | "Recently updated" on the home page | S |
+| ✅ | A home page header: large search field, tagline, optional cover image | M |
+| ✅ | Category tiles with a short description and their top three pages | S |
+| ✅ | "Recently updated" on the home page | S |
 | | A calmer sidebar with category icons instead of capitals | S |
 | | A friendlier 404 page with search and similar pages | S |
 | ✅ | Typography: a clear heading scale, more white space, a choice of reading font | M |

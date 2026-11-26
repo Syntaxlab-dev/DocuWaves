@@ -643,3 +643,18 @@ html[data-reader-font="serif"] .markdown-body :is(code, pre) { font-family: var(
 .dark .markdown-body img:hover, .dark .lightbox img { filter: none; }
 .dark .markdown-body .image-figure img { box-shadow: 0 6px 24px -12px rgb(0 0 0 / 0.8); }
 @media print { .markdown-body img { filter: none !important; } }
+
+/* ---- Home page header (v2.2) ---------------------------------------------
+   A soft wash of the accent colour, fading into the surface: enough to say
+   "start here" without a picture nobody uploaded, and derived from the one
+   colour the site's owner did choose, so it suits any branding. */
+.home-hero {
+  background:
+    radial-gradient(120% 140% at 50% -20%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%),
+    var(--surface);
+}
+@media print {
+  .home-hero form {
+    display: none;
+  }
+}

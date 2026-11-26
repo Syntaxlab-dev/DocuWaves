@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { api, type Project } from "@/lib/api";
+import { useEffect, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { Search } from "lucide-react";
+import { api, type ChangelogEntry, type Project } from "@/lib/api";
+import { formatIsoDate } from "@/lib/dates";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CoverImage } from "@/components/CoverImage";
 import { PrivateBadge } from "@/components/PrivateBadge";
@@ -10,11 +12,17 @@ import { topCategories, useProjectNav } from "@/lib/nav";
 import { CategoryTiles } from "@/components/CategoryTiles";
 import { siteText, useDocumentTitle, useSite } from "@/lib/site";
 
+/** How many changes the home page names; the rest are one click away. */
+const RECENT_COUNT = 5;
+
 export function PublicHome() {
-  const { t } = useI18n();
+  const { t, lang: uiLang } = useI18n();
   const { site } = useSite();
   const { lang, path } = useContentLang();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [recent, setRecent] = useState<ChangelogEntry[]>([]);
+  const [q, setQ] = useState("");
 
   // No page title of its own -- the home page IS the site.
   useDocumentTitle();
@@ -23,7 +31,18 @@ export function PublicHome() {
     // Project names/descriptions come back in the reader's language, so a
     // language switch has to refetch rather than reuse the cached list.
     api.publicListProjects(lang).then((r) => setProjects(r.projects));
+    // The same list as /changes, its newest few. Quietly absent when it
+    // can't be had: it is a pointer, not the page's content.
+    api
+      .changelog(lang)
+      .then((r) => setRecent(r.entries.slice(0, RECENT_COUNT)))
+      .catch(() => setRecent([]));
   }, [lang]);
+
+  function onSearch(e: FormEvent) {
+    e.preventDefault();
+    if (q.trim()) navigate(path(`/search?q=${encodeURIComponent(q.trim())}`));
+  }
 
   // An instance documenting ONE thing -- which is most of them -- had a home
   // page whose entire content was a single tile in a three-column grid, and
@@ -49,13 +68,43 @@ export function PublicHome() {
   const subtitle =
     siteText(site, "tagline", lang) || (showCategories ? soleProject?.description || "" : t("home.subtitle"));
 
+  // The sole project's cover, when it has one, is the home page's banner:
+  // it is the picture somebody already chose for exactly this documentation.
+  const cover = showCategories ? soleProject?.image_url : null;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <h1 className="text-2xl font-semibold">{siteText(site, "name", lang)}</h1>
-      {subtitle && <p className="mt-1 text-[var(--muted)]">{subtitle}</p>}
-      <Link to={path("/changes")} className="mt-2 inline-block text-sm text-[var(--accent)] hover:underline">
-        {t("changes.link")} →
-      </Link>
+      {/* The first screen asks the one question most visitors arrived with
+          -- "where is the bit about X?" -- with a field big enough to be
+          the obvious first move, instead of a heading and a link. */}
+      <header className="home-hero relative isolate overflow-hidden rounded-2xl border border-[var(--border)] px-5 py-10 text-center sm:px-10 sm:py-14">
+        {cover && (
+          <img
+            src={cover}
+            alt=""
+            className="absolute inset-0 -z-10 h-full w-full object-cover opacity-20"
+            onError={(e) => (e.currentTarget.style.display = "none")}
+          />
+        )}
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{siteText(site, "name", lang)}</h1>
+        {subtitle && <p className="mx-auto mt-2 max-w-xl text-[var(--muted)] sm:text-lg">{subtitle}</p>}
+        <form onSubmit={onSearch} role="search" className="mx-auto mt-6 max-w-xl">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[var(--muted)]"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder={t("home.searchPlaceholder")}
+              aria-label={t("home.searchPlaceholder")}
+              className="h-14 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] pl-12 pr-4 text-base shadow-[var(--shadow)] outline-none transition focus:border-[var(--accent)] focus:ring-4 focus:ring-[var(--accent-soft)]"
+            />
+          </div>
+        </form>
+      </header>
 
       {projects === null && <p className="mt-8 text-[var(--muted)]">{t("common.loading")}</p>}
       {projects !== null && projects.length === 0 && <p className="mt-8 text-[var(--muted)]">{t("home.empty")}</p>}
@@ -69,7 +118,12 @@ export function PublicHome() {
       {soleProject && nav && soleCategories && soleCategories.length > 0 && (
         // Same tiles as the project page's, deliberately -- this is the
         // same list, reached from one level up.
-        <CategoryTiles nav={nav} categories={soleCategories} href={(c) => path(`/p/${soleProject.slug}/c/${c.slug}`)} />
+        <CategoryTiles
+          nav={nav}
+          categories={soleCategories}
+          href={(c) => path(`/p/${soleProject.slug}/c/${c.slug}`)}
+          pageHref={(slug) => path(`/p/${soleProject.slug}/pages/${slug}`)}
+        />
       )}
 
       {!showCategories && (
@@ -93,6 +147,35 @@ export function PublicHome() {
             </Link>
           ))}
         </div>
+      )}
+
+      {recent.length > 0 && (
+        <section className="mt-12">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{t("home.recent")}</h2>
+            <Link to={path("/changes")} className="text-sm text-[var(--accent)] hover:underline">
+              {t("home.allChanges")} →
+            </Link>
+          </div>
+          <ul className="mt-3 divide-y divide-[var(--border)] rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+            {recent.map((entry) => (
+              <li key={`${entry.project_slug}/${entry.page_slug}/${entry.language}`}>
+                <Link
+                  to={path(`/p/${entry.project_slug}/pages/${entry.page_slug}`)}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-3 hover:bg-[var(--surface-2)]"
+                >
+                  <span className="font-medium">{entry.title}</span>
+                  <span className="text-xs text-[var(--muted)]">
+                    {soleProject ? entry.category_name : `${entry.project_name} › ${entry.category_name}`}
+                  </span>
+                  <time dateTime={entry.date} className="ml-auto text-xs text-[var(--muted)]">
+                    {formatIsoDate(entry.date, uiLang)}
+                  </time>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </div>
   );

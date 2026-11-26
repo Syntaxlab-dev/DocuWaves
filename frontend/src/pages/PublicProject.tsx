@@ -128,7 +128,12 @@ export function PublicProject() {
         {t("project.categories")}
       </h2>
       {categories.length === 0 && <p className="mt-4 text-[var(--muted)]">{t("project.empty")}</p>}
-      <CategoryTiles nav={nav} categories={categories} href={(c) => docPath(nav.project.slug, `/c/${c.slug}`)} />
+      <CategoryTiles
+        nav={nav}
+        categories={categories}
+        href={(c) => docPath(nav.project.slug, `/c/${c.slug}`)}
+        pageHref={(slug) => docPath(nav.project.slug, `/pages/${slug}`)}
+      />
     </DocsShell>
   );
 }

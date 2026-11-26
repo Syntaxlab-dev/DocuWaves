@@ -99,7 +99,12 @@ export function PublicCategory() {
       )}
 
       {children.length > 0 && (
-        <CategoryTiles nav={nav} categories={children} href={(c) => docPath(nav.project.slug, `/c/${c.slug}`)} />
+        <CategoryTiles
+          nav={nav}
+          categories={children}
+          href={(c) => docPath(nav.project.slug, `/c/${c.slug}`)}
+          pageHref={(slug) => docPath(nav.project.slug, `/pages/${slug}`)}
+        />
       )}
 
       {category.pages.length > 0 && (
