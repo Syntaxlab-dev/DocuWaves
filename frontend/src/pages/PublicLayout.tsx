@@ -12,7 +12,7 @@ import { DocChat } from "@/components/DocChat";
 import { QuickSearch, useQuickSearchShortcut } from "@/components/QuickSearch";
 import { ShortcutsDialog, useReaderShortcuts } from "@/components/Shortcuts";
 import { AnnouncementBar, ProjectSwitcher, SiteFooter } from "@/components/SiteChrome";
-import { logoForTheme, siteText, useCustomCss, useSite } from "@/lib/site";
+import { logoForTheme, markForSite, siteText, useCustomCss, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -100,7 +100,11 @@ export function PublicLayout() {
           <Link to={contentLang.path("/")} className="flex items-center gap-2 text-lg font-semibold">
             {/* alt="" -- the name sits right next to it in text, so a screen
                 reader announcing the logo too would just say it twice. */}
-            {logoUrl && <img src={logoUrl} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />}
+            {logoUrl ? (
+              <img src={logoUrl} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />
+            ) : (
+              <img src={markForSite(site)} alt="" className="h-7 w-7 shrink-0 object-contain" />
+            )}
             <span>{siteText(site, "name", contentLang.lang)}</span>
           </Link>
           <ProjectSwitcher />

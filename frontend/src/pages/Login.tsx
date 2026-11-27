@@ -9,7 +9,7 @@ import { api, ApiError, type MfaMethod, type OidcStatus } from "@/lib/api";
 import { getAssertion, webauthnSupported } from "@/lib/webauthn";
 import { useAuth } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { logoForTheme, siteText, useSite } from "@/lib/site";
+import { logoForTheme, markForSite, siteText, useSite } from "@/lib/site";
 import { useIsDarkTheme } from "@/lib/theme";
 
 export function Login({
@@ -165,7 +165,9 @@ export function Login({
         <div className="flex flex-col items-center gap-3 text-center">
           {logoForTheme(site, isDark) ? (
             <img src={logoForTheme(site, isDark)!} alt="" className="h-12 w-auto max-w-[14rem] object-contain" />
-          ) : null}
+          ) : (
+            <img src={markForSite(site)} alt="" className="h-12 w-12 object-contain" />
+          )}
           <div className="text-xl font-semibold tracking-tight">{siteText(site, "name", lang)}</div>
         </div>
       )}

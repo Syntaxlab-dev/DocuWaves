@@ -137,6 +137,14 @@ export function logoForTheme(site: SiteBranding, isDark: boolean): string | null
   return isDark && site.logo_dark_url ? site.logo_dark_url : site.logo_url;
 }
 
+/** The small square mark the site header, the admin header and the
+ *  sign-in screen show beside the name when no logo is set: the
+ *  instance's own favicon if it has one, otherwise the DocuWaves mark
+ *  the app ships with. */
+export function markForSite(site: SiteBranding): string {
+  return site.favicon_url || "/favicon.svg";
+}
+
 /** The administrator's own CSS, on the public site only: the admin area has
  *  to stay usable whatever a stylesheet does to the docs. Set as the text of
  *  a <style> element, so it is never parsed as HTML. */

@@ -29,7 +29,7 @@ import {
 } from "@/lib/api";
 import { useAuth, usePermissions } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { logoForTheme, useDocumentTitle, useSite } from "@/lib/site";
+import { logoForTheme, markForSite, useDocumentTitle, useSite } from "@/lib/site";
 import { applyTheme, getPreferredTheme } from "@/lib/theme";
 import { RepoStatusBar } from "./admin/RepoStatus";
 import { AccountCard } from "./admin/AccountCard";
@@ -411,8 +411,10 @@ export function AdminApp() {
             {menuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
           <Link to="/admin" className="flex min-w-0 items-center gap-3">
-            {logoForTheme(site, isDark) && (
+            {logoForTheme(site, isDark) ? (
               <img src={logoForTheme(site, isDark)!} alt="" className="h-7 w-auto max-w-[10rem] object-contain" />
+            ) : (
+              <img src={markForSite(site)} alt="" className="h-7 w-7 shrink-0 object-contain" />
             )}
             <span className="truncate text-lg font-semibold">{site.name}</span>
             <span className="hidden text-sm text-[var(--muted)] sm:inline">{t("nav.admin")}</span>

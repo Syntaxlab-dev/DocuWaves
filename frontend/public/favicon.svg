@@ -1,1 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#4f6df5"/><path d="M9 8h10a5 5 0 0 1 5 5v0a5 5 0 0 1-5 5H12v6H9V8Zm3 3v4h7a2 2 0 0 0 0-4h-7Z" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <defs>
+    <linearGradient id="fg" x1="4" y1="2" x2="28" y2="30" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3CF0C5"/>
+      <stop offset="0.55" stop-color="#1CB5F2"/>
+      <stop offset="1" stop-color="#2F6BFF"/>
+    </linearGradient>
+    <mask id="fm" maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+      <rect width="32" height="32" fill="#fff"/>
+      <path d="M3 21 C8 26 14 25 18 21.5 C22 18 25 16.5 29 17.5" stroke="#000" stroke-width="8" stroke-linecap="round"/>
+    </mask>
+  </defs>
+  <path mask="url(#fm)" d="M10 20 V6 Q10 3.5 12.5 3.5 H19.5 L25 9 V25.5 Q25 28.5 22 28.5 H13" stroke="url(#fg)" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M3 21 C8 26 14 25 18 21.5 C22 18 25 16.5 29 17.5" stroke="url(#fg)" stroke-width="3.6" stroke-linecap="round"/>
+</svg>
