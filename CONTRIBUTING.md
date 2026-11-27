@@ -24,7 +24,7 @@ open the pull request.
 
 ## Running it locally
 
-You need Docker, or Python 3.11+ and Node 20+.
+You need Docker, or Python 3.15 and Node 26 (the versions CI and the image use).
 
 ```bash
 git clone https://github.com/Syntaxlab-dev/DocuWaves.git
@@ -72,6 +72,7 @@ The frontend has two more:
 
 ```bash
 cd frontend && npm test                          # unit tests, incl. the visual editor's round trip
+cd frontend && npm run lint                      # oxlint
 cd frontend && npm run build && npm run e2e      # a real browser against a real instance
 ```
 
@@ -83,12 +84,18 @@ dependencies on `python3` (or point `E2E_PYTHON` at a virtualenv's python) and
 a Chromium for Playwright (`npx playwright install chromium`). A failure in CI
 uploads the trace as an artifact; `npx playwright show-trace` replays it.
 
-`npm run build` in `frontend/` type-checks the whole app; there is no frontend
-test suite yet. CI runs both on every pull request.
+`npm run build` in `frontend/` type-checks the whole app. CI runs all of
+these on every pull request, plus the content-format checks:
+
+```bash
+python -m pytest tools/docuwaves-lint   # the linter against spec/conformance/
+```
 
 ## How the pieces fit together
 
-Worth knowing before you change anything:
+[ARCHITECTURE.md](ARCHITECTURE.md) maps the code: which module does what,
+and what happens on a page save from the editor to the Git commit. The short
+version, worth knowing before you change anything:
 
 - **The content repo is the source of truth, the database is not.** Every
   project, category, and page is a file in a Git repository. The database is a
@@ -99,6 +106,10 @@ Worth knowing before you change anything:
   handle commits, pushes, and conflicts. Please keep it that way.
 - **Anything user-supplied that becomes a path gets slugified first.** Project,
   category, and page names all end up as directory and file names.
+- **The file format is specified.** A change to what DocuWaves reads or
+  writes in the content repository belongs in
+  [spec/content-format.md](spec/content-format.md) and its conformance cases
+  in the same pull request.
 - **Raw SQL, no ORM**, and it has to work on both SQLite and PostgreSQL — see
   the placeholder handling in `db.py`.
 
