@@ -1,0 +1,54 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "Main_Project",
+        "name": "Main",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "Guides",
+            "name": "Guides",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "Guides",
+            "slug": "Read_Me",
+            "language": "",
+            "title": "Read me",
+            "order": 0,
+            "published": true
+          }
+        ],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "slug-not-canonical",
+      "path": "Main_Project/Guides/Read_Me.md"
+    },
+    {
+      "code": "slug-not-canonical",
+      "path": "Main_Project/Guides/_category.yml"
+    },
+    {
+      "code": "slug-not-canonical",
+      "path": "Main_Project/_project.yml"
+    },
+    {
+      "code": "unknown-key",
+      "path": "Main_Project/_project.yml"
+    }
+  ]
+}

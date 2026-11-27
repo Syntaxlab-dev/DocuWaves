@@ -1,0 +1,59 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "typed",
+        "name": "2026",
+        "order": 0,
+        "private": true,
+        "review_required": true,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "cat",
+            "name": "cat",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "cat",
+            "slug": "empty-title",
+            "language": "",
+            "title": "empty-title",
+            "order": -2,
+            "published": true
+          },
+          {
+            "version": "",
+            "category": "cat",
+            "slug": "strings",
+            "language": "",
+            "title": "42",
+            "order": 0,
+            "published": false
+          }
+        ],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "field-invalid",
+      "path": "typed/_project.yml"
+    },
+    {
+      "code": "field-invalid",
+      "path": "typed/cat/_category.yml"
+    },
+    {
+      "code": "field-invalid",
+      "path": "typed/cat/strings.md"
+    }
+  ]
+}

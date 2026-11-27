@@ -1,0 +1,11 @@
+current_label: Next
+versions:
+  - id: v2.0
+    label: Version 2
+    released: 2026-01-10
+  - id: current
+  - id: Bad ID
+  - id: v2.0
+  - label: no id
+  - id: v1
+    colour: red

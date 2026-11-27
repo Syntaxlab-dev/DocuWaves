@@ -1,0 +1,82 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "api",
+        "name": "API",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [
+          "current",
+          "v2.0",
+          "v1"
+        ],
+        "categories": [
+          {
+            "version": "current",
+            "slug": "endpoints",
+            "name": "Endpoints",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "v2.0",
+            "slug": "endpoints",
+            "name": "Endpoints",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "v1",
+            "slug": "endpoints",
+            "name": "Endpoints",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "current",
+            "category": "endpoints",
+            "slug": "list",
+            "language": "",
+            "title": "List (next)",
+            "order": 0,
+            "published": true
+          },
+          {
+            "version": "v2.0",
+            "category": "endpoints",
+            "slug": "list",
+            "language": "",
+            "title": "List (2.0)",
+            "order": 0,
+            "published": true
+          },
+          {
+            "version": "v1",
+            "category": "endpoints",
+            "slug": "old",
+            "language": "",
+            "title": "Old",
+            "order": 0,
+            "published": true
+          }
+        ],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "unknown-key",
+      "path": "api/_versions.yml"
+    },
+    {
+      "code": "version-invalid",
+      "path": "api/_versions.yml"
+    }
+  ]
+}

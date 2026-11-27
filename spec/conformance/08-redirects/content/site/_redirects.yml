@@ -1,0 +1,8 @@
+pages:
+  old: middle
+  middle: new
+  ping: pong
+  pong: ping
+  " spaced ": " new "
+  empty: ""
+  12: 34

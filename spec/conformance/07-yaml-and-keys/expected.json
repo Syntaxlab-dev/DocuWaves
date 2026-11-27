@@ -1,0 +1,76 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "broken",
+        "name": "broken",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "list",
+            "name": "list",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "list",
+            "slug": "bom",
+            "language": "",
+            "title": "With a byte order mark",
+            "order": 0,
+            "published": true
+          },
+          {
+            "version": "",
+            "category": "list",
+            "slug": "extra",
+            "language": "",
+            "title": "Extra",
+            "order": 0,
+            "published": false
+          },
+          {
+            "version": "",
+            "category": "list",
+            "slug": "unclosed",
+            "language": "",
+            "title": "unclosed",
+            "order": 0,
+            "published": false
+          }
+        ],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "unknown-key",
+      "path": "_site.yml"
+    },
+    {
+      "code": "yaml-invalid",
+      "path": "broken/_project.yml"
+    },
+    {
+      "code": "yaml-invalid",
+      "path": "broken/list/_category.yml"
+    },
+    {
+      "code": "unknown-key",
+      "path": "broken/list/extra.md"
+    },
+    {
+      "code": "yaml-invalid",
+      "path": "broken/list/unclosed.md"
+    }
+  ]
+}

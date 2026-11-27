@@ -1,0 +1,49 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "site",
+        "name": "Site",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "pages",
+            "name": "Pages",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "pages",
+            "slug": "new",
+            "language": "",
+            "title": "New",
+            "order": 0,
+            "published": true
+          }
+        ],
+        "redirects": {
+          "12": "34",
+          "middle": "new",
+          "old": "middle",
+          "ping": "pong",
+          "pong": "ping",
+          "spaced": "new"
+        }
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "redirect-loop",
+      "path": "site/_redirects.yml"
+    }
+  ]
+}

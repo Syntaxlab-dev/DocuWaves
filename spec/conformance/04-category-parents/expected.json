@@ -1,0 +1,100 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "docs",
+        "name": "Docs",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "a",
+            "name": "A",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "",
+            "slug": "b",
+            "name": "B",
+            "order": 0,
+            "parent": "a"
+          },
+          {
+            "version": "",
+            "slug": "c",
+            "name": "C",
+            "order": 0,
+            "parent": "b"
+          },
+          {
+            "version": "",
+            "slug": "d",
+            "name": "D",
+            "order": 0,
+            "parent": "c"
+          },
+          {
+            "version": "",
+            "slug": "e",
+            "name": "E",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "",
+            "slug": "ghost",
+            "name": "ghost",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "",
+            "slug": "selfish",
+            "name": "selfish",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "",
+            "slug": "x",
+            "name": "x",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "",
+            "slug": "y",
+            "name": "y",
+            "order": 0,
+            "parent": "x"
+          }
+        ],
+        "pages": [],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "parent-invalid",
+      "path": "docs/e/_category.yml"
+    },
+    {
+      "code": "parent-invalid",
+      "path": "docs/ghost/_category.yml"
+    },
+    {
+      "code": "parent-invalid",
+      "path": "docs/selfish/_category.yml"
+    },
+    {
+      "code": "parent-invalid",
+      "path": "docs/x/_category.yml"
+    }
+  ]
+}

@@ -1,0 +1,87 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "kb",
+        "name": "Knowledge base",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "alpha",
+            "name": "Alpha",
+            "order": 0,
+            "parent": ""
+          },
+          {
+            "version": "",
+            "slug": "beta",
+            "name": "Beta",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "beta",
+            "slug": "other",
+            "language": "",
+            "title": "Other",
+            "order": 0,
+            "published": true
+          },
+          {
+            "version": "",
+            "category": "alpha",
+            "slug": "setup",
+            "language": "",
+            "title": "Setup in alpha",
+            "order": 0,
+            "published": true
+          }
+        ],
+        "redirects": {}
+      },
+      {
+        "slug": "other",
+        "name": "Other project",
+        "order": 0,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "misc",
+            "name": "Misc",
+            "order": 0,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "misc",
+            "slug": "setup",
+            "language": "",
+            "title": "Same slug in another project",
+            "order": 0,
+            "published": true
+          }
+        ],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "duplicate-page",
+      "path": "kb/beta/setup.md"
+    }
+  ]
+}

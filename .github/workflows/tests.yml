@@ -42,6 +42,13 @@ jobs:
         working-directory: backend
         run: python -m pytest
 
+      # The second reader of spec/content-format.md, against the shared
+      # conformance cases in spec/conformance/ (spec section 10).
+      - name: Content format conformance
+        run: |
+          ruff check --config backend/ruff.toml tools
+          python -m pytest -q tools/docuwaves-lint
+
   frontend:
     runs-on: ubuntu-latest
     steps:
