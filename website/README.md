@@ -14,9 +14,9 @@ that is a DocuWaves instance, and its source is [`docs/`](../docs/).
 | `index.html` | The page. Styles are inline, the only script is the copy button |
 | `de/index.html` | The same page in German, at `/de/`. Same styles and images; the two link to each other (`hreflang`) |
 | `favicon.svg`, `apple-touch-icon.png` | Browser and home-screen icons |
-| `img/wordmark.svg`, `img/wordmark-dark.svg` | The logo, light and dark |
+| `img/logo.svg`, `img/logo-light.svg`, `img/mark.svg` | The logo for dark and light backgrounds, and the mark alone. `favicon.svg` is the simplified mark for small sizes. The wordmark is Montserrat (SIL Open Font Licence), converted to paths |
 | `img/og.png` | 1200×630 link-preview image (Open Graph / Twitter card) |
-| `img/*.webp` | Screenshots, made from the PNGs in [`docs/assets/`](../docs/assets/) |
+| `img/*.webp` | Screenshots of the reader and the admin |
 | `robots.txt`, `sitemap.xml` | For search engines |
 
 ## Previewing
@@ -67,7 +67,8 @@ Both carry `<link rel="alternate" hreflang>` for each other, and
 
 ## Updating the screenshots
 
-The screenshots are the ones in `docs/assets/`, converted to WebP at the
-size the page declares (`width`/`height` on each `<img>`). When those are
-retaken, convert them again so the landing page and the documentation show
-the same thing.
+`reader-home`, `editor`, `content-tree` and `theme` are the same files as
+the README's, in [`.github/screenshots/`](../.github/screenshots/); copy
+them over when those are retaken. `tokens.webp` is the API tokens panel of
+a fresh instance. Keep the `width`/`height` on each `<img>` in step with
+the file, so the page does not jump while images load.
