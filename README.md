@@ -15,6 +15,16 @@ open a pull request.
 **Documentation:** [docs.docuwaves.app](https://docs.docuwaves.app). Its
 source is the [`docs/`](docs/) folder of this repository.
 
+## What it looks like
+
+| For readers | For writers |
+|---|---|
+| ![The home page of a documentation site: a large search field, category tiles with their first pages, and recently updated pages](.github/screenshots/reader-home.webp) | ![The editor: the page text in the visual editor with its toolbar, and the page properties in a column on the right](.github/screenshots/editor.webp) |
+| ![The same site with the ready-made "Ocean" theme, an announcement bar and the project switcher](.github/screenshots/theme.webp) | ![The admin's content tree: projects, their categories and a category's pages, sorted by drag and drop](.github/screenshots/content-tree.webp) |
+
+The live documentation at [docs.docuwaves.app](https://docs.docuwaves.app)
+runs on DocuWaves itself.
+
 ## What it does
 
 - **Many projects in one instance**, each with categories shown as tiles and
