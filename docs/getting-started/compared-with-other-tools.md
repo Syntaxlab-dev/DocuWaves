@@ -17,6 +17,7 @@ DocuWaves is not the only self-hosted place to keep documentation. This page is 
 | Versions of the docs | Yes, frozen per release | No | No | Yes | No |
 | Languages per page | Yes, with fallback to the original | Interface only | Yes | Yes | Interface only |
 | Approval before publishing | Optional, per project | No | No | Through pull requests | No |
+| Look and branding | Ready-made themes, colours, logo, header style and custom CSS, set in the admin with a live preview | Colours, logo and custom HTML in the page head | Theme options and custom CSS | Anything, through code (React themes) | Workspace logo |
 | AI assistant access | MCP endpoint, read and write, as commits | No built-in | No built-in | No built-in | Built-in AI features |
 | Runs as | One container (SQLite or PostgreSQL) | PHP app with a database | Node.js app with a database | Static files on any web server | Node.js app with PostgreSQL, Redis and file storage |
 | License | MIT | MIT | AGPL-3.0 | MIT | BSL 1.1 (source-available, not open source) |
@@ -34,6 +35,7 @@ DocuWaves is not the only self-hosted place to keep documentation. This page is 
 - The content must stay **plain Markdown in a Git repository you own**: reviewable, portable and readable without the app.
 - **Both kinds of people write**: some in the browser, some through a pull request, and neither gets in the other's way.
 - You need **versions per release** and **languages per page** without building a site.
+- The site should carry **your brand** (theme, colours, logo, even custom CSS) without anyone writing a theme in code.
 - An **AI assistant** should be able to read and write the docs, with every change landing as a commit you can review or revert.
 
 What DocuWaves deliberately leaves out is on [Scope and limitations](/p/docuwaves/pages/scope-and-limitations).
