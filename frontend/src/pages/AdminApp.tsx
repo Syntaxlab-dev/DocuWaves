@@ -120,6 +120,20 @@ export function AdminApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isContent, selectedProject, selectedCategory, editing]);
 
+  // Every Back and Forward, counted. The router's location alone can miss
+  // one: a click that moves the selection pushes a new address, and a Back
+  // a few milliseconds later can land before React has rendered that push.
+  // Both updates then render as one, the address the router reports is the
+  // one it had before the click, and an effect keyed on it never runs --
+  // the selection stayed on the parent while the address showed the child
+  // (seen in CI: no state change and no request after the Back).
+  const [pops, setPops] = useState(0);
+  useEffect(() => {
+    const onPop = () => setPops((n) => n + 1);
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
   // The address moved without the selection (Back, Forward, the nav link):
   // the selection follows it. The bare /admin/content of the nav link is the
   // exception -- it means "the content", so the current selection is kept and
@@ -161,7 +175,7 @@ export function AdminApp() {
       category && want.page ? { kind: "page", slug: want.page, language: want.lang || site.default_language } : null,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, pops]);
   const [reviewCount, setReviewCount] = useState(0);
   const [reviewsKey, setReviewsKey] = useState(0);
   /** A queue entry being opened: the project, then the category, then the
