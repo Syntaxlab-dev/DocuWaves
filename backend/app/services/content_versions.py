@@ -206,7 +206,12 @@ def read_versions(project_slug: str) -> dict | None:
         version_id = str(item.get("id", "")).strip()
         # The same checks a freeze goes through -- a hand-written id that
         # isn't a usable directory name never becomes a URL here either.
-        if not _ID_RE.match(version_id) or version_id in _RESERVED_IDS or version_id in seen:
+        if (
+            not _ID_RE.match(version_id)
+            or len(version_id) > _MAX_ID_LENGTH
+            or version_id in _RESERVED_IDS
+            or version_id in seen
+        ):
             log.warning("%s/%s: ignoring version entry %r.", project_slug, VERSIONS_FILENAME, item.get("id"))
             continue
         seen.add(version_id)

@@ -7,5 +7,6 @@ versions:
   - id: Bad ID
   - id: v2.0
   - label: no id
+  - id: v1111111111111111111111111111111111111111
   - id: v1
     colour: red

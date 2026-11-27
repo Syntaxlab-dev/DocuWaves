@@ -218,8 +218,11 @@ def split_localized(value, default_lang: str | None = None) -> tuple[str, dict[s
     language still shows something rather than nothing) plus the mapping
     itself for the caller to index by whatever language it is serving.
 
-    Anything else (a number, a list, a mapping of mappings) is not a
+    A number is read as its text. Anything else (a boolean, a list, a
+    mapping of mappings) is not a
     human-readable name and degrades to ("", {})."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        value = str(value)  # `name: 2026` is the name "2026", not no name
     if isinstance(value, str):
         return value, {}
     if isinstance(value, dict):

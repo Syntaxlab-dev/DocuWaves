@@ -159,6 +159,74 @@ def _localized_field(data: dict, key: str, fallback: str = "") -> tuple[str, dic
     return (text or fallback), mapping
 
 
+def _load_mapping(path: Path) -> dict:
+    """A `_project.yml`/`_category.yml` as a mapping. A file that is not
+    valid YAML, or holds something other than a mapping, reads as an empty
+    one: every field takes its default (spec/content-format.md, section 3)
+    and the problem goes to the log, rather than one hand-edited file taking
+    the project, or a whole reindex, down."""
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError) as exc:
+        log.warning("Ignoring unreadable %s: %s", _rel(path), str(exc).splitlines()[0] if str(exc) else exc)
+        return {}
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        log.warning("Ignoring %s: expected a YAML mapping.", _rel(path))
+        return {}
+    return data
+
+
+def _int_field(data: dict, key: str) -> int:
+    """An integer field (`order`), or 0 for anything that is not one -- a
+    quoted "3", a 2.5, a `true` -- instead of the ValueError that used to
+    stop a reindex. Spec section 3: a wrong type takes the default."""
+    value = data.get(key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        return 0
+    return value
+
+
+def _text_field(data: dict, key: str, default: str = "") -> str:
+    """A plain text field. Numbers and booleans are read as the text they
+    were written as (`title: 2026` is the title "2026"); a list or a mapping
+    takes the default."""
+    value = data.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (str, int, float)):
+        return str(value)
+    return default
+
+
+_FRONTMATTER_RE = re.compile(r"\A---[ \t]*\r?\n.*?^(?:---|\.\.\.)[ \t]*(?:\r?\n|\Z)", re.S | re.M)
+
+
+def _title(metadata: dict, slug: str) -> str:
+    title = _text_field(metadata, "title")
+    return title if title.strip() else slug
+
+
+def _read_page_file(path: Path) -> frontmatter.Post:
+    """A page file as frontmatter + body. Frontmatter that is not valid YAML
+    or not a mapping counts as none (the fields take their defaults), and
+    the body is still the text after it -- one broken line must not stop a
+    reindex at this file."""
+    text = path.read_text(encoding="utf-8-sig")
+    try:
+        post = frontmatter.loads(text)
+    except yaml.YAMLError as exc:
+        log.warning("Ignoring the frontmatter of %s: %s", _rel(path), str(exc).splitlines()[0] if str(exc) else exc)
+        match = _FRONTMATTER_RE.match(text)
+        return frontmatter.Post(text[match.end():] if match else text)
+    if not isinstance(post.metadata, dict):
+        post.metadata = {}
+    return post
+
+
 def _image_field(data: dict) -> str:
     """A cover `image:` as a plain relative path, or "" for anything that
     isn't one.
@@ -178,7 +246,7 @@ def read_project(slug: str) -> dict | None:
     path = content_root() / slug / "_project.yml"
     if not path.exists():
         return None
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = _load_mapping(path)
     name, name_i18n = _localized_field(data, "name", slug)
     description, description_i18n = _localized_field(data, "description")
     return {
@@ -192,16 +260,16 @@ def read_project(slug: str) -> dict | None:
         "image": _image_field(data),
         "description": description,
         "description_i18n": description_i18n,
-        "order": int(data.get("order", 0)),
+        "order": _int_field(data, "order"),
         # Only the exact word counts. Anything else -- missing, a typo,
         # `visibility: public` -- is public, which is what every project was
         # before this existed. A typo must not hide docs nobody meant to hide;
         # the admin form writes the exact word, so a project made private
         # there is private.
-        "private": str(data.get("visibility", "")).strip().lower() == "private",
+        "private": _text_field(data, "visibility").strip().lower() == "private",
         # Same rule: only the exact word. `review: required` means nothing in
         # this project goes live without somebody else's approval.
-        "review_required": str(data.get("review", "")).strip().lower() == "required",
+        "review_required": _text_field(data, "review").strip().lower() == "required",
         # Docs-as-code (services/docs_sync.py): the project's pages come from
         # a code repository, so they are read-only here.
         "source": normalize_source(data.get("source")),
@@ -348,8 +416,12 @@ def list_category_slugs(project_slug: str, version: str = "") -> list[str]:
     root = project_content_dir(project_slug, version)
     if not root.exists():
         return []
+    # `assets/` holds the files pages link to and is never a category, even
+    # with a _category.yml in it (spec section 2.1).
     return sorted(
-        p.name for p in root.iterdir() if p.is_dir() and not is_reserved(p.name) and (p / "_category.yml").exists()
+        p.name
+        for p in root.iterdir()
+        if p.is_dir() and not is_reserved(p.name) and p.name != "assets" and (p / "_category.yml").exists()
     )
 
 
@@ -357,7 +429,7 @@ def read_category(project_slug: str, slug: str, version: str = "") -> dict | Non
     path = project_content_dir(project_slug, version) / slug / "_category.yml"
     if not path.exists():
         return None
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    data = _load_mapping(path)
     name, name_i18n = _localized_field(data, "name", slug)
     return {
         "name": name,
@@ -368,14 +440,14 @@ def read_category(project_slug: str, slug: str, version: str = "") -> dict | Non
         # Markdown uses, which is what keeps it resolving in GitHub's own
         # preview of the file as well.
         "image": _image_field(data),
-        "order": int(data.get("order", 0)),
+        "order": _int_field(data, "order"),
         # The slug of the category this one sits under, in the same version
         # -- '' for a top-level one. Directories stay flat on disk on
         # purpose: nesting is a property of the category, so moving one
         # under another is a one-line change to this file and never moves a
         # page (whose URL has no category in it anyway). content_sync drops a
         # parent that does not exist or would make a loop.
-        "parent": str(data.get("parent") or "").strip(),
+        "parent": _text_field(data, "parent").strip(),
     }
 
 
@@ -520,11 +592,16 @@ def read_page(project_slug: str, category_slug: str, slug: str, language: str = 
     path = page_path(project_slug, category_slug, slug, language, version)
     if not path.exists():
         return None
-    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    post = _read_page_file(path)
     return {
-        "title": post.metadata.get("title", slug),
-        "order": int(post.metadata.get("order", 0)),
-        "published": bool(post.metadata.get("published", False)),
+        # An empty or whitespace title is no title: the slug, as for a
+        # missing one (spec section 6).
+        "title": _title(post.metadata, slug),
+        "order": _int_field(post.metadata, "order"),
+        # Only a YAML boolean publishes. `published: "false"` is a string,
+        # and bool() of it used to be True -- a page meant as a draft went
+        # live.
+        "published": post.metadata.get("published") is True,
         # The review note, or "" for a page nobody has marked as reviewed --
         # which is every page until someone does, and every page in an
         # instance that never uses the feature. Read as str() rather than
@@ -564,7 +641,7 @@ def parse_page_document(text: str) -> dict:
     return {
         "title": str(metadata.get("title", "") or ""),
         "order": order,
-        "published": bool(metadata.get("published", False)),
+        "published": metadata.get("published") is True,
         "markdown_content": post.content,
     }
 
@@ -773,9 +850,9 @@ def read_pending(project_slug: str, category_slug: str, slug: str, language: str
     path = pending_path(project_slug, category_slug, slug, language, version)
     if not path.is_file():
         return None
-    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    post = _read_page_file(path)
     return {
-        "title": str(post.metadata.get("title", slug)),
+        "title": _text_field(post.metadata, "title", slug),
         "markdown_content": post.content,
         "review": review_from(post.metadata),
     }

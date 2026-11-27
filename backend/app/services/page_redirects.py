@@ -66,7 +66,10 @@ def read(project_slug: str) -> dict[str, str]:
     pages = data.get("pages") if isinstance(data, dict) else None
     if not isinstance(pages, dict):
         return {}
-    return {str(old).strip(): str(new).strip() for old, new in pages.items() if old and new}
+    # Trimmed first, then entries with an empty side dropped (spec section 8):
+    # `" old ": ""` is no redirect, and `12: 34` is the slugs "12" and "34".
+    trimmed = {str(old).strip(): str(new).strip() for old, new in pages.items() if old is not None and new is not None}
+    return {old: new for old, new in trimmed.items() if old and new}
 
 
 def _write(project_slug: str, pages: dict[str, str]) -> str:
