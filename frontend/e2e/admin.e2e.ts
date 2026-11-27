@@ -469,17 +469,36 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await page.waitForTimeout(6500);
   // The address keeps the selection: a reload lands in the same category.
   await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
-  await page.reload();
-  await expect(page.getByText("This category has no pages yet.")).toBeVisible();
   const crumbs = page.getByRole("navigation", { name: "Path" });
-  await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
-  // A breadcrumb steps up, and Back steps down again.
-  await crumbs.getByRole("button", { name: "Handbook" }).click();
-  await expect(page).toHaveURL(/\/admin\/content\/handbook$/);
-  await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);
-  await page.goBack();
-  await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
-  await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
+  test.setTimeout(400_000);
+  const trail: string[] = [];
+  page.on("console", (m) => trail.push(`console ${m.type()}: ${m.text()}`));
+  page.on("request", (r) => { if (r.url().includes("/api/")) trail.push(`req ${r.method()} ${r.url()}`); });
+  page.on("response", (r) => { if (r.url().includes("/api/")) trail.push(`res ${r.status()} ${r.url()}`); });
+  page.on("framenavigated", (f) => { if (f === page.mainFrame()) trail.push(`nav ${f.url()}`); });
+  for (let round = 0; round < 40; round++) {
+    trail.length = 0;
+    try {
+      await page.reload();
+      await expect(page.getByText("This category has no pages yet.")).toBeVisible();
+      await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page");
+      trail.push("-- click Handbook");
+      await crumbs.getByRole("button", { name: "Handbook" }).click();
+      await expect(page).toHaveURL(/\/admin\/content\/handbook$/);
+      await expect(page.getByText("This category has no pages yet.")).toHaveCount(0);
+      trail.push("-- goBack");
+      await page.goBack();
+      await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
+      await expect(crumbs.getByText("Scratch")).toHaveAttribute("aria-current", "page", { timeout: 5000 });
+    } catch (error) {
+      console.log(`ROUND ${round} FAILED at ${page.url()}`);
+      console.log(trail.join("\n"));
+      console.log("NAV:", await page.locator("nav").allInnerTexts());
+      console.log("MAIN:", (await page.locator("main").innerText()).slice(0, 1500));
+      throw error;
+    }
+  }
+  console.log("ALL 40 ROUNDS PASSED");
   await expect(page.getByText("This category has no pages yet.")).toBeVisible();
 
   // A category asks first, in a dialog of the app's own.
