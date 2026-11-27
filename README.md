@@ -15,6 +15,9 @@ open a pull request.
 **Documentation:** [docs.docuwaves.app](https://docs.docuwaves.app). Its
 source is the [`docs/`](docs/) folder of this repository.
 
+**Live demo:** [demo.docuwaves.app](https://demo.docuwaves.app/admin). Sign in
+with `demo` / `demo` and try everything an author does. It resets every night.
+
 ## What it looks like
 
 | For readers | For writers |
