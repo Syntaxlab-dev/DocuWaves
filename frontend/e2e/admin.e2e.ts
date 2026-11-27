@@ -463,10 +463,19 @@ test("deleting asks in the app, and a page can be brought back", async ({ page }
   await expect(row).toHaveCount(0);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(row).toHaveCount(1);
+  // The delete is only sent once the Undo window closes. Wait for that
+  // request to finish rather than for a fixed time: a reload while it is
+  // still in flight aborts it in the browser, while the server goes on
+  // committing it, and what the steps below see then depends on which of
+  // the two wins.
+  const deleted = page.waitForResponse(
+    (r) => r.request().method() === "DELETE" && /\/api\/admin\/pages\/\d+$/.test(r.url()),
+    { timeout: 15_000 },
+  );
   await row.hover();
   await row.getByRole("button", { name: "Delete" }).click();
   await expect(row).toHaveCount(0);
-  await page.waitForTimeout(6500);
+  expect((await deleted).ok()).toBe(true);
   // The address keeps the selection: a reload lands in the same category.
   await expect(page).toHaveURL(/\/admin\/content\/handbook\/scratch$/);
   await page.reload();
