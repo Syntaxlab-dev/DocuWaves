@@ -1,0 +1,37 @@
+{
+  "model": {
+    "languages": [],
+    "projects": [
+      {
+        "slug": "guide",
+        "name": "Reader Guide",
+        "order": 2,
+        "private": false,
+        "review_required": false,
+        "versions": [],
+        "categories": [
+          {
+            "version": "",
+            "slug": "start",
+            "name": "Start Here",
+            "order": 3,
+            "parent": ""
+          }
+        ],
+        "pages": [
+          {
+            "version": "",
+            "category": "start",
+            "slug": "intro",
+            "language": "",
+            "title": "Welcome to the Guide",
+            "order": 4,
+            "published": true
+          }
+        ],
+        "redirects": {}
+      }
+    ]
+  },
+  "diagnostics": []
+}

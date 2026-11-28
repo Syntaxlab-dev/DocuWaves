@@ -91,6 +91,8 @@ report `duplicate-page` for the other one.
 ## 3. Common rules for YAML files
 
 - Files MUST be UTF-8. Writers SHOULD NOT write a byte order mark.
+  Readers MUST accept and ignore a byte order mark at the start of YAML and
+  Markdown page files.
 - Each YAML file holds one mapping. An empty file or an empty mapping is
   valid, and every field takes its default.
 - A file that is not valid YAML, or whose top level is not a mapping, is
