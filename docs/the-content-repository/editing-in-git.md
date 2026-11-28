@@ -18,6 +18,9 @@ git push
 
 DocuWaves picks that up on its next sync — see [Syncing and conflicts](/p/docuwaves/pages/syncing-and-conflicts).
 
+To catch file-format problems before syncing or merging, see
+[Checking the files](/p/docuwaves/pages/checking-the-files).
+
 ## What you can do there and not in the UI
 
 A few things are deliberately only available as a file edit:
